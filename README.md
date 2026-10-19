@@ -46,6 +46,13 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   ohne Kategorie auf einen Blick
 - **Kategorisierungshilfe** – für Buchungen „Ohne Kategorie“ ein Vorschlag aus ähnlichen
   früheren Buchungen; per Klick an n8n übergeben oder direkt in Firefly öffnen
+- **Kategorien-Labor** – alle Buchungen (24 Monate) probeweise neu kategorisieren und taggen,
+  ohne Firefly anzufassen: eigene Regeln („Empfänger enthält REWE → Lebensmittel“, Betrag
+  zwischen …, Tags), automatische Tags (Abo, Online, Bargeld, Wochenende, große Ausgabe,
+  Kleinbetrag) und Regel-Vorschläge aus deinen Daten (uneinheitlich kategorisierte Empfänger,
+  Buchungen ohne Kategorie, bekannte Händler; Zahlungsdienste wie PayPal nach Buchungstext).
+  Vorher/Nachher je Kategorie, Auswertung nach Tags, Export als **Firefly-Regeln** (JSON),
+  CSV oder Übergabe an n8n
 - **Jahresrückblick** – Sparquote, Monat für Monat, Highlights, Kategorien im Vergleich zum
   Vorjahr, größte Ausgaben, Abo-Kosten pro Jahr
 - **Als App aufs Handy** – installierbar (Startbildschirm), startet sofort und zeigt ohne

@@ -190,7 +190,7 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname.startsWith('/api/')) return proxy(req, res, url);
   if (url.pathname === '/local/actions' || url.pathname.startsWith('/local/actions/')) return handleActions(req, res, url);
-  if (['/local/settings', '/local/goals', '/local/alerts'].includes(url.pathname)) return handleAutomation(req, res, url);
+  if (['/local/settings', '/local/goals', '/local/alerts', '/local/rules'].includes(url.pathname)) return handleAutomation(req, res, url);
   if (url.pathname === '/local/stats') {
     return send(res, 200, JSON.stringify(firefly.summary()), { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' });
   }
