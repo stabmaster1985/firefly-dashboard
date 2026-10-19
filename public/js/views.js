@@ -2,13 +2,14 @@
 
 import * as api from './api.js';
 import { barChart, lineChart, legend, seriesColor } from './charts.js';
-import { money, percent, esc, fmtDate, initials, isoDate, today, startOfMonth, endOfMonth, debounce } from './util.js';
+import { money, percent, esc, fmtDate, initials, isoDate, today, startOfMonth, endOfMonth, debounce, parseDate } from './util.js';
 import { skeleton, fill, card, stat, signedAmount, txRow, mainCurrency, sum } from './common.js';
-import { categoryTotals, previousRange, delta } from './categories.js';
+import { categoryTotals, compareRange, delta } from './categories.js';
 
 export async function overview(view, { period }) {
   const { start, end } = period;
-  const [prevStart, prevEnd] = previousRange(period);
+  const cmp = compareRange(period);
+  const [prevStart, prevEnd] = [cmp.start, cmp.end];
   view.innerHTML = `
     <div class="grid">
       <section class="card span-3" id="s-networth"></section>
@@ -36,12 +37,12 @@ export async function overview(view, { period }) {
   tile('s-earned', (el, [s, prev]) => {
     const [main] = api.summaryValues(s, 'earned');
     const cur = main?.value || 0;
-    el.innerHTML = stat('Einnahmen', `<span class="pos">${money(cur, main?.code)}</span>`, `${delta(cur, prevOf(prev, 'earned', main?.code), 'income', main?.code)} ggü. Vorperiode`);
+    el.innerHTML = stat('Einnahmen', `<span class="pos">${money(cur, main?.code)}</span>`, `${delta(cur, prevOf(prev, 'earned', main?.code), 'income', main?.code)} ggü. ${cmp.label}`);
   });
   tile('s-spent', (el, [s, prev]) => {
     const [main] = api.summaryValues(s, 'spent');
     const cur = Math.abs(main?.value || 0);
-    el.innerHTML = stat('Ausgaben', money(cur, main?.code), `${delta(cur, Math.abs(prevOf(prev, 'spent', main?.code)), 'expense', main?.code)} ggü. Vorperiode`);
+    el.innerHTML = stat('Ausgaben', money(cur, main?.code), `${delta(cur, Math.abs(prevOf(prev, 'spent', main?.code)), 'expense', main?.code)} ggü. ${cmp.label}`);
   });
   tile('s-balance', (el, [s]) => {
     const [bal] = api.summaryValues(s, 'balance');
@@ -136,6 +137,11 @@ export async function overview(view, { period }) {
 // Buchungen
 
 export async function transactions(view, { period, params }) {
+  // von/bis in der Adresse (z. B. aus der Monatsmatrix) übersteuern den globalen Zeitraum
+  const von = parseDate(params.get('von'));
+  const bis = parseDate(params.get('bis'));
+  const own = von && bis && von <= bis;
+  if (own) period = { label: `${fmtDate(von)} – ${fmtDate(bis)}`, start: von, end: bis };
   const { start, end } = period;
   const state = { q: params.get('q') || '', type: params.get('type') || 'all', page: 1, rows: [], total: 0 };
   const TYPES = [
@@ -154,6 +160,7 @@ export async function transactions(view, { period, params }) {
           ${TYPES.map(([id, label]) => `<button class="chip" data-type="${id}" aria-pressed="${id === state.type}">${label}</button>`).join('')}
         </div>
       </div>
+      ${own ? `<div class="toolbar"><span class="chip" aria-pressed="true">Zeitraum ${esc(period.label)}<button class="chip-x" id="tx-range-x" aria-label="Zeitraum entfernen">✕</button></span></div>` : ''}
       <div class="legend" id="tx-summary" style="margin-bottom:12px"></div>
       <div class="table-wrap">
         <table>
@@ -256,10 +263,21 @@ export async function transactions(view, { period, params }) {
     load(false);
   });
 
+  view.querySelector('#tx-range-x')?.addEventListener('click', () => {
+    const qs = new URLSearchParams();
+    if (state.q) qs.set('q', state.q);
+    if (state.type !== 'all') qs.set('type', state.type);
+    location.hash = `#/buchungen${qs.toString() ? `?${qs}` : ''}`;
+  });
+
   const syncHash = () => {
     const qs = new URLSearchParams();
     if (state.q) qs.set('q', state.q);
     if (state.type !== 'all') qs.set('type', state.type);
+    if (own) {
+      qs.set('von', isoDate(von));
+      qs.set('bis', isoDate(bis));
+    }
     const hash = `#/buchungen${qs.toString() ? `?${qs}` : ''}`;
     if (location.hash !== hash) history.replaceState(null, '', hash);
   };

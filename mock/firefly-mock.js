@@ -283,6 +283,11 @@ const routes = {
 
   accounts: (q) => {
     const type = q.get('type') || 'all';
+    if (type === 'expense' || type === 'revenue') {
+      const want = type === 'expense' ? 'withdrawal' : 'deposit';
+      const names = [...new Set(journals.filter((j) => j.type === want).map((j) => (want === 'withdrawal' ? j.destination.name : j.source.name)))].sort();
+      return paginate(names, q, (name, i) => ({ type: 'accounts', id: String(100 + i), attributes: { name, type, active: true } }));
+    }
     const list = ['asset', 'all'].includes(type) ? ACCOUNTS : [];
     return paginate(list, q, (a) => ({
       type: 'accounts',
@@ -321,6 +326,9 @@ const routes = {
         case 'type': return (j) => j.type === v;
         case 'category_is': return (j) => (j.category || '').toLowerCase() === v;
         case 'has_no_category': return (j) => !j.category;
+        case 'account_is': return (j) => j.source.name.toLowerCase() === v || j.destination.name.toLowerCase() === v;
+        case 'destination_account_is': return (j) => j.destination.name.toLowerCase() === v;
+        case 'source_account_is': return (j) => j.source.name.toLowerCase() === v;
         default: return (j) => [j.description, j.source.name, j.destination.name, j.category, j.budget, ...j.tags].join(' ').toLowerCase().includes(tok.replace(/"/g, '').toLowerCase());
       }
     });

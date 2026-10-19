@@ -34,10 +34,23 @@
       <header class="topbar">
         <h1 id="page-title">Übersicht</h1>
         <div class="topbar-actions">
-          <label class="period">
-            <span class="sr-only">Zeitraum</span>
-            <select id="period-select"></select>
-          </label>
+          <div class="search" role="search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="global-search" type="search" placeholder="Suchen …" autocomplete="off" aria-label="Kategorien, Konten und Buchungen suchen" aria-controls="search-results" aria-expanded="false">
+            <kbd>/</kbd>
+            <div class="search-results" id="search-results" role="listbox" hidden></div>
+          </div>
+          <div class="period-wrap">
+            <label class="period">
+              <span class="sr-only">Zeitraum</span>
+              <select id="period-select"></select>
+            </label>
+            <form class="custom-range" id="custom-range" hidden>
+              <label>Von <input type="date" id="cr-from" required></label>
+              <label>Bis <input type="date" id="cr-to" required></label>
+              <div class="custom-actions"><button type="button" class="btn" id="cr-cancel">Abbrechen</button><button type="submit" class="btn primary">Übernehmen</button></div>
+            </form>
+          </div>
           <button class="icon-btn" id="refresh-btn" title="Neu laden" aria-label="Neu laden">
             <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
           </button>

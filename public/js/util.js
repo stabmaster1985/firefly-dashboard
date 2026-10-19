@@ -67,7 +67,16 @@ export const PERIODS = [
   { id: 'last-12', label: 'Letzte 12 Monate', range: (t) => [startOfMonth(t, -11), endOfMonth(t)] },
 ];
 
+/** Eigener Zeitraum wird als "custom:JJJJ-MM-TT:JJJJ-MM-TT" gespeichert. */
+export const customPeriodId = (start, end) => `custom:${isoDate(start)}:${isoDate(end)}`;
+
 export function periodById(id) {
+  const m = /^custom:(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$/.exec(id || '');
+  if (m) {
+    const start = parseDate(m[1]);
+    const end = parseDate(m[2]);
+    if (start <= end) return { id, label: `${fmtDate(start)} – ${fmtDate(end)}`, start, end, custom: true };
+  }
   const p = PERIODS.find((x) => x.id === id) || PERIODS[0];
   const [start, end] = p.range(today());
   return { ...p, start, end };

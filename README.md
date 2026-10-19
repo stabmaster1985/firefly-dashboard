@@ -17,7 +17,14 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
 - **Buchungen** – Liste mit Kategorie-Filter und Volltextsuche (inkl. Firefly-Suchoperatoren wie
   `category_is:"Lebensmittel"` oder `amount_more:100`), Filter nach Art, Details per Klick
 - **Konten** – Kontostände und Verlauf als Liniendiagramm, Verbindlichkeiten
-- Zeitraumwahl (Monat, Quartal, Jahr …), Hell-/Dunkelmodus, optimiert fürs Handy
+- **Suche** (Taste `/` oder Strg+K) – findet Kategorien, Empfänger, Zahler und Konten; Enter
+  springt direkt hin, sonst Volltextsuche in den Buchungen
+- **Zeitraum** – Vorgaben (Monat, Quartal, Jahr …) oder ein **eigener Zeitraum** von–bis
+- **Vergleich** wahlweise mit der Vorperiode oder dem **Vorjahr**
+- **Monatsmatrix** – Feld anklicken zeigt die Buchungen dieser Kategorie in diesem Monat;
+  Kategorien lassen sich filtern (mehrere mit Komma, z. B. `lebens, restaurant`) und zusammen
+  auswerten; Tabelle und Matrix als **CSV-Export** für Excel
+- Hell-/Dunkelmodus, optimiert fürs Handy
 
 Der Vergleich mit der Vorperiode ist fair: Läuft der gewählte Zeitraum noch (z. B. „Dieser
 Monat“ am 19.), wird mit demselben Abschnitt davor verglichen (1.–19. des Vormonats).

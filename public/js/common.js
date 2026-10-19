@@ -65,3 +65,15 @@ export function mainCurrency(items, key = 'currency_code') {
 }
 
 export const sum = (list, fn) => list.reduce((s, x) => s + fn(x), 0);
+
+/** Lädt eine CSV-Datei herunter – Semikolon + Dezimalkomma, damit Excel sie direkt öffnet. */
+export function downloadCsv(filename, rows) {
+  const cell = (v) => (typeof v === 'number' ? v.toFixed(2).replace('.', ',') : `"${String(v ?? '').replace(/"/g, '""')}"`);
+  const text = `﻿${rows.map((r) => r.map(cell).join(';')).join('\r\n')}`;
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

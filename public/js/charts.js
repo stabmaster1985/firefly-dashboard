@@ -11,7 +11,13 @@ export const cssVar = (name) => getComputedStyle(document.documentElement).getPr
 export const seriesColor = (index) => cssVar(`--series-${(index % 8) + 1}`);
 
 export function destroyCharts() {
-  for (const chart of active) chart.destroy();
+  for (const chart of active) {
+    try {
+      chart.destroy();
+    } catch {
+      // wurde bereits einzeln zerstört
+    }
+  }
   active.clear();
 }
 
@@ -69,7 +75,7 @@ function create(canvas, config) {
  * Balken je Monat – gruppiert (Einnahmen vs. Ausgaben) oder gestapelt
  * (Kategorien). Optional mit gestrichelter Durchschnittslinie.
  */
-export function barChart(canvas, { labels, series, currency = 'EUR', stacked = false, average = null }) {
+export function barChart(canvas, { labels, series, currency = 'EUR', stacked = false, average = null, onClick = null }) {
   const surface = cssVar('--surface-1');
   const datasets = series.map((s, i) => ({
     label: s.label,
@@ -104,6 +110,10 @@ export function barChart(canvas, { labels, series, currency = 'EUR', stacked = f
     options.scales.x.stacked = true;
     options.scales.y.stacked = true;
     options.plugins.tooltip.itemSort = (a, b) => b.datasetIndex - a.datasetIndex;
+  }
+  if (onClick) {
+    options.onClick = (_, elements) => elements.length && onClick(elements[0].index);
+    options.onHover = (e, elements) => (e.native.target.style.cursor = elements.length ? 'pointer' : 'default');
   }
   return create(canvas, { type: 'bar', data: { labels: labels.map(fmtMonth), datasets }, options });
 }
