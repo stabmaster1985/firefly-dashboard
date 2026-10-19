@@ -96,6 +96,7 @@ export function barChart(canvas, { labels, series, currency = 'EUR', stacked = f
     datasets.push({
       type: 'line',
       label: 'Ø',
+      stack: 'avg', // nicht auf gestapelte Balken addieren
       data: labels.map(() => average),
       borderColor: cssVar('--text-secondary'),
       borderWidth: 1.5,

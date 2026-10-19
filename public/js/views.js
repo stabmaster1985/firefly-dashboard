@@ -4,7 +4,7 @@ import * as api from './api.js';
 import { barChart, lineChart, legend, seriesColor } from './charts.js';
 import { money, percent, esc, fmtDate, initials, isoDate, today, startOfMonth, endOfMonth, debounce, parseDate } from './util.js';
 import { skeleton, fill, card, stat, signedAmount, txRow, mainCurrency, sum } from './common.js';
-import { categoryTotals, compareRange, delta } from './categories.js';
+import { categoryTotals, compareRange, delta, forecastActive, forecastTotal } from './categories.js';
 
 export async function overview(view, { period }) {
   const { start, end } = period;
@@ -18,15 +18,23 @@ export async function overview(view, { period }) {
       <section class="card span-3" id="s-balance"></section>
       ${card('cashflow', 'Einnahmen & Ausgaben', { span: 'span-8', meta: 'letzte 12 Monate' })}
       ${card('accounts', 'Konten', { span: 'span-4', link: '<a href="#/konten">Alle →</a>' })}
-      ${card('categories', 'Ausgaben nach Kategorie', { span: 'span-6', link: '<a href="#/kategorien">Analyse →</a>' })}
-      ${card('changes', 'Größte Veränderungen', { span: 'span-6', meta: `ggü. ${fmtDate(prevStart, { day: 'numeric', month: 'short' })} – ${fmtDate(prevEnd, { day: 'numeric', month: 'short' })}` })}
-      ${card('recent', 'Letzte Buchungen', { span: 'span-12', link: '<a href="#/buchungen">Alle →</a>' })}
+      ${card('categories', 'Ausgaben nach Kategorie', { span: 'span-6', filter: true, link: '<a href="#/kategorien">Analyse →</a>' })}
+      ${card('changes', 'Größte Veränderungen', { span: 'span-6', filter: true, meta: `ggü. ${fmtDate(prevStart, { day: 'numeric', month: 'short' })} – ${fmtDate(prevEnd, { day: 'numeric', month: 'short' })}` })}
+      ${card('recent', 'Letzte Buchungen', { span: 'span-12', filter: true, link: '<a href="#/buchungen">Alle →</a>' })}
     </div>`;
   const $ = (id) => view.querySelector(`#${id}`);
 
   const summary = api.get('summary/basic', { start, end });
   const prevSummary = api.get('summary/basic', { start: prevStart, end: prevEnd }).catch(() => null);
-  const both = Promise.all([summary, prevSummary]);
+  const showForecast = forecastActive(period);
+  const both = Promise.all([
+    summary,
+    prevSummary,
+    showForecast ? forecastTotal('income', period) : null,
+    showForecast ? forecastTotal('expense', period) : null,
+  ]);
+  const until = fmtDate(end, { day: 'numeric', month: 'short' });
+  const fcLine = (value, code) => `<br><span class="forecast">≈ ${money(value, code)} bis ${until}</span>`;
   const tile = (id, render) => fill($(id), () => both, render, skeleton(2, 22));
   const prevOf = (prev, key, code) => (prev ? api.summaryValues(prev, key).find((v) => v.code === code)?.value || 0 : 0);
 
@@ -34,23 +42,26 @@ export async function overview(view, { period }) {
     const [main, ...rest] = api.summaryValues(s, 'net-worth');
     el.innerHTML = stat('Nettovermögen', money(main?.value, main?.code), rest.map((r) => money(r.value, r.code)).join(' · ') || `Stand ${fmtDate(end > today() ? today() : end)}`);
   });
-  tile('s-earned', (el, [s, prev]) => {
+  tile('s-earned', (el, [s, prev, fcIn]) => {
     const [main] = api.summaryValues(s, 'earned');
     const cur = main?.value || 0;
-    el.innerHTML = stat('Einnahmen', `<span class="pos">${money(cur, main?.code)}</span>`, `${delta(cur, prevOf(prev, 'earned', main?.code), 'income', main?.code)} ggü. ${cmp.label}`);
+    el.innerHTML = stat('Einnahmen', `<span class="pos">${money(cur, main?.code)}</span>`,
+      `${delta(cur, prevOf(prev, 'earned', main?.code), 'income', main?.code)} ggü. ${cmp.label}${fcIn ? fcLine(cur + fcIn(main?.code), main?.code) : ''}`);
   });
-  tile('s-spent', (el, [s, prev]) => {
+  tile('s-spent', (el, [s, prev, , fcOut]) => {
     const [main] = api.summaryValues(s, 'spent');
     const cur = Math.abs(main?.value || 0);
-    el.innerHTML = stat('Ausgaben', money(cur, main?.code), `${delta(cur, Math.abs(prevOf(prev, 'spent', main?.code)), 'expense', main?.code)} ggü. ${cmp.label}`);
+    el.innerHTML = stat('Ausgaben', money(cur, main?.code),
+      `${delta(cur, Math.abs(prevOf(prev, 'spent', main?.code)), 'expense', main?.code)} ggü. ${cmp.label}${fcOut ? fcLine(cur + fcOut(main?.code), main?.code) : ''}`);
   });
-  tile('s-balance', (el, [s]) => {
+  tile('s-balance', (el, [s, , fcIn, fcOut]) => {
     const [bal] = api.summaryValues(s, 'balance');
     const [earned] = api.summaryValues(s, 'earned');
     const rate = earned?.value > 0 ? bal.value / earned.value : null;
     const cls = (bal?.value || 0) >= 0 ? 'up' : 'down';
+    const fc = fcIn && fcOut ? fcLine((bal?.value || 0) + fcIn(bal?.code) - fcOut(bal?.code), bal?.code) : '';
     el.innerHTML = stat('Saldo', money(bal?.value, bal?.code, { signed: true }),
-      rate === null ? 'Einnahmen − Ausgaben' : `Sparquote <span class="${cls}">${percent(rate)}</span>`);
+      `${rate === null ? 'Einnahmen − Ausgaben' : `Sparquote <span class="${cls}">${percent(rate)}</span>`}${fc}`);
   });
 
   // Cashflow der letzten 12 Monate (bis zum Ende des gewählten Zeitraums)

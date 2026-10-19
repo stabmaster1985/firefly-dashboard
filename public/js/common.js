@@ -25,11 +25,44 @@ export async function fill(slot, loader, render, placeholder = skeleton()) {
   }
 }
 
-export const card = (id, title, { span = 'span-12', link = '', meta = '' } = {}) => `
+export const card = (id, title, { span = 'span-12', link = '', meta = '', filter = false } = {}) => `
   <section class="card ${span}">
-    <div class="card-head"><h2>${esc(title)}</h2>${link}${meta ? `<span class="meta">${meta}</span>` : ''}</div>
+    <div class="card-head"><h2>${esc(title)}</h2>
+      <div class="card-tools">${filter ? `<input class="card-filter" type="search" placeholder="Filtern …" aria-label="${esc(title)} filtern" data-target="${id}">` : ''}${link}${meta ? `<span class="meta">${meta}</span>` : ''}</div>
+    </div>
     <div id="${id}"></div>
   </section>`;
+
+/** Suchbegriffe: mehrere durch Komma getrennt, ein Treffer reicht (ODER). */
+export function termsMatcher(text) {
+  const terms = String(text || '').toLowerCase().split(',').map((t) => t.trim()).filter(Boolean);
+  return (value) => !terms.length || terms.some((t) => String(value).toLowerCase().includes(t));
+}
+
+const FILTERABLE = 'tbody > tr:not(.details), .list > .row, .bars > .bar-row, .tiles > .tile';
+
+/** Blendet Zeilen einer Karte aus, die nicht zum Filterfeld passen. */
+export function applyCardFilter(input) {
+  const target = document.getElementById(input.dataset.target);
+  if (!target) return;
+  const match = termsMatcher(input.value);
+  let shown = 0;
+  let total = 0;
+  target.querySelectorAll(FILTERABLE).forEach((el) => {
+    total += 1;
+    const ok = match(el.textContent);
+    el.hidden = !ok;
+    if (ok) shown += 1;
+    // aufgeklappte Details gehören zur Zeile darüber
+    if (el.nextElementSibling?.classList.contains('details')) el.nextElementSibling.hidden = !ok;
+  });
+  let note = target.querySelector(':scope > .filter-empty');
+  if (input.value.trim() && total && !shown) {
+    if (!note) target.insertAdjacentHTML('beforeend', '<div class="empty filter-empty"></div>');
+    note = target.querySelector(':scope > .filter-empty');
+    note.textContent = `Nichts gefunden für „${input.value.trim()}“.`;
+  } else note?.remove();
+}
 
 export const stat = (label, value, sub = '') => `
   <div class="stat"><span class="label">${esc(label)}</span><span class="value">${value}</span><span class="sub">${sub}</span></div>`;
@@ -76,4 +109,64 @@ export function downloadCsv(filename, rows) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
+ * Auswahlliste mit Häkchen und Suchfeld (z. B. „welche Kategorien?“).
+ * items: [{ id, name, hint }], selected: Set der IDs (leer = alle).
+ */
+export function multiSelect(host, { label, items, selected, onChange }) {
+  const sel = new Set(selected);
+  const summary = () => (sel.size ? `${label}: ${sel.size} gewählt` : `${label}: alle`);
+  host.innerHTML = `<div class="ms">
+    <button type="button" class="chip ms-btn" aria-haspopup="true" aria-expanded="false" aria-pressed="${sel.size > 0}">${esc(summary())} ▾</button>
+    <div class="ms-pop" hidden>
+      <input type="search" class="ms-search" placeholder="Suchen …" aria-label="${esc(label)} suchen">
+      <div class="ms-actions"><button type="button" class="link-btn" data-ms="all">Alle</button> · <button type="button" class="link-btn" data-ms="top">Top 10</button> · <button type="button" class="link-btn" data-ms="none">Zurücksetzen</button></div>
+      <div class="ms-list">${items
+        .map((it) => `<label class="ms-item"><input type="checkbox" value="${esc(it.id)}"${sel.has(it.id) ? ' checked' : ''}><span>${esc(it.name)}</span>${it.hint ? `<small>${esc(it.hint)}</small>` : ''}</label>`)
+        .join('')}</div>
+    </div></div>`;
+  const btn = host.querySelector('.ms-btn');
+  const pop = host.querySelector('.ms-pop');
+  const boxes = [...host.querySelectorAll('.ms-item input')];
+  const update = () => {
+    btn.textContent = `${summary()} ▾`;
+    btn.setAttribute('aria-pressed', String(sel.size > 0));
+    onChange(new Set(sel));
+  };
+  const setAll = (ids) => {
+    sel.clear();
+    ids.forEach((id) => sel.add(id));
+    boxes.forEach((b) => (b.checked = sel.has(b.value)));
+    update();
+  };
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    pop.hidden = !pop.hidden;
+    btn.setAttribute('aria-expanded', String(!pop.hidden));
+    if (!pop.hidden) host.querySelector('.ms-search').focus();
+  });
+  pop.addEventListener('click', (e) => e.stopPropagation());
+  host.querySelector('.ms-search').addEventListener('input', (e) => {
+    const match = termsMatcher(e.target.value);
+    host.querySelectorAll('.ms-item').forEach((el) => (el.hidden = !match(el.textContent)));
+  });
+  host.querySelector('.ms-actions').addEventListener('click', (e) => {
+    const action = e.target.dataset.ms;
+    if (action === 'none') setAll([]);
+    else if (action === 'top') setAll(items.slice(0, 10).map((it) => it.id));
+    else if (action === 'all') setAll(boxes.filter((b) => !b.closest('.ms-item').hidden).map((b) => b.value));
+  });
+  boxes.forEach((b) => b.addEventListener('change', () => {
+    if (b.checked) sel.add(b.value);
+    else sel.delete(b.value);
+    update();
+  }));
+  const close = () => {
+    if (!host.isConnected) return document.removeEventListener('click', close);
+    pop.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+  };
+  document.addEventListener('click', close);
 }

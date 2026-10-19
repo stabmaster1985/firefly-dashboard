@@ -133,10 +133,23 @@ for (let m = new Date(firstDay); m <= today; m = new Date(m.getFullYear(), m.get
 }
 journals.sort((a, b) => b.date - a.date || Number(b.id) - Number(a.id));
 
+// Zusätzliche Tags für die Tag-Auswertung
+for (const j of journals) {
+  const add = (tag) => !j.tags.includes(tag) && (j.tags = [...j.tags, tag]);
+  if (/Tanken|Kfz/.test(j.description)) add('Auto');
+  if (/Bestellung (Amazon|Zalando|MediaMarkt|Thalia)/.test(j.description)) add('Online');
+  if (j.category === 'Restaurant' || /Kino|Konzert/.test(j.description)) add('Ausgehen');
+  if (j.category === 'Urlaub' || (j.date.getMonth() === 6 && j.category === 'Restaurant')) add(`Urlaub ${j.date.getFullYear()}`);
+  if (j.category === 'Geschenke') add('Familie');
+}
+
 // Kategorien bekommen feste IDs in alphabetischer Reihenfolge
 const CATEGORIES = [...new Set(journals.map((j) => j.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
 const categoryId = (name) => String(CATEGORIES.indexOf(name) + 1);
 const categoryName = (id) => CATEGORIES[Number(id) - 1];
+const TAGS = [...new Set(journals.flatMap((j) => j.tags))].sort((a, b) => a.localeCompare(b, 'de'));
+const tagId = (name) => String(TAGS.indexOf(name) + 1);
+const tagName = (id) => TAGS[Number(id) - 1] ?? (TAGS.includes(decodeURIComponent(id)) ? decodeURIComponent(id) : undefined);
 
 // --- Hilfsfunktionen für Antworten ------------------------------------------
 const fmt = (n) => n.toFixed(2);
@@ -235,6 +248,16 @@ function billDates(bill, start, end) {
   return dates;
 }
 
+function tagInsight(q, type, sign) {
+  const [start, end] = range(q);
+  const sums = new Map();
+  for (const j of journals) {
+    if (j.type !== type || !inRange(j, start, end)) continue;
+    for (const tag of j.tags) sums.set(tag, (sums.get(tag) || 0) + j.amount);
+  }
+  return [...sums].map(([name, sum]) => ({ id: tagId(name), name, tag: name, difference: fmt(sign * sum), difference_float: sign * sum, ...eur() }));
+}
+
 function categoryInsight(q, type, sign) {
   const [start, end] = range(q);
   const sums = new Map();
@@ -326,6 +349,7 @@ const routes = {
         case 'type': return (j) => j.type === v;
         case 'category_is': return (j) => (j.category || '').toLowerCase() === v;
         case 'has_no_category': return (j) => !j.category;
+        case 'tag_is': return (j) => j.tags.some((t) => t.toLowerCase() === v);
         case 'account_is': return (j) => j.source.name.toLowerCase() === v || j.destination.name.toLowerCase() === v;
         case 'destination_account_is': return (j) => j.destination.name.toLowerCase() === v;
         case 'source_account_is': return (j) => j.source.name.toLowerCase() === v;
@@ -337,6 +361,9 @@ const routes = {
 
   'insight/expense/category': (q) => categoryInsight(q, 'withdrawal', -1),
   'insight/income/category': (q) => categoryInsight(q, 'deposit', 1),
+  'insight/expense/tag': (q) => tagInsight(q, 'withdrawal', -1),
+  'insight/income/tag': (q) => tagInsight(q, 'deposit', 1),
+  tags: (q) => paginate(TAGS, q, (tag) => ({ type: 'tags', id: tagId(tag), attributes: { tag } })),
   'insight/income/no-category': (q) => {
     const [start, end] = range(q);
     const sum = journals.filter((j) => j.type === 'deposit' && inRange(j, start, end) && !j.category).reduce((s, j) => s + j.amount, 0);
@@ -443,6 +470,17 @@ http
     const key = url.pathname.replace(/^\/api\/v1\//, '');
     let handler = routes[key];
     const cat = key.match(/^categories\/(\d+)(\/transactions)?$/);
+    const tagRoute = key.match(/^tags\/([^/]+)(\/transactions)?$/);
+    if (tagRoute && tagName(tagRoute[1])) {
+      const name = tagName(tagRoute[1]);
+      handler = tagRoute[2]
+        ? (q) => {
+          const [start, end] = q.get('start') ? range(q) : [new Date(0), today];
+          const type = q.get('type') || 'all';
+          return paginate(journals.filter((j) => j.tags.includes(name) && inRange(j, start, end) && (type === 'all' || j.type === type)), q, journalJson);
+        }
+        : () => ({ data: { type: 'tags', id: tagId(name), attributes: { tag: name } } });
+    }
     if (cat && categoryName(cat[1])) {
       const name = categoryName(cat[1]);
       handler = cat[2]

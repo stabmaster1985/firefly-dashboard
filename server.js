@@ -40,7 +40,7 @@ const ALLOWED = [
   /^insight\/(expense|income)\/(category|no-category|total|budget|no-budget|expense|revenue|asset|tag|bill)$/,
   /^chart\/account\/overview$/,
   /^categories(\/\d+(\/transactions)?)?$/,
-  /^tags$/,
+  /^tags(\/[^/]+(\/transactions)?)?$/,
   /^currencies(\/default|\/primary)?$/,
 ];
 

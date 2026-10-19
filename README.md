@@ -12,6 +12,19 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   - Top 5 im Monatsverlauf als gestapeltes Diagramm
   - Monatsmatrix (Kategorien × Monate) als Heatmap mit Summen und Durchschnitt
   - Hinweis, wie viel noch „Ohne Kategorie“ ist
+- **Tags** – dieselbe Analyse (Vergleich, Matrix, Detailseite) nach Tags, z. B. „Urlaub 2026“
+  quer über alle Kategorien
+- **Wiederkehrend** – erkennt regelmäßige Zahlungen (Abos, Versicherungen, Miete …) automatisch
+  aus den Buchungen der letzten 24 Monate: Rhythmus, typischer Betrag, Kosten pro Jahr,
+  nächste erwartete Zahlung, vermutlich beendete Verträge
+- **Prognose** (Schalter oben rechts, standardmäßig aus) – Hochrechnung bis zum Ende des
+  laufenden Zeitraums. Gerechnet wird mit dem, was in den Vormonaten im restlichen Teil des
+  Monats typischerweise noch dazukam – bereits gebuchte Fixkosten wie die Miete werden also
+  nicht doppelt hochgerechnet
+- **Auffällige Monate** – in Matrix und Detailseite markiert, wenn ein Monat mindestens 50 %
+  über dem üblichen Monat der Kategorie liegt
+- **Filter überall** – Listen und Tabellen haben ein eigenes Filterfeld; auf den Analyse-Seiten
+  zusätzlich eine Auswahl mit Häkchen, um gezielt einzelne Kategorien/Tags zu vergleichen
 - **Kategorie-Detail** – Monatsverlauf mit Durchschnittslinie, Spitzenmonat, Anzahl und Ø pro
   Buchung, Top-Empfänger und alle Buchungen der Kategorie (nach Datum oder Betrag)
 - **Buchungen** – Liste mit Kategorie-Filter und Volltextsuche (inkl. Firefly-Suchoperatoren wie

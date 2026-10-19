@@ -2,23 +2,31 @@
 
 import * as api from './api.js';
 import * as views from './views.js';
-import { categories, categoryDetail } from './categories.js';
+import { categories, categoryDetail, tags, tagDetail, forecastEnabled } from './categories.js';
+import { recurring } from './recurring.js';
+import { applyCardFilter } from './common.js';
 import { destroyCharts } from './charts.js';
 import { PERIODS, periodById, customPeriodId, parseDate, isoDate, debounce, storage, store, esc } from './util.js';
 
 const ROUTES = {
   '': { view: views.overview, title: 'Übersicht', nav: 'overview' },
   kategorien: { view: categories, title: 'Kategorien', nav: 'categories' },
+  tags: { view: tags, title: 'Tags', nav: 'tags' },
+  wiederkehrend: { view: recurring, title: 'Wiederkehrend', nav: 'recurring', noPeriod: true },
   buchungen: { view: views.transactions, title: 'Buchungen', nav: 'transactions' },
   konten: { view: views.accounts, title: 'Konten', nav: 'accounts' },
 };
-const DETAIL = { view: categoryDetail, title: 'Kategorie', nav: 'categories' };
+const DETAIL = {
+  kategorien: { view: categoryDetail, title: 'Kategorie', nav: 'categories' },
+  tags: { view: tagDetail, title: 'Tag', nav: 'tags' },
+};
 
 const viewEl = document.getElementById('view');
 const titleEl = document.getElementById('page-title');
 const periodSelect = document.getElementById('period-select');
 const refreshBtn = document.getElementById('refresh-btn');
 const themeBtn = document.getElementById('theme-btn');
+const forecastBtn = document.getElementById('forecast-btn');
 
 let connectionError = null;
 
@@ -45,12 +53,13 @@ async function render() {
   tooltip.hidden = true;
   const { path, params } = parseHash();
   const [section, id] = path.split('/');
-  const route = section === 'kategorien' && id ? DETAIL : ROUTES[path] || ROUTES[''];
+  const route = (id && DETAIL[section]) || ROUTES[path] || ROUTES[''];
   destroyCharts();
   titleEl.textContent = route.title;
   document.title = `${route.title} · Firefly Dashboard`;
   document.querySelectorAll('.nav a').forEach((a) => a.classList.toggle('active', a.dataset.route === route.nav));
-  periodSelect.parentElement.hidden = Boolean(route.noPeriod);
+  document.querySelector('.period-wrap').hidden = Boolean(route.noPeriod);
+  forecastBtn.hidden = Boolean(route.noPeriod);
 
   if (connectionError) return showConnectionError(connectionError);
   const period = periodById(currentPeriod);
@@ -148,6 +157,30 @@ rangeForm.addEventListener('submit', (e) => {
 });
 document.getElementById('cr-cancel').addEventListener('click', () => (rangeForm.hidden = true));
 
+// ---- Prognose-Schalter (Standard: aus) -----------------------------------------
+
+function syncForecastBtn() {
+  const on = forecastEnabled();
+  forecastBtn.setAttribute('aria-pressed', String(on));
+  forecastBtn.title = on ? 'Prognose ausblenden' : 'Prognose einblenden (Hochrechnung für laufende Zeiträume)';
+}
+syncForecastBtn();
+forecastBtn.addEventListener('click', () => {
+  store('ffd-forecast', forecastEnabled() ? '0' : '1');
+  syncForecastBtn();
+  render();
+});
+
+// ---- Filterfelder in Karten ----------------------------------------------------
+
+viewEl.addEventListener('input', (e) => {
+  if (e.target.matches('.card-filter')) applyCardFilter(e.target);
+});
+// Inhalte, die nachgeladen oder neu sortiert werden, sofort wieder filtern
+new MutationObserver(() => {
+  viewEl.querySelectorAll('.card-filter').forEach((input) => input.value.trim() && applyCardFilter(input));
+}).observe(viewEl, { childList: true, subtree: true });
+
 // ---- Globale Suche ------------------------------------------------------------
 
 const searchInput = document.getElementById('global-search');
@@ -161,8 +194,10 @@ function loadSearchIndex() {
     api.getAll('accounts', { type: 'asset' }).catch(() => []),
     api.getAll('accounts', { type: 'expense' }).catch(() => []),
     api.getAll('accounts', { type: 'revenue' }).catch(() => []),
-  ]).then(([cats, assets, expense, revenue]) => ({
+    api.getAll('tags').catch(() => []),
+  ]).then(([cats, assets, expense, revenue, tagList]) => ({
     categories: cats.map((c) => ({ id: c.id, name: c.attributes.name })),
+    tags: tagList.map((t) => ({ id: t.id, name: t.attributes.tag })),
     assets: assets.map((a) => a.attributes.name),
     payees: expense.map((a) => a.attributes.name),
     payers: revenue.map((a) => a.attributes.name),
@@ -187,6 +222,7 @@ async function updateSearch() {
   const q = (op, name) => `#/buchungen?q=${encodeURIComponent(`${op}:"${name}"`)}`;
   const groups = [
     ['Kategorien', find(idx.categories, (c) => c.name).slice(0, 6).map((c) => [c.name, `#/kategorien/${encodeURIComponent(c.id)}`, 'Analyse'])],
+    ['Tags', find(idx.tags, (t) => t.name).slice(0, 4).map((t) => [t.name, `#/tags/${encodeURIComponent(t.id)}`, 'Analyse'])],
     ['Empfänger', find(idx.payees).slice(0, 5).map((n) => [n, q('destination_account_is', n), 'Buchungen'])],
     ['Zahler', find(idx.payers).slice(0, 3).map((n) => [n, q('source_account_is', n), 'Buchungen'])],
     ['Konten', find(idx.assets).slice(0, 3).map((n) => [n, q('account_is', n), 'Buchungen'])],
