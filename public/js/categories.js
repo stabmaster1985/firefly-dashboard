@@ -217,6 +217,86 @@ const kindChips = (kind, base) => `
 const detailHref = (D, id, kind) => `${D.base}/${encodeURIComponent(id)}${kind === 'income' ? '?art=einnahmen' : ''}`;
 
 // ---------------------------------------------------------------------------
+// Aufklappbare Buchungsliste unter Diagramm/Matrix
+
+let panelSeq = 0;
+
+/** Gehört eine Buchung zu einem Eintrag (Kategorie bzw. Tag)? */
+function belongsTo(dimKey, r) {
+  if (dimKey === 'tag') return (t) => (t.tags || []).includes(r.name);
+  if (r.id === NO_CATEGORY) return (t) => !t.category_name;
+  return (t) => (t.category_id != null ? String(t.category_id) === String(r.id) : t.category_name === r.name);
+}
+
+/**
+ * Zeigt die Buchungen eines Monats für einen oder mehrere Einträge direkt
+ * unter dem angeklickten Diagramm – ohne die Seite zu wechseln.
+ */
+async function showMonthPanel(panel, { dimKey, kind, rows, month, title, link }) {
+  const K = KINDS[kind];
+  const [start, end] = month;
+  const listId = `mp-${++panelSeq}`;
+  const tests = rows.map((r) => belongsTo(dimKey, r));
+  panel.hidden = false;
+  panel.innerHTML = `
+    <div class="mp-head">
+      <div><h3>${esc(title)}</h3><span class="mp-sub" id="${listId}-sub">${fmtDate(start, { month: 'long', year: 'numeric' })} · lädt …</span></div>
+      <div class="card-tools">
+        <input class="card-filter" type="search" placeholder="Filtern …" aria-label="Buchungen filtern" data-target="${listId}">
+        <span class="mp-sort"><button class="link-btn" data-order="amount" aria-pressed="true">Größte</button> · <button class="link-btn" data-order="date" aria-pressed="false">Datum</button></span>
+        ${link ? `<a class="link-btn" href="${link}">Auf Buchungsseite ↗</a>` : ''}
+        <button class="icon-btn mp-close" aria-label="Liste schließen" title="Schließen">✕</button>
+      </div>
+    </div>
+    <div id="${listId}">${skeleton(4)}</div>`;
+  panel.querySelector('.mp-close').addEventListener('click', () => {
+    panel.hidden = true;
+    panel.innerHTML = '';
+  });
+  panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+  let list;
+  try {
+    const groups = await api.getAll('transactions', { start, end, type: K.txType });
+    list = api.flattenTransactions(groups).filter((t) => t.type === K.txType && tests.some((test) => test(t)));
+  } catch (err) {
+    panel.querySelector(`#${listId}`).innerHTML = `<div class="empty">Konnte nicht geladen werden: ${esc(err.message)}</div>`;
+    return;
+  }
+  if (!panel.querySelector(`#${listId}`)) return; // inzwischen anderer Balken gewählt
+
+  const code = mainCurrency(list);
+  const total = sum(list.filter((t) => t.currency_code === code), (t) => t.amount);
+  panel.querySelector(`#${listId}-sub`).textContent =
+    `${fmtDate(start, { month: 'long', year: 'numeric' })} · ${list.length} Buchungen · ${money(total, code)}`;
+  const fireflyUrl = window.FFD_CONFIG?.fireflyUrl;
+  let order = 'amount';
+  const render = () => {
+    const rows = [...list].sort((a, b) => (order === 'date' ? String(b.date).localeCompare(String(a.date)) : b.amount - a.amount));
+    panel.querySelector(`#${listId}`).innerHTML = rows.length
+      ? `<div class="table-wrap scroll"><table><tbody>${rows
+        .map((t) => `<tr style="cursor:default">
+          <td class="date">${fmtDate(t.date, { day: '2-digit', month: '2-digit' })}</td>
+          <td><div class="desc">${esc(t.description)}</div>
+            <div class="flow">${esc(counterparty(t))}${t.category_name ? ` · ${esc(t.category_name)}` : ''}${(t.tags || []).map((tag) => ` <span class="tag">${esc(tag)}</span>`).join('')}</div>
+            ${t.notes ? `<div class="flow note">${esc(t.notes)}</div>` : ''}</td>
+          <td class="num">${signedAmount(t)}${fireflyUrl ? `<div><a class="link-btn" href="${esc(fireflyUrl)}/transactions/show/${encodeURIComponent(t.groupId)}" target="_blank" rel="noopener" title="In Firefly öffnen">↗</a></div>` : ''}</td>
+        </tr>`)
+        .join('')}</tbody></table></div>
+        <div class="legend" style="margin-top:10px"><span>Summe: <b>&nbsp;${money(total, code)}</b>&nbsp;in ${list.length} Buchungen</span></div>`
+      : '<div class="empty">Keine Buchungen in diesem Monat.</div>';
+  };
+  render();
+  panel.querySelector('.mp-sort').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-order]');
+    if (!btn) return;
+    order = btn.dataset.order;
+    panel.querySelectorAll('.mp-sort [data-order]').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+    render();
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Seite: alle Kategorien / Tags
 
 export const categories = (view, ctx) => analysis(view, { ...ctx, dimKey: 'category' });
@@ -253,6 +333,10 @@ async function analysis(view, { period, params, dimKey }) {
       ${card('c-matrix', 'Monatsmatrix', { link: `<span class="meta">${monthsLabel} · <button class="link-btn" data-csv="matrix">CSV ↓</button></span>` })}
     </div>`;
   const $ = (id) => view.querySelector(`#${id}`);
+  $('c-stack').insertAdjacentHTML('afterend', '<div class="month-panel" hidden></div>');
+  $('c-matrix').insertAdjacentHTML('afterend', '<div class="month-panel" hidden></div>');
+  const stackPanel = $('c-stack').nextElementSibling;
+  const matrixPanel = $('c-matrix').nextElementSibling;
 
   view.querySelectorAll('[data-compare]').forEach((btn) =>
     btn.addEventListener('click', () => {
@@ -385,7 +469,19 @@ async function analysis(view, { period, params, dimKey }) {
     }
     if (!series.length) return (el.innerHTML = '<div class="empty">Keine Daten.</div>');
     el.innerHTML = `${legend(series)}<div class="chart-box" style="margin-top:12px"><canvas aria-label="${D.plural} je Monat"></canvas></div>`;
-    stackChart = barChart(el.querySelector('canvas'), { labels: months.map(([s]) => s), series, currency: d.code, stacked: true });
+    stackChart = barChart(el.querySelector('canvas'), {
+      labels: months.map(([s]) => s), series, currency: d.code, stacked: true,
+      onClick: (i, ds) => {
+        // Segment getroffen → nur diese Kategorie; daneben geklickt → alle gezeigten
+        const picked = ds === null ? ranked : ds < top.length ? [top[ds]] : rest;
+        const title = ds === null ? (filtered() ? 'Auswahl' : `Alle ${D.plural}`) : ds < top.length ? top[ds].name : `Sonstige (${rest.length})`;
+        showMonthPanel(stackPanel, {
+          dimKey, kind, rows: picked, month: months[i], title,
+          link: picked.length === 1 ? drillLink(picked[0], i) : null,
+        });
+      },
+    });
+    el.insertAdjacentHTML('beforeend', '<div class="legend" style="margin-top:8px"><span>Balken oder Segment anklicken zeigt die Buchungen darunter</span></div>');
   }
 
   /** Link zu den Buchungen eines Eintrags in einem Monat. */
@@ -406,7 +502,7 @@ async function analysis(view, { period, params, dimKey }) {
       if (odd) outliers += 1;
       const tip = `${r.name} · ${fmtMonth(months[i][0])}: ${money(v, d.code)}${r.avg ? ` (${pctSigned.format(v / r.avg - 1)} ggü. Ø)` : ''}${odd ? `\n▲ Auffällig: ${pctSigned.format(v / r.typical - 1)} über dem üblichen Monat (${money(r.typical, d.code)})` : ''}\nKlicken für Buchungen`;
       return v
-        ? `<td class="heat${t > 0.6 ? ' strong' : ''}${odd ? ' outlier' : ''}" style="--t:${t.toFixed(3)}" data-tip="${esc(tip)}" data-href="${drillLink(r, i)}">${intFmt.format(v)}</td>`
+        ? `<td class="heat${t > 0.6 ? ' strong' : ''}${odd ? ' outlier' : ''}" style="--t:${t.toFixed(3)}" data-tip="${esc(tip)}" data-row="${esc(r.id)}" data-month="${i}">${intFmt.format(v)}</td>`
         : '<td class="heat empty-cell">·</td>';
     };
     const body = rows
@@ -420,7 +516,7 @@ async function analysis(view, { period, params, dimKey }) {
         <td class="num muted">${intFmt.format(sum(colTotals, (x) => x) / months.length)}</td><td class="num"><b>${intFmt.format(sum(colTotals, (x) => x))}</b></td></tr></tfoot>
     </table></div>
     <div class="legend" style="margin-top:12px"><span>Beträge in ${esc(d.code)} · Farbintensität je Zeile relativ zum stärksten Monat</span>
-      ${outliers ? `<span><i class="outlier-key"></i>auffällig hoher Monat (${outliers}×)</span>` : ''}<span>Feld anklicken zeigt die Buchungen</span></div>`;
+      ${outliers ? `<span><i class="outlier-key"></i>auffällig hoher Monat (${outliers}×)</span>` : ''}<span>Feld anklicken zeigt die Buchungen darunter</span></div>`;
   }
 
   const rerender = (d) => {
@@ -447,8 +543,13 @@ async function analysis(view, { period, params, dimKey }) {
   fill($('c-matrix'), () => data, (el, d) => {
     renderMatrix(el, d);
     el.addEventListener('click', (e) => {
-      const td = e.target.closest('td[data-href]');
-      if (td) location.hash = td.dataset.href;
+      const td = e.target.closest('td[data-row]');
+      if (!td) return;
+      const r = d.rows.find((x) => x.id === td.dataset.row);
+      const i = Number(td.dataset.month);
+      el.querySelectorAll('td.heat.selected').forEach((x) => x.classList.remove('selected'));
+      td.classList.add('selected');
+      showMonthPanel(matrixPanel, { dimKey, kind, rows: [r], month: months[i], title: r.name, link: drillLink(r, i) });
     });
   }, skeleton(8));
 
@@ -521,6 +622,8 @@ async function detail(view, { period, params, id, dimKey }) {
       ${card('d-tx', 'Buchungen', { span: 'span-7', filter: true, meta: '<span id="d-sort"></span>' })}
     </div>`;
   const $ = (sel) => view.querySelector(`#${sel}`);
+  $('d-chart').insertAdjacentHTML('afterend', '<div class="month-panel" hidden></div>');
+  const detailPanel = $('d-chart').nextElementSibling;
 
   const totals = Promise.all([
     dimTotals(dimKey, kind, start, end),
@@ -593,11 +696,15 @@ async function detail(view, { period, params, id, dimKey }) {
     el.innerHTML = `<div class="legend"><span><i style="background:${base}"></i>im gewählten Zeitraum</span><span><i style="background:${base}55"></i>davor</span>
       ${extra ? `<span><i style="background:${base}33;outline:1px dashed ${base}"></i>Prognose</span>` : ''}
       ${d.months.some((v) => isOutlier(v, d.typical)) ? '<span><i class="outlier-key"></i>auffälliger Monat</span>' : ''}<span>Ø <b>&nbsp;${money(avg, d.code)}</b> pro Monat</span></div>
-      <div class="chart-box" style="margin-top:12px"><canvas aria-label="${esc(K.label)} je Monat"></canvas></div>`;
+      <div class="chart-box" style="margin-top:12px"><canvas aria-label="${esc(K.label)} je Monat"></canvas></div>
+      <div class="legend" style="margin-top:8px"><span>Balken anklicken zeigt die Buchungen des Monats darunter</span></div>`;
     const q = D.query({ id: String(id), name });
     const chart = barChart(el.querySelector('canvas'), {
       labels: months.map(([s]) => s), series, currency: d.code, average: avg, stacked: Boolean(extra),
-      onClick: (i) => (location.hash = `#/buchungen?q=${encodeURIComponent(q)}&type=${K.txType}&von=${isoDate(months[i][0])}&bis=${isoDate(months[i][1])}`),
+      onClick: (i) => showMonthPanel(detailPanel, {
+        dimKey, kind, rows: [{ id: String(id), name }], month: months[i], title: name,
+        link: `#/buchungen?q=${encodeURIComponent(q)}&type=${K.txType}&von=${isoDate(months[i][0])}&bis=${isoDate(months[i][1])}`,
+      }),
     });
     // Auffällige Monate mit Rahmen in Warnfarbe markieren (zusätzlich zum Text oben)
     const ds = chart.data.datasets[0];

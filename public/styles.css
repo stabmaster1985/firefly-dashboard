@@ -477,6 +477,27 @@ td.heat.outlier::after {
 tr.inactive td { color: var(--text-muted); }
 tr.inactive .desc { color: var(--text-secondary); }
 
+
+/* ---- Aufklappbare Buchungsliste unter Diagrammen --------------------------- */
+.month-panel {
+  margin-top: 16px; padding: 16px; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  animation: panel-in 0.18s ease-out;
+}
+.month-panel[hidden] { display: none; }
+@keyframes panel-in { from { opacity: 0; transform: translateY(-4px); } }
+.mp-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.mp-head h3 { margin: 0; font-size: 15px; font-weight: 650; }
+.mp-sub { font-size: 13px; color: var(--text-secondary); }
+.mp-close { width: 30px; height: 30px; font-size: 13px; }
+.month-panel .card-tools { flex-wrap: wrap; justify-content: flex-end; }
+.mp-sort, .month-panel .link-btn { white-space: nowrap; }
+.month-panel .card-filter { background: var(--surface-1); }
+.month-panel td { border-bottom-color: var(--border); }
+.month-panel tbody tr:hover td { background: var(--surface-1); }
+.flow.note { font-style: italic; }
+td.heat.selected { outline: 2px solid var(--text-primary); outline-offset: -2px; }
+
 /* ---- Responsive ---------------------------------------------------------- */
 @media (max-width: 1100px) {
   .span-8, .span-7, .span-6, .span-5, .span-4 { grid-column: span 12; }
@@ -511,5 +532,8 @@ tr.inactive .desc { color: var(--text-secondary); }
   .card-filter { flex: 1; width: auto; }
   .ms-pop { width: min(300px, calc(100vw - 32px)); }
   .nav a span { font-size: 10px; }
+  .month-panel { padding: 12px; }
+  .month-panel .card-tools { justify-content: flex-start; }
+  .month-panel .card-filter { flex: 1 1 100%; }
   td, th { padding-left: 6px; padding-right: 6px; }
 }

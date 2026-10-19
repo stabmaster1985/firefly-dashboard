@@ -25,6 +25,10 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   über dem üblichen Monat der Kategorie liegt
 - **Filter überall** – Listen und Tabellen haben ein eigenes Filterfeld; auf den Analyse-Seiten
   zusätzlich eine Auswahl mit Häkchen, um gezielt einzelne Kategorien/Tags zu vergleichen
+- **Klick auf einen Balken** (Top-5-Verlauf, Monatsverlauf der Detailseite) oder ein
+  **Matrixfeld** klappt direkt darunter die Buchungen dieses Monats auf – sortierbar, filterbar,
+  mit Link in Firefly. Im gestapelten Diagramm zeigt ein Segment nur diese Kategorie, ein Klick
+  neben die Segmente alle Kategorien des Monats
 - **Kategorie-Detail** – Monatsverlauf mit Durchschnittslinie, Spitzenmonat, Anzahl und Ø pro
   Buchung, Top-Empfänger und alle Buchungen der Kategorie (nach Datum oder Betrag)
 - **Buchungen** – Liste mit Kategorie-Filter und Volltextsuche (inkl. Firefly-Suchoperatoren wie

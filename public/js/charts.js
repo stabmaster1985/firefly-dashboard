@@ -113,7 +113,13 @@ export function barChart(canvas, { labels, series, currency = 'EUR', stacked = f
     options.plugins.tooltip.itemSort = (a, b) => b.datasetIndex - a.datasetIndex;
   }
   if (onClick) {
-    options.onClick = (_, elements) => elements.length && onClick(elements[0].index);
+    // Liefert Monat und – falls ein Segment direkt getroffen wurde – dessen Datenreihe
+    options.onClick = (e, elements, chart) => {
+      const hit = chart.getElementsAtEventForMode(e, 'nearest', { intersect: true }, false)
+        .find((el) => chart.data.datasets[el.datasetIndex].type !== 'line');
+      const el = hit || elements[0];
+      if (el) onClick(el.index, hit ? hit.datasetIndex : null);
+    };
     options.onHover = (e, elements) => (e.native.target.style.cursor = elements.length ? 'pointer' : 'default');
   }
   return create(canvas, { type: 'bar', data: { labels: labels.map(fmtMonth), datasets }, options });
