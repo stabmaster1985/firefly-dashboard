@@ -10,6 +10,11 @@ export class ApiError extends Error {
 }
 
 let fresh = false;
+let monthStart = 1;
+/** Gehaltstag an den Server melden, damit er Gehaltsmonate mit vorlädt. */
+export function setMonthStart(day) {
+  monthStart = day;
+}
 /** Beim nächsten Rendern den Server-Cache umgehen (Neu-laden-Knopf). */
 export function setFresh(value) {
   fresh = value;
@@ -45,7 +50,10 @@ export function get(path, params) {
 async function load(url) {
   let res;
   try {
-    res = await fetch(url, { headers: fresh ? { 'X-No-Cache': '1' } : {} });
+    const headers = {};
+    if (fresh) headers['X-No-Cache'] = '1';
+    if (monthStart > 1) headers['X-Month-Start'] = String(monthStart);
+    res = await fetch(url, { headers });
   } catch (err) {
     throw new ApiError(`Dashboard-Server nicht erreichbar (${err.message})`, 0);
   }

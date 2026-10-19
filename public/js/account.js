@@ -3,15 +3,17 @@
 
 import * as api from './api.js';
 import { barChart, lineChart, legend, seriesColor } from './charts.js';
-import { money, esc, fmtDate, fmtMonth, today, startOfMonth, endOfMonth, addDays, isoDate, parseDate } from './util.js';
-import { skeleton, fill, card, stat, sum, counterparty, mainCurrency } from './common.js';
+import { money, esc, fmtDate, today, addDays, isoDate, parseDate, CALENDAR } from './util.js';
+import { skeleton, fill, card, stat, sum, counterparty } from './common.js';
 import { shareStrip } from './dist.js';
 import { ROLE } from './views.js';
 
 export async function accountDetail(view, { period, id }) {
   const { start, end } = period;
   const t0 = today();
-  const histStart = startOfMonth(t0, -11) < start ? startOfMonth(t0, -11) : start;
+  const M = period.model || CALENDAR;
+  const months = Array.from({ length: 12 }, (_, i) => M.range(M.keyOf(t0), i - 11));
+  const histStart = months[0][0] < start ? months[0][0] : start;
   const titleEl = document.getElementById('page-title');
 
   view.innerHTML = `
@@ -22,7 +24,7 @@ export async function accountDetail(view, { period, id }) {
       <section class="card span-3" id="a-out"></section>
       <section class="card span-3" id="a-net"></section>
       ${card('a-chart', 'Kontostand', { span: 'span-7', meta: esc(period.label) })}
-      ${card('a-months', 'Ein- und Ausgänge je Monat', { span: 'span-5', meta: 'letzte 12 Monate' })}
+      ${card('a-months', 'Ein- und Ausgänge je Monat', { span: 'span-5', meta: M.isSalary ? 'letzte 12 Gehaltsmonate' : 'letzte 12 Monate' })}
       ${card('a-cats', 'Ausgaben nach Kategorie', { meta: esc(period.label) })}
       ${card('a-tx', 'Buchungen', { filter: true, meta: '<span id="a-count"></span>' })}
     </div>`;
@@ -91,7 +93,6 @@ export async function accountDetail(view, { period, id }) {
   }, skeleton(1, 280));
 
   fill($('a-months'), () => both, (el, [a, txs]) => {
-    const months = Array.from({ length: 12 }, (_, i) => [startOfMonth(t0, i - 11), endOfMonth(t0, i - 11)]);
     const inS = months.map(() => 0);
     const outS = months.map(() => 0);
     txs.forEach((t) => {
@@ -107,7 +108,7 @@ export async function accountDetail(view, { period, id }) {
       { label: 'Ausgänge', data: outS, color: seriesColor(1) },
     ];
     el.innerHTML = `${legend(series)}<div class="chart-box" style="margin-top:12px"><canvas aria-label="Ein- und Ausgänge je Monat"></canvas></div>`;
-    barChart(el.querySelector('canvas'), { labels: months.map(([s]) => s), series, currency: a.currency_code });
+    barChart(el.querySelector('canvas'), { labels: months.map((m) => m.label), series, currency: a.currency_code });
   }, skeleton(1, 280));
 
   fill($('a-cats'), () => both, (el, [a, txs]) => {

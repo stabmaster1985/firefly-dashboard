@@ -53,6 +53,11 @@
               <label>Bis <input type="date" id="cr-to" required></label>
               <div class="custom-actions"><button type="button" class="btn" id="cr-cancel">Abbrechen</button><button type="submit" class="btn primary">Übernehmen</button></div>
             </form>
+            <form class="custom-range" id="payday-form" hidden>
+              <label>Gehaltstag <input type="number" id="pd-day" min="2" max="28" required></label>
+              <p class="form-hint">Der Gehaltsmonat beginnt an diesem Tag. Fällt er aufs Wochenende, beginnt er am Freitag davor.</p>
+              <div class="custom-actions"><button type="button" class="btn" id="pd-cancel">Abbrechen</button><button type="submit" class="btn primary">Übernehmen</button></div>
+            </form>
           </div>
           <button class="icon-btn toggle" id="forecast-btn" aria-pressed="false" aria-label="Prognose ein/aus">
             <svg viewBox="0 0 24 24"><path d="M3 17l5-5 4 3 4-6"/><path d="M16 9l5-4" stroke-dasharray="2 2.5"/><circle cx="21" cy="5" r="0.6"/></svg>

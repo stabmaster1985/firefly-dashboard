@@ -44,7 +44,11 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   per Klick starten; Antwort und letzter Lauf werden angezeigt
 - **Suche** (Taste `/` oder Strg+K) – findet Kategorien, Empfänger, Zahler und Konten; Enter
   springt direkt hin, sonst Volltextsuche in den Buchungen
-- **Zeitraum** – Vorgaben (Monat, Quartal, Jahr …) oder ein **eigener Zeitraum** von–bis
+- **Zeitraum** – Kalendermonate (Monat, Quartal, Jahr …), **Gehaltsmonate** oder ein **eigener
+  Zeitraum** von–bis. Ein Gehaltsmonat beginnt am Gehaltstag (Standard: 24., änderbar über
+  „Gehaltstag ändern …“); fällt der aufs Wochenende, beginnt er am Freitag davor. Ist ein
+  Gehaltsmonat gewählt, rechnen auch Matrix, Monatsverläufe, Vergleich und Prognose in
+  Gehaltsmonaten – so lässt sich Gehaltsmonat mit Gehaltsmonat vergleichen
 - **Vergleich** wahlweise mit der Vorperiode oder dem **Vorjahr**
 - **Monatsmatrix** – Feld anklicken zeigt die Buchungen dieser Kategorie in diesem Monat;
   Kategorien lassen sich filtern (mehrere mit Komma, z. B. `lebens, restaurant`) und zusammen

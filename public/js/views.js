@@ -2,7 +2,7 @@
 
 import * as api from './api.js';
 import { barChart, lineChart, legend, seriesColor } from './charts.js';
-import { money, percent, esc, fmtDate, initials, isoDate, today, startOfMonth, endOfMonth, debounce, parseDate, addDays } from './util.js';
+import { money, percent, esc, fmtDate, initials, isoDate, today, debounce, parseDate, addDays, CALENDAR } from './util.js';
 import { skeleton, fill, card, stat, signedAmount, txRow, mainCurrency, sum } from './common.js';
 import { categoryTotals, compareRange, delta, forecastActive, forecastTotal, forecastRemainder } from './categories.js';
 import { loadRecurring, upcomingBetween } from './recurring.js';
@@ -23,7 +23,7 @@ export async function overview(view, { period }) {
       <section class="card span-3" id="s-earned"></section>
       <section class="card span-3" id="s-spent"></section>
       <section class="card span-3" id="s-balance"></section>
-      ${card('cashflow', 'Einnahmen & Ausgaben', { span: 'span-8', meta: 'letzte 12 Monate' })}
+      ${card('cashflow', 'Einnahmen & Ausgaben', { span: 'span-8', meta: period.model?.isSalary ? 'letzte 12 Gehaltsmonate' : 'letzte 12 Monate' })}
       ${card('accounts', 'Konten', { span: 'span-4', link: '<a href="#/konten">Alle →</a>' })}
       ${card('flow', 'Geldfluss', { meta: `${esc(period.label)} · Einnahmen → Ausgaben` })}
       ${forecastActive(period) ? card('expected', `Erwartet bis ${fmtDate(end, { day: 'numeric', month: 'long' })}`, { filter: true, meta: 'Prognose im Detail' }) : ''}
@@ -77,7 +77,8 @@ export async function overview(view, { period }) {
 
   // Cashflow der letzten 12 Monate (bis zum Ende des gewählten Zeitraums)
   const ref = end > today() ? today() : end;
-  const months = Array.from({ length: 12 }, (_, i) => [startOfMonth(ref, i - 11), endOfMonth(ref, i - 11)]);
+  const M = period.model || CALENDAR;
+  const months = Array.from({ length: 12 }, (_, i) => M.range(M.keyOf(ref), i - 11));
   fill($('cashflow'), () => Promise.all(months.map(([s, e]) => Promise.all([totalsOf('income', s, e), totalsOf('expense', s, e)]))), (el, sums) => {
     const codes = sums.flatMap(([i, o]) => [...i.keys(), ...o.keys()]);
     const code = mainCurrency(codes.map((c) => ({ currency_code: c })));
@@ -93,7 +94,7 @@ export async function overview(view, { period }) {
         <span>Ø Ausgaben <b>&nbsp;${money(totalOut / 12, code)}</b></span>
         <span>Ø Sparquote <b>&nbsp;${totalIn ? percent((totalIn - totalOut) / totalIn) : '–'}</b></span>
       </div>`;
-    barChart(el.querySelector('canvas'), { labels: months.map(([s]) => s), series, currency: code });
+    barChart(el.querySelector('canvas'), { labels: months.map((m) => m.label), series, currency: code });
   }, skeleton(1, 280));
 
   fill($('accounts'), () => api.getAll('accounts', { type: 'asset' }), (el, accounts) => {

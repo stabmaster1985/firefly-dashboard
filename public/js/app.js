@@ -8,7 +8,7 @@ import { accountDetail } from './account.js';
 import { actions } from './actions.js';
 import { applyCardFilter } from './common.js';
 import { destroyCharts } from './charts.js';
-import { PERIODS, periodById, customPeriodId, parseDate, isoDate, debounce, storage, store, esc } from './util.js';
+import { PERIODS, SALARY_PERIODS, periodById, customPeriodId, parseDate, isoDate, debounce, storage, store, esc, payday } from './util.js';
 
 const ROUTES = {
   '': { view: views.overview, title: 'Übersicht', nav: 'overview' },
@@ -39,12 +39,16 @@ let connectionError = null;
 let currentPeriod = storage('ffd-period', 'this-month');
 
 function fillPeriodOptions() {
-  const custom = periodById(currentPeriod);
-  if (!custom.custom && !PERIODS.some((p) => p.id === currentPeriod)) currentPeriod = 'this-month';
-  periodSelect.innerHTML = PERIODS.map((p) => `<option value="${p.id}">${p.label}</option>`).join('') +
-    (custom.custom ? `<option value="${esc(currentPeriod)}">${esc(custom.label)}</option>` : '') +
-    '<option value="custom">Eigener Zeitraum …</option>';
+  const current = periodById(currentPeriod);
+  const known = PERIODS.some((p) => p.id === currentPeriod) || SALARY_PERIODS.some((p) => p.id === currentPeriod);
+  if (!current.custom && !known) currentPeriod = 'this-month';
+  const opt = (id, label) => `<option value="${esc(id)}">${esc(label)}</option>`;
+  periodSelect.innerHTML =
+    `<optgroup label="Kalendermonate">${PERIODS.map((p) => opt(p.id, p.label)).join('')}</optgroup>` +
+    `<optgroup label="Gehaltsmonate (ab dem ${payday()}.)">${SALARY_PERIODS.map((p) => opt(p.id, periodById(p.id).label)).join('')}</optgroup>` +
+    `<optgroup label="Weitere">${current.custom ? opt(currentPeriod, current.label) : ''}${opt('custom', 'Eigener Zeitraum …')}${opt('payday', 'Gehaltstag ändern …')}</optgroup>`;
   periodSelect.value = currentPeriod;
+  periodSelect.title = periodById(currentPeriod).label;
 }
 fillPeriodOptions();
 
@@ -67,6 +71,8 @@ async function render() {
 
   if (connectionError) return showConnectionError(connectionError);
   const period = periodById(currentPeriod);
+  periodSelect.title = period.label;
+  api.setMonthStart(period.model.day);
   window.scrollTo({ top: 0 });
   await route.view(viewEl, { period, params, id: id && decodeURIComponent(id) });
 }
@@ -152,6 +158,14 @@ const rangeFrom = document.getElementById('cr-from');
 const rangeTo = document.getElementById('cr-to');
 
 periodSelect.addEventListener('change', () => {
+  if (periodSelect.value === 'payday') {
+    periodSelect.value = currentPeriod;
+    paydayInput.value = payday();
+    rangeForm.hidden = true;
+    paydayForm.hidden = false;
+    paydayInput.focus();
+    return;
+  }
   if (periodSelect.value === 'custom') {
     const p = periodById(currentPeriod);
     rangeFrom.value = isoDate(p.start);
@@ -180,6 +194,19 @@ rangeForm.addEventListener('submit', (e) => {
   render();
 });
 document.getElementById('cr-cancel').addEventListener('click', () => (rangeForm.hidden = true));
+
+const paydayForm = document.getElementById('payday-form');
+const paydayInput = document.getElementById('pd-day');
+paydayForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const day = Math.round(Number(paydayInput.value));
+  if (!(day >= 2 && day <= 28)) return;
+  store('ffd-payday', String(day));
+  paydayForm.hidden = true;
+  fillPeriodOptions();
+  render();
+});
+document.getElementById('pd-cancel').addEventListener('click', () => (paydayForm.hidden = true));
 
 // ---- Prognose-Schalter (Standard: aus) -----------------------------------------
 
@@ -310,7 +337,10 @@ function finishSearch() {
 
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.search')) closeSearch();
-  if (!e.target.closest('.period-wrap')) rangeForm.hidden = true;
+  if (!e.target.closest('.period-wrap')) {
+    rangeForm.hidden = true;
+    paydayForm.hidden = true;
+  }
 });
 document.addEventListener('keydown', (e) => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
@@ -319,7 +349,10 @@ document.addEventListener('keydown', (e) => {
     searchInput.focus();
     searchInput.select();
   }
-  if (e.key === 'Escape') rangeForm.hidden = true;
+  if (e.key === 'Escape') {
+    rangeForm.hidden = true;
+    paydayForm.hidden = true;
+  }
 });
 
 refreshBtn.addEventListener('click', async () => {

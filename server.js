@@ -103,7 +103,19 @@ function isAuthorized(req) {
   return safeEqual(user, DASHBOARD_USER || user) && safeEqual(pass, DASHBOARD_PASSWORD);
 }
 
+// Gehaltstage, die Browser melden (für das Vorwärmen von Gehaltsmonaten)
+const monthStarts = new Set();
+let warmNow = null;
+function noteMonthStart(req) {
+  const day = Number(req.headers['x-month-start']);
+  if (!(day >= 2 && day <= 28) || monthStarts.has(day)) return;
+  if (monthStarts.size >= 3) monthStarts.delete(monthStarts.values().next().value);
+  monthStarts.add(day);
+  setTimeout(() => warmNow?.(), 5000); // neuen Gehaltstag zeitnah vorladen
+}
+
 async function proxy(req, res, url) {
+  noteMonthStart(req);
   const apiPath = url.pathname.replace(/^\/api\//, '');
   if (req.method !== 'GET') {
     return send(res, 405, JSON.stringify({ message: 'Nur lesender Zugriff erlaubt.' }), {
@@ -186,7 +198,7 @@ const server = http.createServer((req, res) => {
   serveStatic(req, res, url);
 });
 
-if (WARM_MINUTES > 0) startWarmer(firefly, { minutes: WARM_MINUTES });
+if (WARM_MINUTES > 0) warmNow = startWarmer(firefly, { minutes: WARM_MINUTES, monthStarts: () => [...monthStarts] });
 
 server.listen(PORT, HOST, () => {
   console.log(`Firefly Dashboard läuft auf http://localhost:${PORT}`);

@@ -3,7 +3,7 @@
 
 import * as api from './api.js';
 import { barChart, legend, seriesColor, cssVar } from './charts.js';
-import { money, percent, esc, fmtDate, fmtMonth, today, startOfMonth, endOfMonth, isoDate, addDays, storage, store, debounce } from './util.js';
+import { money, percent, esc, fmtDate, fmtMonth, today, isoDate, addDays, storage, store, debounce, CALENDAR } from './util.js';
 import { skeleton, fill, card, stat, signedAmount, mainCurrency, sum, counterparty, downloadCsv, termsMatcher, multiSelect } from './common.js';
 import { shareStrip, weekdayChart, sizeChart } from './dist.js';
 
@@ -42,7 +42,6 @@ const DIMS = {
 };
 
 const kindFrom = (params) => (params.get('art') === 'einnahmen' ? 'income' : 'expense');
-const monthsBetween = (a, b) => (b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth();
 const capToday = (d) => (d > today() ? today() : d);
 
 // ---------------------------------------------------------------------------
@@ -64,32 +63,35 @@ export async function dimTotals(dimKey, kind, start, end) {
 
 export const categoryTotals = (kind, start, end) => dimTotals('category', kind, start, end);
 
-const isMonthAligned = ({ start, end }) => start.getDate() === 1 && end.getDate() === endOfMonth(end).getDate();
-const shiftMonths = (d, n) =>
-  new Date(d.getFullYear(), d.getMonth() + n, Math.min(d.getDate(), endOfMonth(d, n).getDate()));
+/** Monatsmodell des Zeitraums: Kalendermonat oder Gehaltsmonat. */
+const modelOf = (period) => period.model || CALENDAR;
 
 /**
  * Vergleichszeitraum direkt davor, gleich lang. Läuft der aktuelle Zeitraum
- * noch, wird nur bis zum selben Tag verglichen (1.–19. Okt. ↔ 1.–19. Sep.).
+ * noch, wird nur bis zur selben Stelle verglichen (1.–19. Okt. ↔ 1.–19. Sep.;
+ * im Gehaltsmonat entsprechend ab dem Gehaltstag).
  */
 export function previousRange(period) {
   const { start, end } = period;
-  if (!isMonthAligned(period)) {
+  const M = modelOf(period);
+  if (!M.aligned(period)) {
     // Eigener Zeitraum: gleich viele Tage direkt davor
     const days = Math.round((capToday(end) - start) / 86400000) + 1;
     return [addDays(start, -days), addDays(start, -1)];
   }
-  const n = monthsBetween(start, end) + 1;
-  const prevStart = startOfMonth(start, -n);
-  const prevEndFull = endOfMonth(start, -1);
+  const kS = M.keyOf(start);
+  const n = M.monthsBetween(kS, M.keyOf(end)) + 1;
+  const prevStart = M.range(kS, -n)[0];
+  const prevEndFull = M.range(kS, -1)[1];
   if (end <= today()) return [prevStart, prevEndFull];
-  const shifted = shiftMonths(today(), -n);
+  const shifted = M.shift(today(), -n);
   return [prevStart, shifted < prevEndFull ? shifted : prevEndFull];
 }
 
-/** Derselbe Zeitraum ein Jahr früher (bei laufendem Zeitraum bis zum selben Tag). */
-export function yearAgoRange({ start, end }) {
-  return [shiftMonths(start, -12), shiftMonths(capToday(end), -12)];
+/** Derselbe Zeitraum ein Jahr früher (bei laufendem Zeitraum bis zur selben Stelle). */
+export function yearAgoRange(period) {
+  const M = modelOf(period);
+  return [M.shift(period.start, -12), M.shift(capToday(period.end), -12)];
 }
 
 /** Vergleich nach Einstellung: Vorperiode (Standard) oder Vorjahr. */
@@ -99,12 +101,25 @@ export function compareRange(period) {
   return { start: s, end: e, mode, label: mode === 'year' ? 'Vorjahr' : 'Vorperiode' };
 }
 
-/** Monate für Matrix und Verläufe: mindestens 12 bis zum Ende des Zeitraums, bei längeren Zeiträumen alle. */
+/**
+ * Monate für Matrix und Verläufe: mindestens 12 bis zum Ende des Zeitraums,
+ * bei längeren Zeiträumen alle. Jeder Eintrag: [Beginn, Ende] mit .label.
+ */
 export function analysisMonths(period) {
-  const last = capToday(period.end);
-  const count = Math.max(12, monthsBetween(period.start, last) + 1);
-  return Array.from({ length: count }, (_, i) => [startOfMonth(last, i - count + 1), endOfMonth(last, i - count + 1)]);
+  const M = modelOf(period);
+  const kLast = M.keyOf(capToday(period.end));
+  const count = Math.max(12, M.monthsBetween(M.keyOf(period.start), kLast) + 1);
+  return Array.from({ length: count }, (_, i) => M.range(kLast, i - count + 1));
 }
+
+/** Ausgeschriebener Monat für Überschriften, z. B. „Oktober 2026 (24.09.–22.10.)“. */
+const monthLong = (m) => {
+  const name = fmtDate(m.label || m[0], { month: 'long', year: 'numeric' });
+  return m.label && m.label === m[1] ? `${name} (${fmtDate(m[0], { day: '2-digit', month: '2-digit' })}–${fmtDate(m[1], { day: '2-digit', month: '2-digit' })})` : name;
+};
+
+/** Beschriftung eines Monats; bei Gehaltsmonaten mit Datumsbereich als Hinweis. */
+export const monthTitle = (m) => `${fmtMonth(m.label)}${m.label === m[1] ? ` (${fmtDate(m[0], { day: '2-digit', month: '2-digit' })}–${fmtDate(m[1], { day: '2-digit', month: '2-digit' })})` : ''}`;
 
 function onlyCurrency(list, code) {
   return list.filter((x) => x.code === code);
@@ -125,13 +140,14 @@ export const forecastActive = (period) => forecastEnabled() && isRunning(period)
 function remainderWindows(period) {
   const from = addDays(today(), 1);
   const to = period.end;
-  if (!isMonthAligned(period)) {
+  const M = modelOf(period);
+  if (!M.aligned(period)) {
     const len = Math.round((period.end - period.start) / 86400000) + 1;
     return [1, 2, 3].map((k) => [addDays(from, -k * len), addDays(to, -k * len)]);
   }
-  const n = monthsBetween(period.start, period.end) + 1;
+  const n = M.monthsBetween(M.keyOf(period.start), M.keyOf(period.end)) + 1;
   const shifts = n === 1 ? [1, 2, 3] : [12];
-  return shifts.map((k) => [shiftMonths(from, -k), shiftMonths(to, -k)]);
+  return shifts.map((k) => [M.shift(from, -k), M.shift(to, -k)]);
 }
 
 /**
@@ -249,7 +265,7 @@ async function showMonthPanel(panel, { dimKey, kind, rows, month, title, link })
   panel.hidden = false;
   panel.innerHTML = `
     <div class="mp-head">
-      <div><h3>${esc(title)}</h3><span class="mp-sub" id="${listId}-sub">${fmtDate(start, { month: 'long', year: 'numeric' })} · lädt …</span></div>
+      <div><h3>${esc(title)}</h3><span class="mp-sub" id="${listId}-sub">${monthLong(month)} · lädt …</span></div>
       <div class="card-tools">
         <input class="card-filter" type="search" placeholder="Filtern …" aria-label="Buchungen filtern" data-target="${listId}">
         <span class="mp-sort"><button class="link-btn" data-order="amount" aria-pressed="true">Größte</button> · <button class="link-btn" data-order="date" aria-pressed="false">Datum</button></span>
@@ -277,7 +293,7 @@ async function showMonthPanel(panel, { dimKey, kind, rows, month, title, link })
   const code = mainCurrency(list);
   const total = sum(list.filter((t) => t.currency_code === code), (t) => t.amount);
   panel.querySelector(`#${listId}-sub`).textContent =
-    `${fmtDate(start, { month: 'long', year: 'numeric' })} · ${list.length} Buchungen · ${money(total, code)}`;
+    `${monthLong(month)} · ${list.length} Buchungen · ${money(total, code)}`;
   const fireflyUrl = window.FFD_CONFIG?.fireflyUrl;
   let order = 'amount';
   const render = () => {
@@ -318,7 +334,7 @@ async function analysis(view, { period, params, dimKey }) {
   const { start, end } = period;
   const cmp = compareRange(period);
   const months = analysisMonths(period);
-  const monthsLabel = `${fmtMonth(months[0][0])} – ${fmtMonth(months.at(-1)[0])}`;
+  const monthsLabel = `${fmtMonth(months[0].label)} – ${fmtMonth(months.at(-1).label)}${months[0].label === months[0][1] ? ' · Gehaltsmonate' : ''}`;
   const showForecast = forecastActive(period);
   let filter = params.get('filter') || '';
   let selection = new Set((params.get('sel') || '').split(',').filter(Boolean));
@@ -456,7 +472,7 @@ async function analysis(view, { period, params, dimKey }) {
           <td class="num hide-sm muted">${money(r.prev, d.code)}</td>
           <td class="num">${delta(r.value, r.prev, kind, d.code)}</td>
           <td class="num hide-sm">${money(r.avg, d.code)}</td>
-          <td class="hide-sm" data-tip="${esc(r.months.map((v, i) => `${fmtMonth(months[i][0])}: ${money(v, d.code)}`).join('\n'))}">${sparkline(r.months)}</td>
+          <td class="hide-sm" data-tip="${esc(r.months.map((v, i) => `${monthTitle(months[i])}: ${money(v, d.code)}`).join('\n'))}">${sparkline(r.months)}</td>
         </tr>`)
         .join('')}</tbody>${filtered() ? `<tfoot><tr><td><b>Summe Auswahl (${rows.length})</b></td><td class="num"><b>${money(fv, d.code)}</b></td>
           ${showForecast ? `<td class="num forecast">≈ ${money(sum(rows, (r) => r.forecast), d.code)}</td>` : ''}
@@ -480,7 +496,7 @@ async function analysis(view, { period, params, dimKey }) {
     if (!series.length) return (el.innerHTML = '<div class="empty">Keine Daten.</div>');
     el.innerHTML = `${legend(series)}<div class="chart-box" style="margin-top:12px"><canvas aria-label="${D.plural} je Monat"></canvas></div>`;
     stackChart = barChart(el.querySelector('canvas'), {
-      labels: months.map(([s]) => s), series, currency: d.code, stacked: true,
+      labels: months.map((m) => m.label), series, currency: d.code, stacked: true,
       onClick: (i, ds) => {
         // Segment getroffen → nur diese Kategorie; daneben geklickt → alle gezeigten
         const picked = ds === null ? ranked : ds < top.length ? [top[ds]] : rest;
@@ -510,7 +526,7 @@ async function analysis(view, { period, params, dimKey }) {
       const t = v / rowMax;
       const odd = isOutlier(v, r.typical);
       if (odd) outliers += 1;
-      const tip = `${r.name} · ${fmtMonth(months[i][0])}: ${money(v, d.code)}${r.avg ? ` (${pctSigned.format(v / r.avg - 1)} ggü. Ø)` : ''}${odd ? `\n▲ Auffällig: ${pctSigned.format(v / r.typical - 1)} über dem üblichen Monat (${money(r.typical, d.code)})` : ''}\nKlicken für Buchungen`;
+      const tip = `${r.name} · ${monthTitle(months[i])}: ${money(v, d.code)}${r.avg ? ` (${pctSigned.format(v / r.avg - 1)} ggü. Ø)` : ''}${odd ? `\n▲ Auffällig: ${pctSigned.format(v / r.typical - 1)} über dem üblichen Monat (${money(r.typical, d.code)})` : ''}\nKlicken für Buchungen`;
       return v
         ? `<td class="heat${t > 0.6 ? ' strong' : ''}${odd ? ' outlier' : ''}" style="--t:${t.toFixed(3)}" data-tip="${esc(tip)}" data-row="${esc(r.id)}" data-month="${i}">${intFmt.format(v)}</td>`
         : '<td class="heat empty-cell">·</td>';
@@ -520,7 +536,7 @@ async function analysis(view, { period, params, dimKey }) {
         <td class="num muted">${intFmt.format(r.avg)}</td><td class="num"><b>${intFmt.format(r.total)}</b></td></tr>`)
       .join('');
     el.innerHTML = `<div class="table-wrap"><table class="matrix">
-      <thead><tr><th>${D.singular}</th>${months.map(([s]) => `<th class="num">${fmtMonth(s)}</th>`).join('')}<th class="num">Ø</th><th class="num">Summe</th></tr></thead>
+      <thead><tr><th>${D.singular}</th>${months.map((m) => `<th class="num"${m.label === m[1] ? ` title="${esc(monthTitle(m))}"` : ''}>${fmtMonth(m.label)}${m.label === m[1] ? `<small class="th-range">${m[0].getDate()}.${m[0].getMonth() + 1}.</small>` : ''}</th>`).join('')}<th class="num">Ø</th><th class="num">Summe</th></tr></thead>
       <tbody>${body}</tbody>
       <tfoot><tr><th>${filtered() ? 'Summe Auswahl' : 'Summe'}</th>${colTotals.map((v) => `<td class="num"><b>${intFmt.format(v)}</b></td>`).join('')}
         <td class="num muted">${intFmt.format(sum(colTotals, (x) => x) / months.length)}</td><td class="num"><b>${intFmt.format(sum(colTotals, (x) => x))}</b></td></tr></tfoot>
@@ -649,7 +665,7 @@ async function detail(view, { period, params, id, dimKey }) {
       <section class="card span-3" id="d-avg"></section>
       <section class="card span-3" id="d-count"></section>
       <section class="card span-3" id="d-per"></section>
-      ${card('d-chart', 'Monatsverlauf', { meta: `${fmtMonth(months[0][0])} – ${fmtMonth(months.at(-1)[0])}` })}
+      ${card('d-chart', 'Monatsverlauf', { meta: `${fmtMonth(months[0].label)} – ${fmtMonth(months.at(-1).label)}${months[0].label === months[0][1] ? ' · Gehaltsmonate' : ''}` })}
       ${card('d-dist', 'Verteilung', { meta: esc(period.label) })}
       ${card('d-partners', K.partner, { span: 'span-5', filter: true })}
       ${card('d-tx', 'Buchungen', { span: 'span-7', filter: true, meta: '<span id="d-sort"></span>' })}
@@ -704,8 +720,8 @@ async function detail(view, { period, params, id, dimKey }) {
     const odd = d.months.map((v, i) => [v, i]).filter(([v]) => isOutlier(v, d.typical));
     const max = Math.max(...d.months);
     const sub = odd.length
-      ? `Auffällig: ${odd.slice(-3).map(([v, i]) => `${fmtMonth(months[i][0])} (${pctSigned.format(v / d.typical - 1)})`).join(', ')}`
-      : max ? `Spitze: ${fmtMonth(months[d.months.indexOf(max)][0])} mit ${money(max, d.code)}` : `über ${months.length} Monate`;
+      ? `Auffällig: ${odd.slice(-3).map(([v, i]) => `${fmtMonth(months[i].label)} (${pctSigned.format(v / d.typical - 1)})`).join(', ')}`
+      : max ? `Spitze: ${fmtMonth(months[d.months.indexOf(max)].label)} mit ${money(max, d.code)}` : `über ${months.length} Monate`;
     el.innerHTML = stat('Ø pro Monat', money(avg, d.code), sub);
   });
   tile('d-count', () => txs, (el, list) =>
@@ -733,7 +749,7 @@ async function detail(view, { period, params, id, dimKey }) {
       <div class="legend" style="margin-top:8px"><span>Balken anklicken zeigt die Buchungen des Monats darunter</span></div>`;
     const q = D.query({ id: String(id), name });
     const chart = barChart(el.querySelector('canvas'), {
-      labels: months.map(([s]) => s), series, currency: d.code, average: avg, stacked: Boolean(extra),
+      labels: months.map((m) => m.label), series, currency: d.code, average: avg, stacked: Boolean(extra),
       onClick: (i) => showMonthPanel(detailPanel, {
         dimKey, kind, rows: [{ id: String(id), name }], month: months[i], title: name,
         link: `#/buchungen?q=${encodeURIComponent(q)}&type=${K.txType}&von=${isoDate(months[i][0])}&bis=${isoDate(months[i][1])}`,

@@ -90,7 +90,10 @@ for (let m = new Date(firstDay); m <= today; m = new Date(m.getFullYear(), m.get
   const mo = m.getMonth();
   const day = (d) => new Date(y, mo, d);
 
-  add(day(1), 'deposit', 3850, 'Gehalt', ext('Muster Software GmbH'), giro, { category: 'Gehalt' });
+  // Gehalt am 24., fällt der auf ein Wochenende, schon am Freitag davor
+  const payday = day(24);
+  while (payday.getDay() === 0 || payday.getDay() === 6) payday.setDate(payday.getDate() - 1);
+  add(payday, 'deposit', 3850, 'Gehalt', ext('Muster Software GmbH'), giro, { category: 'Gehalt' });
   if (mo === 10) add(day(28), 'deposit', 1925, 'Weihnachtsgeld', ext('Muster Software GmbH'), giro, { category: 'Gehalt' });
   if (rand() < 0.35) add(day(18), 'deposit', between(40, 260), pick(['Kleinanzeigen Verkauf', 'Erstattung Krankenkasse', 'Rückzahlung Paul']), ext(pick(['Kleinanzeigen', 'TK Krankenkasse', 'Paul Weber'])), giro, { category: 'Sonstige Einnahmen' });
 
