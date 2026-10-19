@@ -3,15 +3,24 @@
 Ein modernes, schreibgeschütztes Web-Dashboard für [Firefly III](https://www.firefly-iii.org/) –
 als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfach nur **anschauen** willst.
 
-- **Übersicht** – Nettovermögen, Einnahmen, Ausgaben, Saldo & Sparquote, Cashflow der letzten
-  12 Monate, Ausgaben nach Kategorie, Budgets, letzte Buchungen und demnächst fällige Verträge
-- **Buchungen** – Liste mit Volltextsuche (inkl. Firefly-Suchoperatoren wie
+- **Übersicht** – Nettovermögen, Einnahmen und Ausgaben mit Vergleich zur Vorperiode, Saldo &
+  Sparquote, Cashflow der letzten 12 Monate, Ausgaben nach Kategorie, größte Veränderungen je
+  Kategorie und letzte Buchungen
+- **Kategorien** – die Analyse-Seite für Ausgaben und Einnahmen:
+  - Vergleichstabelle (sortierbar) mit Betrag, Anteil, Vorperiode, Veränderung, Ø pro Monat und
+    Mini-Verlauf je Kategorie
+  - Top 5 im Monatsverlauf als gestapeltes Diagramm
+  - Monatsmatrix (Kategorien × Monate) als Heatmap mit Summen und Durchschnitt
+  - Hinweis, wie viel noch „Ohne Kategorie“ ist
+- **Kategorie-Detail** – Monatsverlauf mit Durchschnittslinie, Spitzenmonat, Anzahl und Ø pro
+  Buchung, Top-Empfänger und alle Buchungen der Kategorie (nach Datum oder Betrag)
+- **Buchungen** – Liste mit Kategorie-Filter und Volltextsuche (inkl. Firefly-Suchoperatoren wie
   `category_is:"Lebensmittel"` oder `amount_more:100`), Filter nach Art, Details per Klick
 - **Konten** – Kontostände und Verlauf als Liniendiagramm, Verbindlichkeiten
-- **Budgets** – Fortschritt je Budget mit Tagesmarkierung („bin ich im Plan?“) und Tagesrest
-- **Sparziele** – Sparschweine mit Fortschritt und nötiger Monatsrate bis zum Zieldatum
-- **Verträge** – Fixkosten pro Monat/Jahr, Status (bezahlt/offen/überfällig), nächste Fälligkeit
 - Zeitraumwahl (Monat, Quartal, Jahr …), Hell-/Dunkelmodus, optimiert fürs Handy
+
+Der Vergleich mit der Vorperiode ist fair: Läuft der gewählte Zeitraum noch (z. B. „Dieser
+Monat“ am 19.), wird mit demselben Abschnitt davor verglichen (1.–19. des Vormonats).
 
 ## Wie es funktioniert
 

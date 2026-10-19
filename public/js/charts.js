@@ -65,27 +65,47 @@ function create(canvas, config) {
   return chart;
 }
 
-/** Gruppierte Balken, z. B. Einnahmen vs. Ausgaben je Monat. */
-export function barChart(canvas, { labels, series, currency = 'EUR' }) {
-  return create(canvas, {
-    type: 'bar',
-    data: {
-      labels: labels.map(fmtMonth),
-      datasets: series.map((s) => ({
-        label: s.label,
-        data: s.data,
-        backgroundColor: s.color,
-        hoverBackgroundColor: s.color,
-        borderRadius: { topLeft: 4, topRight: 4 },
-        borderSkipped: 'bottom',
-        borderWidth: 0,
-        barPercentage: 0.82,
-        categoryPercentage: 0.66,
-        maxBarThickness: 22,
-      })),
-    },
-    options: baseOptions(currency),
-  });
+/**
+ * Balken je Monat – gruppiert (Einnahmen vs. Ausgaben) oder gestapelt
+ * (Kategorien). Optional mit gestrichelter Durchschnittslinie.
+ */
+export function barChart(canvas, { labels, series, currency = 'EUR', stacked = false, average = null }) {
+  const surface = cssVar('--surface-1');
+  const datasets = series.map((s, i) => ({
+    label: s.label,
+    data: s.data,
+    backgroundColor: s.color,
+    hoverBackgroundColor: s.color,
+    borderRadius: stacked && i < series.length - 1 ? 0 : { topLeft: 4, topRight: 4 },
+    borderSkipped: stacked ? false : 'bottom',
+    // 2px Fuge in Flächenfarbe zwischen gestapelten Segmenten
+    borderWidth: stacked && i > 0 ? { bottom: 2 } : 0,
+    borderColor: surface,
+    barPercentage: stacked ? 0.7 : 0.82,
+    categoryPercentage: stacked ? 0.8 : 0.66,
+    maxBarThickness: stacked ? 36 : 22,
+    order: 1,
+  }));
+  if (average !== null) {
+    datasets.push({
+      type: 'line',
+      label: 'Ø',
+      data: labels.map(() => average),
+      borderColor: cssVar('--text-secondary'),
+      borderWidth: 1.5,
+      borderDash: [5, 4],
+      pointRadius: 0,
+      pointHoverRadius: 0,
+      order: 0,
+    });
+  }
+  const options = baseOptions(currency);
+  if (stacked) {
+    options.scales.x.stacked = true;
+    options.scales.y.stacked = true;
+    options.plugins.tooltip.itemSort = (a, b) => b.datasetIndex - a.datasetIndex;
+  }
+  return create(canvas, { type: 'bar', data: { labels: labels.map(fmtMonth), datasets }, options });
 }
 
 /** Linien für Kontostände über die Zeit. */

@@ -133,6 +133,11 @@ for (let m = new Date(firstDay); m <= today; m = new Date(m.getFullYear(), m.get
 }
 journals.sort((a, b) => b.date - a.date || Number(b.id) - Number(a.id));
 
+// Kategorien bekommen feste IDs in alphabetischer Reihenfolge
+const CATEGORIES = [...new Set(journals.map((j) => j.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
+const categoryId = (name) => String(CATEGORIES.indexOf(name) + 1);
+const categoryName = (id) => CATEGORIES[Number(id) - 1];
+
 // --- Hilfsfunktionen für Antworten ------------------------------------------
 const fmt = (n) => n.toFixed(2);
 const inRange = (j, start, end) => j.date >= start && j.date <= end;
@@ -180,6 +185,7 @@ function journalJson(j) {
           destination_id: j.destination.id,
           destination_name: j.destination.name,
           destination_type: j.destination.id ? 'Asset account' : 'Expense account',
+          category_id: j.category ? categoryId(j.category) : null,
           category_name: j.category,
           budget_name: j.budget,
           tags: j.tags,
@@ -227,6 +233,16 @@ function billDates(bill, start, end) {
     if (d >= start && d <= end) dates.push(d);
   }
   return dates;
+}
+
+function categoryInsight(q, type, sign) {
+  const [start, end] = range(q);
+  const sums = new Map();
+  for (const j of journals) {
+    if (j.type !== type || !inRange(j, start, end) || !j.category) continue;
+    sums.set(j.category, (sums.get(j.category) || 0) + j.amount);
+  }
+  return [...sums].map(([name, sum]) => ({ id: categoryId(name), name, difference: fmt(sign * sum), difference_float: sign * sum, ...eur() }));
 }
 
 // --- Routen ----------------------------------------------------------------
@@ -305,21 +321,21 @@ const routes = {
         case 'type': return (j) => j.type === v;
         case 'category_is': return (j) => (j.category || '').toLowerCase() === v;
         case 'has_no_category': return (j) => !j.category;
-        default: return (j) => [j.description, j.source.name, j.destination.name, j.category, j.budget, ...j.tags].join(' ').toLowerCase().includes(tok.toLowerCase());
+        default: return (j) => [j.description, j.source.name, j.destination.name, j.category, j.budget, ...j.tags].join(' ').toLowerCase().includes(tok.replace(/"/g, '').toLowerCase());
       }
     });
     return paginate(journals.filter((j) => filters.every((f) => f(j))), q, journalJson);
   },
 
-  'insight/expense/category': (q) => {
+  'insight/expense/category': (q) => categoryInsight(q, 'withdrawal', -1),
+  'insight/income/category': (q) => categoryInsight(q, 'deposit', 1),
+  'insight/income/no-category': (q) => {
     const [start, end] = range(q);
-    const sums = new Map();
-    for (const j of journals) {
-      if (j.type !== 'withdrawal' || !inRange(j, start, end) || !j.category) continue;
-      sums.set(j.category, (sums.get(j.category) || 0) + j.amount);
-    }
-    return [...sums].map(([name, sum], i) => ({ id: String(i + 1), name, difference: fmt(-sum), difference_float: -sum, ...eur() }));
+    const sum = journals.filter((j) => j.type === 'deposit' && inRange(j, start, end) && !j.category).reduce((s, j) => s + j.amount, 0);
+    return sum ? [{ difference: fmt(sum), difference_float: sum, ...eur() }] : [];
   },
+  categories: (q) =>
+    paginate(CATEGORIES, q, (name) => ({ type: 'categories', id: categoryId(name), attributes: { name, notes: null } })),
   'insight/expense/budget': (q) => {
     const [start, end] = range(q);
     return BUDGETS.map((b) => {
@@ -417,7 +433,19 @@ http
   .createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const key = url.pathname.replace(/^\/api\/v1\//, '');
-    const handler = routes[key];
+    let handler = routes[key];
+    const cat = key.match(/^categories\/(\d+)(\/transactions)?$/);
+    if (cat && categoryName(cat[1])) {
+      const name = categoryName(cat[1]);
+      handler = cat[2]
+        ? (q) => {
+          const [start, end] = q.get('start') ? range(q) : [new Date(0), today];
+          const type = q.get('type') || 'all';
+          const list = journals.filter((j) => j.category === name && inRange(j, start, end) && (type === 'all' || j.type === type));
+          return paginate(list, q, journalJson);
+        }
+        : () => ({ data: { type: 'categories', id: cat[1], attributes: { name } } });
+    }
     if (req.headers.authorization !== 'Bearer demo') {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ message: 'Unauthenticated.' }));

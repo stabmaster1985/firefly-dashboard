@@ -1,172 +1,14 @@
-// Die einzelnen Seiten des Dashboards.
+// Übersicht, Buchungen und Konten.
 
 import * as api from './api.js';
 import { barChart, lineChart, legend, seriesColor } from './charts.js';
-import {
-  money, percent, esc, fmtDate, fmtDateShort, initials, isoDate, today, addDays,
-  startOfMonth, endOfMonth, parseDate, elapsedShare, debounce,
-} from './util.js';
-
-// ---------------------------------------------------------------------------
-// Bausteine
-
-const ICONS = {
-  transfer: '<svg viewBox="0 0 24 24"><path d="M7 7h13M7 7l3-3M7 7l3 3M17 17H4m13 0-3-3m3 3-3 3"/></svg>',
-};
-
-const skeleton = (lines = 3, height = 18) =>
-  Array.from({ length: lines }, () => `<div class="skeleton" style="height:${height}px;margin:10px 0"></div>`).join('');
-
-/** Lädt Daten für einen Bereich und zeigt bis dahin einen Platzhalter. */
-async function fill(slot, loader, render, placeholder = skeleton()) {
-  if (!slot) return;
-  slot.innerHTML = placeholder;
-  try {
-    const data = await loader();
-    if (slot.isConnected) render(slot, data);
-  } catch (err) {
-    console.error(err);
-    if (slot.isConnected) slot.innerHTML = `<div class="empty">Konnte nicht geladen werden: ${esc(err.message)}</div>`;
-  }
-}
-
-const card = (id, title, { span = 'span-12', link = '', meta = '' } = {}) => `
-  <section class="card ${span}">
-    <div class="card-head"><h2>${esc(title)}</h2>${link}${meta ? `<span class="meta">${meta}</span>` : ''}</div>
-    <div id="${id}"></div>
-  </section>`;
-
-const stat = (label, value, sub = '') => `
-  <div class="stat"><span class="label">${esc(label)}</span><span class="value">${value}</span><span class="sub">${sub}</span></div>`;
-
-function counterparty(t) {
-  if (t.type === 'deposit') return t.source_name;
-  if (t.type === 'transfer') return `${t.source_name} → ${t.destination_name}`;
-  return t.destination_name;
-}
-
-function signedAmount(t) {
-  const code = t.currency_code;
-  if (t.type === 'withdrawal') return `<span class="neg">${money(-t.amount, code)}</span>`;
-  if (t.type === 'deposit') return `<span class="pos">${money(t.amount, code, { signed: true })}</span>`;
-  return `<span class="neutral">${money(t.amount, code)}</span>`;
-}
-
-function txRow(t) {
-  const avatar = t.type === 'transfer' ? ICONS.transfer : esc(initials(counterparty(t)));
-  const sub = [fmtDateShort(t.date), t.category_name || counterparty(t)].filter(Boolean).map(esc).join(' · ');
-  return `<div class="row">
-    <div class="avatar">${avatar}</div>
-    <div style="min-width:0"><div class="title">${esc(t.description)}</div><div class="subtitle">${sub}</div></div>
-    <div class="amount">${signedAmount(t)}</div>
-  </div>`;
-}
-
-/** Liefert die häufigste Währung einer Liste – für Mehrwährungs-Daten. */
-function mainCurrency(items, key = 'currency_code') {
-  const counts = new Map();
-  for (const it of items) counts.set(it[key], (counts.get(it[key]) || 0) + 1);
-  return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || 'EUR';
-}
-
-const sum = (list, fn) => list.reduce((s, x) => s + fn(x), 0);
-
-// ---------------------------------------------------------------------------
-// Datenaufbereitung
-
-async function loadBudgets(start, end) {
-  const [budgets, limits, spentInsight] = await Promise.all([
-    api.getAll('budgets', { start, end }),
-    api.getAll('budget-limits', { start, end }),
-    api.get('insight/expense/budget', { start, end }),
-  ]);
-  return budgets
-    .filter((b) => b.attributes.active !== false)
-    .map((b) => {
-      const own = limits.filter((l) => String(l.attributes.budget_id) === String(b.id));
-      const spentRows = (spentInsight || []).filter((x) => String(x.id) === String(b.id));
-      const code = own[0]?.attributes.currency_code || spentRows[0]?.currency_code || 'EUR';
-      return {
-        id: b.id,
-        name: b.attributes.name,
-        order: b.attributes.order ?? 0,
-        code,
-        limit: sum(own, (l) => Number(l.attributes.amount)),
-        spent: Math.abs(sum(spentRows, (x) => Number(x.difference_float ?? x.difference))),
-      };
-    })
-    .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
-}
-
-function budgetState(b, share) {
-  if (!b.limit) return { cls: '', label: 'Kein Limit', badge: '' };
-  const used = b.spent / b.limit;
-  if (used > 1) return { cls: 'over', label: 'Überzogen', badge: 'bad' };
-  if (share < 1 && used > share + 0.1) return { cls: 'warn', label: 'Über Plan', badge: 'warn' };
-  return { cls: '', label: 'Im Plan', badge: 'good' };
-}
-
-function budgetBlock(b, share, { detailed = false, start, end } = {}) {
-  const st = budgetState(b, share);
-  const used = b.limit ? b.spent / b.limit : 0;
-  const left = b.limit - b.spent;
-  const daysLeft = Math.max(0, Math.round((end - today()) / 86400000) + 1);
-  const perDay = detailed && b.limit && left > 0 && share < 1 && share > 0 ? left / daysLeft : null;
-  return `<div class="budget">
-    <div class="budget-top">
-      <span class="title">${esc(b.name)}</span>
-      <span class="nums"><b>${money(b.spent, b.code)}</b>${b.limit ? ` von ${money(b.limit, b.code)}` : ''}</span>
-    </div>
-    <div class="progress ${st.cls}" title="${percent(used)} verbraucht">
-      <span style="width:${Math.min(100, used * 100)}%"></span>
-      ${b.limit && share > 0 && share < 1 ? `<i class="pace" style="left:${share * 100}%" title="Heute"></i>` : ''}
-    </div>
-    <div class="budget-foot">
-      <span>${b.limit ? (left >= 0 ? `${money(left, b.code)} übrig` : `${money(-left, b.code)} drüber`) : 'Ohne Limit'}${perDay ? ` · ${money(perDay, b.code)} pro Tag` : ''}</span>
-      ${st.badge ? `<span class="badge ${st.badge}">${st.label}</span>` : ''}
-    </div>
-  </div>`;
-}
-
-const FREQ = {
-  weekly: ['wöchentlich', 52 / 12],
-  monthly: ['monatlich', 1],
-  quarterly: ['vierteljährlich', 1 / 3],
-  'half-year': ['halbjährlich', 1 / 6],
-  yearly: ['jährlich', 1 / 12],
-};
-
-function billInfo(bill) {
-  const a = bill.attributes;
-  const amount = (Number(a.amount_min) + Number(a.amount_max)) / 2;
-  const [freqLabel, perMonth] = FREQ[a.repeat_freq] || [a.repeat_freq, 1];
-  const skip = Number(a.skip || 0) + 1;
-  const paid = (a.paid_dates || []).map((p) => parseDate(p.date));
-  const isPaid = (d) =>
-    paid.some((p) =>
-      a.repeat_freq === 'weekly'
-        ? Math.abs(p - d) <= 3 * 86400000
-        : p.getFullYear() === d.getFullYear() && p.getMonth() === d.getMonth(),
-    );
-  const due = (a.pay_dates || []).map(parseDate).map((d) => ({ date: d, paid: isPaid(d) }));
-  return {
-    id: bill.id,
-    name: a.name,
-    active: a.active !== false,
-    code: a.currency_code,
-    amount,
-    freqLabel: skip > 1 ? `alle ${skip} × ${freqLabel}` : freqLabel,
-    monthly: (amount * perMonth) / skip,
-    next: parseDate(a.next_expected_match),
-    due,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Übersicht
+import { money, percent, esc, fmtDate, initials, isoDate, today, startOfMonth, endOfMonth, debounce } from './util.js';
+import { skeleton, fill, card, stat, signedAmount, txRow, mainCurrency, sum } from './common.js';
+import { categoryTotals, previousRange, delta } from './categories.js';
 
 export async function overview(view, { period }) {
   const { start, end } = period;
+  const [prevStart, prevEnd] = previousRange(period);
   view.innerHTML = `
     <div class="grid">
       <section class="card span-3" id="s-networth"></section>
@@ -175,29 +17,33 @@ export async function overview(view, { period }) {
       <section class="card span-3" id="s-balance"></section>
       ${card('cashflow', 'Einnahmen & Ausgaben', { span: 'span-8', meta: 'letzte 12 Monate' })}
       ${card('accounts', 'Konten', { span: 'span-4', link: '<a href="#/konten">Alle →</a>' })}
-      ${card('categories', 'Ausgaben nach Kategorie', { span: 'span-6', meta: esc(period.label) })}
-      ${card('budgets', 'Budgets', { span: 'span-6', link: '<a href="#/budgets">Details →</a>' })}
-      ${card('recent', 'Letzte Buchungen', { span: 'span-7', link: '<a href="#/buchungen">Alle →</a>' })}
-      ${card('upcoming', 'Demnächst fällig', { span: 'span-5', meta: 'nächste 30 Tage' })}
+      ${card('categories', 'Ausgaben nach Kategorie', { span: 'span-6', link: '<a href="#/kategorien">Analyse →</a>' })}
+      ${card('changes', 'Größte Veränderungen', { span: 'span-6', meta: `ggü. ${fmtDate(prevStart, { day: 'numeric', month: 'short' })} – ${fmtDate(prevEnd, { day: 'numeric', month: 'short' })}` })}
+      ${card('recent', 'Letzte Buchungen', { span: 'span-12', link: '<a href="#/buchungen">Alle →</a>' })}
     </div>`;
   const $ = (id) => view.querySelector(`#${id}`);
 
   const summary = api.get('summary/basic', { start, end });
-  const tile = (id, render) => fill($(id), () => summary, render, skeleton(2, 22));
-  tile('s-networth', (el, s) => {
+  const prevSummary = api.get('summary/basic', { start: prevStart, end: prevEnd }).catch(() => null);
+  const both = Promise.all([summary, prevSummary]);
+  const tile = (id, render) => fill($(id), () => both, render, skeleton(2, 22));
+  const prevOf = (prev, key, code) => (prev ? api.summaryValues(prev, key).find((v) => v.code === code)?.value || 0 : 0);
+
+  tile('s-networth', (el, [s]) => {
     const [main, ...rest] = api.summaryValues(s, 'net-worth');
     el.innerHTML = stat('Nettovermögen', money(main?.value, main?.code), rest.map((r) => money(r.value, r.code)).join(' · ') || `Stand ${fmtDate(end > today() ? today() : end)}`);
   });
-  tile('s-earned', (el, s) => {
+  tile('s-earned', (el, [s, prev]) => {
     const [main] = api.summaryValues(s, 'earned');
-    el.innerHTML = stat('Einnahmen', `<span class="pos">${money(main?.value, main?.code)}</span>`, esc(period.label));
+    const cur = main?.value || 0;
+    el.innerHTML = stat('Einnahmen', `<span class="pos">${money(cur, main?.code)}</span>`, `${delta(cur, prevOf(prev, 'earned', main?.code), 'income', main?.code)} ggü. Vorperiode`);
   });
-  tile('s-spent', (el, s) => {
+  tile('s-spent', (el, [s, prev]) => {
     const [main] = api.summaryValues(s, 'spent');
-    const [left] = api.summaryValues(s, 'left-to-spend');
-    el.innerHTML = stat('Ausgaben', money(Math.abs(main?.value || 0), main?.code), left ? `Budget übrig: ${money(left.value, left.code)}` : esc(period.label));
+    const cur = Math.abs(main?.value || 0);
+    el.innerHTML = stat('Ausgaben', money(cur, main?.code), `${delta(cur, Math.abs(prevOf(prev, 'spent', main?.code)), 'expense', main?.code)} ggü. Vorperiode`);
   });
-  tile('s-balance', (el, s) => {
+  tile('s-balance', (el, [s]) => {
     const [bal] = api.summaryValues(s, 'balance');
     const [earned] = api.summaryValues(s, 'earned');
     const rate = earned?.value > 0 ? bal.value / earned.value : null;
@@ -240,27 +86,24 @@ export async function overview(view, { period }) {
       .join('')}</div>`;
   });
 
-  fill($('categories'), () => Promise.all([
-    api.get('insight/expense/category', { start, end }),
-    api.get('insight/expense/no-category', { start, end }).catch(() => []),
-  ]), (el, [cats, none]) => {
-    const all = [
-      ...(cats || []).map((c) => ({ name: c.name, value: Math.abs(Number(c.difference_float ?? c.difference)), code: c.currency_code })),
-      ...(none || []).map((c) => ({ name: 'Ohne Kategorie', value: Math.abs(Number(c.difference_float ?? c.difference)), code: c.currency_code, noCat: true })),
-    ];
-    const code = mainCurrency(all, 'code');
-    const items = all.filter((x) => x.code === code && x.value > 0).sort((a, b) => b.value - a.value);
+  const cats = Promise.all([categoryTotals('expense', start, end), categoryTotals('expense', prevStart, prevEnd)]).then(([cur, prev]) => {
+    const code = mainCurrency(cur.length ? cur : prev, 'code');
+    return { code, cur: cur.filter((c) => c.code === code), prev: prev.filter((c) => c.code === code) };
+  });
+
+  fill($('categories'), () => cats, (el, { code, cur }) => {
+    const items = [...cur].sort((a, b) => b.value - a.value);
     if (!items.length) return (el.innerHTML = '<div class="empty">Keine Ausgaben im Zeitraum.</div>');
     const total = sum(items, (x) => x.value);
     const shown = items.slice(0, 8);
     const rest = items.slice(8);
-    if (rest.length) shown.push({ name: `Weitere (${rest.length})`, value: sum(rest, (x) => x.value), code, none: true });
+    if (rest.length) shown.push({ name: `Weitere (${rest.length})`, value: sum(rest, (x) => x.value), rest: true });
     const max = Math.max(...shown.map((x) => x.value));
     el.innerHTML = `<div class="bars">${shown
       .map((c) => {
-        const op = c.noCat ? 'has_no_category:true' : c.none ? '' : `category_is:"${c.name}"`;
-        const q = op ? `#/buchungen?q=${encodeURIComponent(op)}` : '';
-        const name = q ? `<a href="${q}" class="name" title="Buchungen anzeigen">${esc(c.name)}</a>` : `<span class="name">${esc(c.name)}</span>`;
+        const name = c.rest
+          ? `<a href="#/kategorien" class="name">${esc(c.name)}</a>`
+          : `<a href="#/kategorien/${encodeURIComponent(c.id)}" class="name" title="Kategorie analysieren">${esc(c.name)}</a>`;
         return `<div class="bar-row">${name}
           <div class="track"><div class="fill" style="width:${(c.value / max) * 100}%"></div></div>
           <div class="val">${money(c.value, code)}<small>${percent(c.value / total)}</small></div></div>`;
@@ -268,35 +111,24 @@ export async function overview(view, { period }) {
       .join('')}</div>`;
   });
 
-  const share = elapsedShare(start, end);
-  fill($('budgets'), () => loadBudgets(start, end), (el, budgets) => {
-    if (!budgets.length) return (el.innerHTML = '<div class="empty">Keine Budgets angelegt.</div>');
-    el.innerHTML = budgets.slice(0, 5).map((b) => budgetBlock(b, share)).join('');
+  fill($('changes'), () => cats, (el, { code, cur, prev }) => {
+    const byId = new Map();
+    cur.forEach((c) => byId.set(c.id, { ...c, prev: 0 }));
+    prev.forEach((c) => (byId.has(c.id) ? (byId.get(c.id).prev = c.value) : byId.set(c.id, { ...c, value: 0, prev: c.value })));
+    const items = [...byId.values()].filter((c) => c.value !== c.prev)
+      .sort((a, b) => Math.abs(b.value - b.prev) - Math.abs(a.value - a.prev)).slice(0, 7);
+    if (!items.length) return (el.innerHTML = '<div class="empty">Keine Vergleichsdaten.</div>');
+    el.innerHTML = `<div class="list">${items
+      .map((c) => `<a class="row plain" href="#/kategorien/${encodeURIComponent(c.id)}">
+        <div class="avatar">${esc(initials(c.name))}</div>
+        <div style="min-width:0"><div class="title">${esc(c.name)}</div><div class="subtitle">${money(c.value, code)} statt ${money(c.prev, code)}</div></div>
+        <div class="amount">${money(c.value - c.prev, code, { signed: true })}<div>${delta(c.value, c.prev, 'expense', code)}</div></div></a>`)
+      .join('')}</div>`;
   });
 
-  fill($('recent'), () => api.get('transactions', { start, end, type: 'all', limit: 8 }), (el, res) => {
-    const rows = api.flattenTransactions(res.data).slice(0, 8);
-    el.innerHTML = rows.length ? `<div class="list">${rows.map(txRow).join('')}</div>` : '<div class="empty">Keine Buchungen im Zeitraum.</div>';
-  });
-
-  const t = today();
-  fill($('upcoming'), () => api.getAll('bills', { start: t, end: addDays(t, 30) }), (el, bills) => {
-    const due = bills
-      .map(billInfo)
-      .filter((b) => b.active)
-      .flatMap((b) => b.due.filter((d) => !d.paid && d.date >= t).map((d) => ({ ...b, date: d.date })))
-      .sort((a, b) => a.date - b.date);
-    if (!due.length) return (el.innerHTML = '<div class="empty">Nichts fällig in den nächsten 30 Tagen.</div>');
-    el.innerHTML = `<div class="list">${due
-      .map((b) => {
-        const days = Math.round((b.date - t) / 86400000);
-        const when = days === 0 ? 'heute' : days === 1 ? 'morgen' : `in ${days} Tagen`;
-        return `<div class="row"><div class="avatar">${esc(initials(b.name))}</div>
-          <div style="min-width:0"><div class="title">${esc(b.name)}</div><div class="subtitle">${fmtDateShort(b.date)} · ${when}</div></div>
-          <div class="amount">${money(b.amount, b.code)}</div></div>`;
-      })
-      .join('')}</div>
-      <div class="legend" style="margin-top:12px"><span>Summe <b>&nbsp;${money(sum(due, (b) => b.amount), mainCurrency(due, 'code'))}</b></span></div>`;
+  fill($('recent'), () => api.get('transactions', { start, end, type: 'all', limit: 10 }), (el, res) => {
+    const rows = api.flattenTransactions(res.data).slice(0, 10);
+    el.innerHTML = rows.length ? `<div class="list two-col">${rows.map(txRow).join('')}</div>` : '<div class="empty">Keine Buchungen im Zeitraum.</div>';
   });
 }
 
@@ -317,6 +149,7 @@ export async function transactions(view, { period, params }) {
     <section class="card">
       <div class="toolbar">
         <input class="input" id="tx-search" type="search" placeholder="Suchen … (z. B. REWE, category_is:&quot;Lebensmittel&quot;, amount_more:100)" value="${esc(state.q)}" aria-label="Buchungen durchsuchen">
+        <select class="input select" id="tx-cat" aria-label="Kategorie"><option value="">Alle Kategorien</option></select>
         <div class="chips" role="group" aria-label="Buchungsart">
           ${TYPES.map(([id, label]) => `<button class="chip" data-type="${id}" aria-pressed="${id === state.type}">${label}</button>`).join('')}
         </div>
@@ -431,8 +264,31 @@ export async function transactions(view, { period, params }) {
     if (location.hash !== hash) history.replaceState(null, '', hash);
   };
 
-  view.querySelector('#tx-search').addEventListener('input', debounce((e) => {
+  // Kategorie-Auswahl setzt einfach den passenden Suchbefehl
+  const catSelect = view.querySelector('#tx-cat');
+  const searchInput = view.querySelector('#tx-search');
+  const catQuery = (name) => (name === NO_CAT ? 'has_no_category:true' : `category_is:"${name}"`);
+  const NO_CAT = '__ohne__';
+  const syncSelect = () => {
+    const match = [...catSelect.options].find((o) => o.value && catQuery(o.value) === state.q.trim());
+    catSelect.value = match ? match.value : '';
+  };
+  api.getAll('categories').then((list) => {
+    const names = list.map((c) => c.attributes.name).sort((a, b) => a.localeCompare(b, 'de'));
+    catSelect.insertAdjacentHTML('beforeend',
+      `<option value="${NO_CAT}">Ohne Kategorie</option>${names.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}`);
+    syncSelect();
+  }).catch(() => catSelect.remove());
+  catSelect.addEventListener('change', () => {
+    state.q = catSelect.value ? catQuery(catSelect.value) : '';
+    searchInput.value = state.q;
+    syncHash();
+    load(true);
+  });
+
+  searchInput.addEventListener('input', debounce((e) => {
     state.q = e.target.value;
+    syncSelect();
     syncHash();
     load(true);
   }, 350));
@@ -529,156 +385,3 @@ export async function accounts(view, { period }) {
 // ---------------------------------------------------------------------------
 // Budgets
 
-export async function budgets(view, { period }) {
-  const { start, end } = period;
-  const share = elapsedShare(start, end);
-  view.innerHTML = `
-    <div class="grid">
-      <section class="card span-4" id="b-total"></section>
-      <section class="card span-4" id="b-left"></section>
-      <section class="card span-4" id="b-time"></section>
-      ${card('b-list', 'Alle Budgets', { meta: esc(period.label) })}
-    </div>`;
-  const data = loadBudgets(start, end);
-  const $ = (id) => view.querySelector(`#${id}`);
-
-  fill($('b-total'), () => data, (el, list) => {
-    const code = mainCurrency(list, 'code');
-    const limit = sum(list, (b) => b.limit);
-    const spent = sum(list, (b) => b.spent);
-    el.innerHTML = stat('Ausgegeben', money(spent, code), limit ? `von ${money(limit, code)} (${percent(spent / limit)})` : 'keine Limits');
-  }, skeleton(2, 22));
-  fill($('b-left'), () => data, (el, list) => {
-    const code = mainCurrency(list, 'code');
-    const left = sum(list.filter((b) => b.limit), (b) => b.limit - b.spent);
-    const over = list.filter((b) => b.limit && b.spent > b.limit).length;
-    el.innerHTML = stat('Noch verfügbar', money(left, code), over ? `<span class="down">${over} überzogen</span>` : 'kein Budget überzogen');
-  }, skeleton(2, 22));
-  $('b-time').innerHTML = stat('Zeitraum vergangen', percent(share), `${fmtDate(start)} – ${fmtDate(end)}`);
-
-  fill($('b-list'), () => data, (el, list) => {
-    if (!list.length) return (el.innerHTML = '<div class="empty">Keine Budgets angelegt.</div>');
-    el.innerHTML = list.map((b) => budgetBlock(b, share, { detailed: true, start, end })).join('') +
-      '<div class="legend" style="margin-top:8px"><span><i style="background:var(--text-secondary);width:2px"></i>Markierung = heutiger Stand im Zeitraum</span></div>';
-  }, skeleton(6));
-}
-
-// ---------------------------------------------------------------------------
-// Sparziele
-
-export async function piggies(view) {
-  view.innerHTML = `<div class="grid"><section class="card span-4" id="p-total"></section><section class="card span-4" id="p-target"></section><section class="card span-4" id="p-done"></section><div class="span-12" id="p-list"></div></div>`;
-  const data = api.getAll('piggy-banks').then((list) =>
-    list.map((p) => {
-      const a = p.attributes;
-      return {
-        name: a.name,
-        code: a.currency_code,
-        current: Number(a.current_amount || 0),
-        target: a.target_amount ? Number(a.target_amount) : null,
-        date: parseDate(a.target_date),
-        account: a.account_name || (a.accounts || []).map((x) => x.name).join(', '),
-        active: a.active !== false,
-      };
-    }).filter((p) => p.active));
-  const $ = (id) => view.querySelector(`#${id}`);
-
-  fill($('p-total'), () => data, (el, list) => {
-    const code = mainCurrency(list, 'code');
-    el.innerHTML = stat('Gespart', money(sum(list, (p) => p.current), code), `in ${list.length} Sparzielen`);
-  }, skeleton(2, 22));
-  fill($('p-target'), () => data, (el, list) => {
-    const code = mainCurrency(list, 'code');
-    const withTarget = list.filter((p) => p.target);
-    const left = sum(withTarget, (p) => Math.max(0, p.target - p.current));
-    el.innerHTML = stat('Noch zu sparen', money(left, code), `Ziel gesamt ${money(sum(withTarget, (p) => p.target), code)}`);
-  }, skeleton(2, 22));
-  fill($('p-done'), () => data, (el, list) => {
-    const done = list.filter((p) => p.target && p.current >= p.target).length;
-    el.innerHTML = stat('Erreicht', `${done} / ${list.filter((p) => p.target).length}`, 'Sparziele komplett');
-  }, skeleton(2, 22));
-
-  fill($('p-list'), () => data, (el, list) => {
-    if (!list.length) return (el.innerHTML = '<section class="card"><div class="empty">Keine Sparschweine angelegt.</div></section>');
-    const t = today();
-    el.innerHTML = `<div class="tiles">${list
-      .map((p) => {
-        const share = p.target ? p.current / p.target : 0;
-        const done = p.target && p.current >= p.target;
-        const left = p.target ? Math.max(0, p.target - p.current) : 0;
-        const months = p.date ? Math.max(1, (p.date.getFullYear() - t.getFullYear()) * 12 + p.date.getMonth() - t.getMonth()) : null;
-        const hint = done
-          ? '<span class="badge good">Erreicht</span>'
-          : p.date && left
-            ? `${money(left / months, p.code)} / Monat bis ${fmtDate(p.date, { month: 'short', year: 'numeric' })}`
-            : left ? `noch ${money(left, p.code)}` : '';
-        return `<section class="card tile">
-          <span class="kind">${esc(p.account || 'Sparziel')}</span>
-          <span class="name">${esc(p.name)}</span>
-          <span class="balance">${money(p.current, p.code)}</span>
-          ${p.target ? `<div class="progress ${done ? 'done' : ''}"><span style="width:${Math.min(100, share * 100)}%"></span></div>
-          <div class="budget-foot"><span>${percent(share)} von ${money(p.target, p.code)}</span></div>` : ''}
-          <div class="budget-foot"><span>${hint}</span></div>
-        </section>`;
-      })
-      .join('')}</div>`;
-  }, `<div class="tiles"><section class="card">${skeleton(4)}</section><section class="card">${skeleton(4)}</section></div>`);
-}
-
-// ---------------------------------------------------------------------------
-// Verträge / Rechnungen
-
-export async function bills(view, { period }) {
-  const { start, end } = period;
-  view.innerHTML = `
-    <div class="grid">
-      <section class="card span-4" id="v-month"></section>
-      <section class="card span-4" id="v-due"></section>
-      <section class="card span-4" id="v-paid"></section>
-      ${card('v-list', 'Verträge & wiederkehrende Rechnungen', { meta: esc(period.label) })}
-    </div>`;
-  const data = api.getAll('bills', { start, end }).then((list) => list.map(billInfo));
-  const $ = (id) => view.querySelector(`#${id}`);
-
-  fill($('v-month'), () => data, (el, list) => {
-    const active = list.filter((b) => b.active);
-    const code = mainCurrency(active, 'code');
-    const monthly = sum(active, (b) => b.monthly);
-    el.innerHTML = stat('Fixkosten pro Monat', money(monthly, code), `≈ ${money(monthly * 12, code)} pro Jahr`);
-  }, skeleton(2, 22));
-  fill($('v-due'), () => data, (el, list) => {
-    const code = mainCurrency(list, 'code');
-    const dues = list.flatMap((b) => b.due.map((d) => ({ ...d, amount: b.amount })));
-    el.innerHTML = stat('Fällig im Zeitraum', money(sum(dues, (d) => d.amount), code), `${dues.length} Zahlungen`);
-  }, skeleton(2, 22));
-  fill($('v-paid'), () => data, (el, list) => {
-    const code = mainCurrency(list, 'code');
-    const dues = list.flatMap((b) => b.due.map((d) => ({ ...d, amount: b.amount })));
-    const open = dues.filter((d) => !d.paid);
-    el.innerHTML = stat('Noch offen', money(sum(open, (d) => d.amount), code), `${dues.length - open.length} von ${dues.length} bezahlt`);
-  }, skeleton(2, 22));
-
-  fill($('v-list'), () => data, (el, list) => {
-    if (!list.length) return (el.innerHTML = '<div class="empty">Keine Verträge angelegt.</div>');
-    const t = today();
-    const status = (b) => {
-      if (!b.active) return '<span class="badge">Inaktiv</span>';
-      if (!b.due.length) return '<span class="badge">Nicht fällig</span>';
-      const open = b.due.filter((d) => !d.paid);
-      if (!open.length) return '<span class="badge good">Bezahlt</span>';
-      if (open.some((d) => d.date < t)) return '<span class="badge bad">Überfällig</span>';
-      return '<span class="badge warn">Offen</span>';
-    };
-    const sorted = [...list].sort((a, b) => b.active - a.active || (a.next || Infinity) - (b.next || Infinity));
-    el.innerHTML = `<div class="table-wrap"><table>
-      <thead><tr><th>Vertrag</th><th class="hide-sm">Rhythmus</th><th class="hide-sm">Nächste Fälligkeit</th><th>Status</th><th class="num">Betrag</th></tr></thead>
-      <tbody>${sorted
-        .map((b) => `<tr style="cursor:default">
-          <td><div class="desc">${esc(b.name)}</div><div class="flow">${money(b.monthly, b.code)} / Monat</div></td>
-          <td class="hide-sm">${esc(b.freqLabel)}</td>
-          <td class="hide-sm date">${b.next ? fmtDate(b.next) : '–'}</td>
-          <td>${status(b)}</td>
-          <td class="num">${money(b.amount, b.code)}</td></tr>`)
-        .join('')}</tbody></table></div>`;
-  }, skeleton(6));
-}

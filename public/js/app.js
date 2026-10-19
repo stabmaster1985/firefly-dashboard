@@ -2,17 +2,17 @@
 
 import * as api from './api.js';
 import * as views from './views.js';
+import { categories, categoryDetail } from './categories.js';
 import { destroyCharts } from './charts.js';
 import { PERIODS, periodById, storage, store, esc } from './util.js';
 
 const ROUTES = {
   '': { view: views.overview, title: 'Übersicht', nav: 'overview' },
+  kategorien: { view: categories, title: 'Kategorien', nav: 'categories' },
   buchungen: { view: views.transactions, title: 'Buchungen', nav: 'transactions' },
   konten: { view: views.accounts, title: 'Konten', nav: 'accounts' },
-  budgets: { view: views.budgets, title: 'Budgets', nav: 'budgets' },
-  sparziele: { view: views.piggies, title: 'Sparziele', nav: 'piggies', noPeriod: true },
-  vertraege: { view: views.bills, title: 'Verträge', nav: 'bills' },
 };
+const DETAIL = { view: categoryDetail, title: 'Kategorie', nav: 'categories' };
 
 const viewEl = document.getElementById('view');
 const titleEl = document.getElementById('page-title');
@@ -32,8 +32,10 @@ function parseHash() {
 }
 
 async function render() {
+  tooltip.hidden = true;
   const { path, params } = parseHash();
-  const route = ROUTES[path] || ROUTES[''];
+  const [section, id] = path.split('/');
+  const route = section === 'kategorien' && id ? DETAIL : ROUTES[path] || ROUTES[''];
   destroyCharts();
   titleEl.textContent = route.title;
   document.title = `${route.title} · Firefly Dashboard`;
@@ -43,7 +45,7 @@ async function render() {
   if (connectionError) return showConnectionError(connectionError);
   const period = periodById(periodSelect.value);
   window.scrollTo({ top: 0 });
-  await route.view(viewEl, { period, params });
+  await route.view(viewEl, { period, params, id: id && decodeURIComponent(id) });
 }
 
 function showConnectionError(err) {
@@ -79,6 +81,24 @@ async function connect() {
   }
   render();
 }
+
+// ---- Tooltips für Elemente mit data-tip ------------------------------------
+
+const tooltip = document.getElementById('tooltip');
+document.addEventListener('pointerover', (e) => {
+  const el = e.target.closest('[data-tip]');
+  if (!el) return (tooltip.hidden = true);
+  tooltip.textContent = el.dataset.tip;
+  tooltip.hidden = false;
+});
+document.addEventListener('pointermove', (e) => {
+  if (tooltip.hidden) return;
+  const x = Math.min(e.clientX + 14, innerWidth - tooltip.offsetWidth - 8);
+  const y = e.clientY + 18 + tooltip.offsetHeight > innerHeight ? e.clientY - tooltip.offsetHeight - 12 : e.clientY + 18;
+  tooltip.style.left = `${x}px`;
+  tooltip.style.top = `${y}px`;
+});
+window.addEventListener('scroll', () => (tooltip.hidden = true), { passive: true });
 
 // ---- Bedienelemente -------------------------------------------------------
 

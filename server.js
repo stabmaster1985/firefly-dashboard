@@ -39,11 +39,7 @@ const ALLOWED = [
   /^search\/transactions$/,
   /^insight\/(expense|income)\/(category|no-category|total|budget|no-budget|expense|revenue|asset|tag|bill)$/,
   /^chart\/account\/overview$/,
-  /^budgets(\/\d+(\/limits)?)?$/,
-  /^budget-limits$/,
-  /^categories(\/\d+)?$/,
-  /^piggy-banks(\/\d+)?$/,
-  /^bills(\/\d+)?$/,
+  /^categories(\/\d+(\/transactions)?)?$/,
   /^tags$/,
   /^currencies(\/default|\/primary)?$/,
 ];
