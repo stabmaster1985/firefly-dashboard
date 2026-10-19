@@ -121,6 +121,9 @@ for (let m = new Date(firstDay); m <= today; m = new Date(m.getFullYear(), m.get
   for (let i = 0; i < 2; i++) {
     add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(48, 82), 'Tanken', giro, ext(pick(['Aral', 'Shell', 'JET'])), { category: 'Mobilität', budget: 'Mobilität' });
   }
+  // Zahlungen über PayPal: ein Abo zwischen zufälligen Einkäufen (testet die Erkennung)
+  add(day(9 + Math.floor(rand() * 3)), 'withdrawal', 9.99, `PayPal *DisneyPlus ${100000 + Math.floor(rand() * 899999)}`, giro, ext('PayPal Europe S.a.r.l.'), { category: 'Abos' });
+  if (rand() < 0.6) add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(12, 140), `PayPal *${pick(['Etsy', 'eBay', 'Steam', 'Vinted'])} ${100000 + Math.floor(rand() * 899999)}`, giro, ext('PayPal Europe S.a.r.l.'), { category: 'Shopping' });
   add(day(1), 'withdrawal', 49, 'Deutschlandticket', giro, ext('Deutsche Bahn'), { category: 'Mobilität', budget: 'Mobilität', tags: ['Fixkosten'] });
   const shoppingCount = 1 + Math.floor(rand() * 3);
   for (let i = 0; i < shoppingCount; i++) {
@@ -470,6 +473,16 @@ http
     const key = url.pathname.replace(/^\/api\/v1\//, '');
     let handler = routes[key];
     const cat = key.match(/^categories\/(\d+)(\/transactions)?$/);
+    const accRoute = key.match(/^accounts\/(\d+)(\/transactions)?$/);
+    const acc = accRoute && ACCOUNTS.find((a) => a.id === accRoute[1]);
+    if (acc) {
+      handler = accRoute[2]
+        ? (q) => {
+          const [start, end] = q.get('start') ? range(q) : [new Date(0), today];
+          return paginate(journals.filter((j) => (j.source.id === acc.id || j.destination.id === acc.id) && inRange(j, start, end)), q, journalJson);
+        }
+        : (q) => ({ data: routes.accounts(new URLSearchParams('type=asset&limit=100')).data.find((a) => a.id === acc.id) });
+    }
     const tagRoute = key.match(/^tags\/([^/]+)(\/transactions)?$/);
     if (tagRoute && tagName(tagRoute[1])) {
       const name = tagName(tagRoute[1]);
@@ -491,6 +504,17 @@ http
           return paginate(list, q, journalJson);
         }
         : () => ({ data: { type: 'categories', id: cat[1], attributes: { name } } });
+    }
+    if (url.pathname.startsWith('/webhook/')) {
+      // Nachgebauter n8n-Webhook: antwortet mit dem, was ankam
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        const fail = url.pathname.endsWith('/fehler');
+        res.writeHead(fail ? 500 : 200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(fail ? { message: 'Workflow could not be started' } : { ok: true, workflow: url.pathname.split('/').pop(), empfangen: body ? JSON.parse(body) : Object.fromEntries(url.searchParams) }));
+      });
+      return;
     }
     if (req.headers.authorization !== 'Bearer demo') {
       res.writeHead(401, { 'Content-Type': 'application/json' });

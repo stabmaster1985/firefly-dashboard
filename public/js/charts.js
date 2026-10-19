@@ -21,7 +21,9 @@ export function destroyCharts() {
   active.clear();
 }
 
-function baseOptions(currency) {
+function baseOptions(currency, format = null) {
+  const fmt = format || ((v) => money(v, currency));
+  const fmtAxis = format || ((v) => money(v, currency, { compact: true }));
   const muted = cssVar('--text-muted');
   const grid = cssVar('--grid');
   return {
@@ -40,7 +42,7 @@ function baseOptions(currency) {
         boxPadding: 4,
         usePointStyle: true,
         callbacks: {
-          label: (ctx) => ` ${ctx.dataset.label}: ${money(ctx.parsed.y, currency)}`,
+          label: (ctx) => ` ${ctx.dataset.label}: ${fmt(ctx.parsed.y)}`,
         },
       },
     },
@@ -57,7 +59,7 @@ function baseOptions(currency) {
           color: muted,
           padding: 8,
           font: { size: 12 },
-          callback: (v) => money(v, currency, { compact: true }),
+          callback: (v) => fmtAxis(v),
         },
       },
     },
@@ -75,7 +77,7 @@ function create(canvas, config) {
  * Balken je Monat – gruppiert (Einnahmen vs. Ausgaben) oder gestapelt
  * (Kategorien). Optional mit gestrichelter Durchschnittslinie.
  */
-export function barChart(canvas, { labels, series, currency = 'EUR', stacked = false, average = null, onClick = null }) {
+export function barChart(canvas, { labels, series, currency = 'EUR', stacked = false, average = null, onClick = null, format = null }) {
   const surface = cssVar('--surface-1');
   const datasets = series.map((s, i) => ({
     label: s.label,
@@ -106,7 +108,7 @@ export function barChart(canvas, { labels, series, currency = 'EUR', stacked = f
       order: 0,
     });
   }
-  const options = baseOptions(currency);
+  const options = baseOptions(currency, format);
   if (stacked) {
     options.scales.x.stacked = true;
     options.scales.y.stacked = true;
@@ -122,7 +124,9 @@ export function barChart(canvas, { labels, series, currency = 'EUR', stacked = f
     };
     options.onHover = (e, elements) => (e.native.target.style.cursor = elements.length ? 'pointer' : 'default');
   }
-  return create(canvas, { type: 'bar', data: { labels: labels.map(fmtMonth), datasets }, options });
+  // Datumswerte als Monat beschriften, Texte (Wochentage, Klassen) unverändert
+  const shown = labels.map((l) => (l instanceof Date ? fmtMonth(l) : l));
+  return create(canvas, { type: 'bar', data: { labels: shown, datasets }, options });
 }
 
 /** Linien für Kontostände über die Zeit. */

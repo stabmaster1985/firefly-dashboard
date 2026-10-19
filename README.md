@@ -4,21 +4,24 @@ Ein modernes, schreibgeschütztes Web-Dashboard für [Firefly III](https://www.f
 als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfach nur **anschauen** willst.
 
 - **Übersicht** – Nettovermögen, Einnahmen und Ausgaben mit Vergleich zur Vorperiode, Saldo &
-  Sparquote, Cashflow der letzten 12 Monate, Ausgaben nach Kategorie, größte Veränderungen je
-  Kategorie und letzte Buchungen
+  Sparquote, Cashflow der letzten 12 Monate, **Geldfluss-Diagramm** (Einnahmen → Ausgaben →
+  Gespart), Ausgaben nach Kategorie, größte Veränderungen je Kategorie und letzte Buchungen
 - **Kategorien** – die Analyse-Seite für Ausgaben und Einnahmen:
   - Vergleichstabelle (sortierbar) mit Betrag, Anteil, Vorperiode, Veränderung, Ø pro Monat und
     Mini-Verlauf je Kategorie
   - Top 5 im Monatsverlauf als gestapeltes Diagramm
   - Monatsmatrix (Kategorien × Monate) als Heatmap mit Summen und Durchschnitt
+  - Verteilung: Anteils-Leiste, Ausgaben nach Wochentag und nach Betragshöhe
   - Hinweis, wie viel noch „Ohne Kategorie“ ist
 - **Tags** – dieselbe Analyse (Vergleich, Matrix, Detailseite) nach Tags, z. B. „Urlaub 2026“
   quer über alle Kategorien
 - **Wiederkehrend** – erkennt regelmäßige Zahlungen (Abos, Versicherungen, Miete …) automatisch
   aus den Buchungen der letzten 24 Monate: Rhythmus, typischer Betrag, Kosten pro Jahr,
-  nächste erwartete Zahlung, vermutlich beendete Verträge
+  nächste erwartete Zahlung, vermutlich beendete Verträge. Erkennt auch Abos, die über PayPal
+  & Co. laufen; Empfindlichkeit Streng/Normal/Locker umschaltbar
 - **Prognose** (Schalter oben rechts, standardmäßig aus) – Hochrechnung bis zum Ende des
-  laufenden Zeitraums. Gerechnet wird mit dem, was in den Vormonaten im restlichen Teil des
+  laufenden Zeitraums, auf der Übersicht zusätzlich **im Detail**: die einzelnen erwarteten
+  Termine (aus den wiederkehrenden Zahlungen) und die geschätzten weiteren Ausgaben je Kategorie. Gerechnet wird mit dem, was in den Vormonaten im restlichen Teil des
   Monats typischerweise noch dazukam – bereits gebuchte Fixkosten wie die Miete werden also
   nicht doppelt hochgerechnet
 - **Auffällige Monate** – in Matrix und Detailseite markiert, wenn ein Monat mindestens 50 %
@@ -33,7 +36,12 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   Buchung, Top-Empfänger und alle Buchungen der Kategorie (nach Datum oder Betrag)
 - **Buchungen** – Liste mit Kategorie-Filter und Volltextsuche (inkl. Firefly-Suchoperatoren wie
   `category_is:"Lebensmittel"` oder `amount_more:100`), Filter nach Art, Details per Klick
-- **Konten** – Kontostände und Verlauf als Liniendiagramm, Verbindlichkeiten
+- **Konten** – Kontostände und Verlauf als Liniendiagramm, Verbindlichkeiten; Klick auf ein
+  Konto öffnet die **Kontoseite** mit Saldo-Verlauf, Ein-/Ausgängen je Monat, Verteilung nach
+  Kategorie und allen Buchungen (Details per Klick)
+- **Automationen** – eigene Knöpfe für Webhooks, z. B. **n8n-Workflows**: in der Oberfläche
+  anlegen (URL, Methode, Header, Body mit Platzhaltern wie `{{start}}`/`{{end}}`), testen und
+  per Klick starten; Antwort und letzter Lauf werden angezeigt
 - **Suche** (Taste `/` oder Strg+K) – findet Kategorien, Empfänger, Zahler und Konten; Enter
   springt direkt hin, sonst Volltextsuche in den Buchungen
 - **Zeitraum** – Vorgaben (Monat, Quartal, Jahr …) oder ein **eigener Zeitraum** von–bis
@@ -46,6 +54,20 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
 Der Vergleich mit der Vorperiode ist fair: Läuft der gewählte Zeitraum noch (z. B. „Dieser
 Monat“ am 19.), wird mit demselben Abschnitt davor verglichen (1.–19. des Vormonats).
 
+## Automationen (n8n)
+
+1. In n8n einen Workflow mit einem **Webhook**-Knoten beginnen (Methode POST), die
+   **Production URL** kopieren und den Workflow aktivieren.
+2. Im Dashboard unter **Automationen → + Neue Automation** Name und URL eintragen.
+3. Optional einen Header für die Absicherung setzen (in n8n: Webhook → Authentication →
+   Header Auth) und den Body anpassen. Platzhalter: `{{start}}`, `{{end}}` (gewählter Zeitraum,
+   JJJJ-MM-TT), `{{period}}` (Bezeichnung), `{{now}}`, `{{action}}`.
+4. **Testen**, **Speichern** – danach startet der Knopf den Workflow.
+
+Die Konfiguration speichert der Server in `DATA_DIR/actions.json` (im Container `/data`).
+Der Aufruf geht vom Dashboard-Server aus, nicht vom Browser – die n8n-Adresse muss also vom
+Server aus erreichbar sein (im selben Docker-Netz z. B. `http://n8n:5678/webhook/…`).
+
 ## Wie es funktioniert
 
 Ein kleiner Node.js-Server (ohne Framework) liefert die Oberfläche aus und reicht API-Anfragen an
@@ -53,8 +75,9 @@ Firefly III weiter. Dadurch
 
 - bleibt dein **Access Token auf dem Server** und landet nie im Browser,
 - gibt es keine CORS-Probleme,
-- ist der Zugriff **nur lesend**: Der Server lässt ausschließlich `GET`-Anfragen auf eine
-  feste Liste von Endpunkten durch – das Dashboard kann nichts in Firefly verändern.
+- ist der Zugriff auf Firefly **nur lesend**: Der Server lässt ausschließlich `GET`-Anfragen auf
+  eine feste Liste von Endpunkten durch – das Dashboard kann nichts in Firefly verändern.
+  Geschrieben wird nur die eigene Automationen-Datei.
 
 ## Einrichtung
 
@@ -77,7 +100,8 @@ Voraussetzung: Node.js ≥ 20.12 oder Docker.
 
 ```bash
 docker build -t firefly-dashboard .
-docker run -d --name firefly-dashboard -p 8080:8080 --env-file .env firefly-dashboard
+docker run -d --name firefly-dashboard -p 8080:8080 --env-file .env \
+  -v firefly-dashboard-data:/data firefly-dashboard
 ```
 
 Oder in deiner bestehenden `docker-compose.yml` neben Firefly:
@@ -94,6 +118,11 @@ Oder in deiner bestehenden `docker-compose.yml` neben Firefly:
       FIREFLY_TOKEN: ${FIREFLY_TOKEN}
       DASHBOARD_USER: ich
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
+    volumes:
+      - firefly-dashboard-data:/data   # gespeicherte Automationen
+
+volumes:
+  firefly-dashboard-data:
 ```
 
 ## Demo ohne eigene Firefly-Instanz
@@ -116,6 +145,7 @@ auf <http://localhost:8080>.
 | `DASHBOARD_USER` / `DASHBOARD_PASSWORD` | nein | Passwortschutz per HTTP Basic Auth – **empfohlen**, sobald das Dashboard nicht nur lokal läuft |
 | `FIREFLY_PUBLIC_URL` | nein | Basis für „In Firefly öffnen“-Links |
 | `CACHE_SECONDS` | nein | Zwischenspeicher für API-Antworten (Standard 60, „Neu laden“ umgeht ihn) |
+| `DATA_DIR` | nein | Ablage für Automationen (Standard `./data`, im Docker-Image `/data`) |
 
 ## Hinweise
 

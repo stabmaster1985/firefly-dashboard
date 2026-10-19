@@ -60,7 +60,9 @@ export function applyCardFilter(input) {
   if (input.value.trim() && total && !shown) {
     if (!note) target.insertAdjacentHTML('beforeend', '<div class="empty filter-empty"></div>');
     note = target.querySelector(':scope > .filter-empty');
-    note.textContent = `Nichts gefunden für „${input.value.trim()}“.`;
+    const text = `Nichts gefunden für „${input.value.trim()}“.`;
+    // nur bei Änderung schreiben – sonst würde der MutationObserver endlos neu filtern
+    if (note.textContent !== text) note.textContent = text;
   } else note?.remove();
 }
 

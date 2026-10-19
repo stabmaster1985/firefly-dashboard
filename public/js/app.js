@@ -4,6 +4,8 @@ import * as api from './api.js';
 import * as views from './views.js';
 import { categories, categoryDetail, tags, tagDetail, forecastEnabled } from './categories.js';
 import { recurring } from './recurring.js';
+import { accountDetail } from './account.js';
+import { actions } from './actions.js';
 import { applyCardFilter } from './common.js';
 import { destroyCharts } from './charts.js';
 import { PERIODS, periodById, customPeriodId, parseDate, isoDate, debounce, storage, store, esc } from './util.js';
@@ -15,10 +17,12 @@ const ROUTES = {
   wiederkehrend: { view: recurring, title: 'Wiederkehrend', nav: 'recurring', noPeriod: true },
   buchungen: { view: views.transactions, title: 'Buchungen', nav: 'transactions' },
   konten: { view: views.accounts, title: 'Konten', nav: 'accounts' },
+  automationen: { view: actions, title: 'Automationen', nav: 'actions' },
 };
 const DETAIL = {
   kategorien: { view: categoryDetail, title: 'Kategorie', nav: 'categories' },
   tags: { view: tagDetail, title: 'Tag', nav: 'tags' },
+  konten: { view: accountDetail, title: 'Konto', nav: 'accounts' },
 };
 
 const viewEl = document.getElementById('view');
@@ -177,7 +181,11 @@ viewEl.addEventListener('input', (e) => {
   if (e.target.matches('.card-filter')) applyCardFilter(e.target);
 });
 // Inhalte, die nachgeladen oder neu sortiert werden, sofort wieder filtern
-new MutationObserver(() => {
+new MutationObserver((mutations) => {
+  // eigene Hinweis-Änderungen („Nichts gefunden“) ignorieren
+  const relevant = mutations.some((m) => !(m.target.classList?.contains('filter-empty') ||
+    [...m.addedNodes, ...m.removedNodes].every((n) => n.classList?.contains('filter-empty'))));
+  if (!relevant) return;
   viewEl.querySelectorAll('.card-filter').forEach((input) => input.value.trim() && applyCardFilter(input));
 }).observe(viewEl, { childList: true, subtree: true });
 

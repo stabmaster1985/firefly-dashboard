@@ -2,9 +2,11 @@
 
 import * as api from './api.js';
 import { barChart, lineChart, legend, seriesColor } from './charts.js';
-import { money, percent, esc, fmtDate, initials, isoDate, today, startOfMonth, endOfMonth, debounce, parseDate } from './util.js';
+import { money, percent, esc, fmtDate, initials, isoDate, today, startOfMonth, endOfMonth, debounce, parseDate, addDays } from './util.js';
 import { skeleton, fill, card, stat, signedAmount, txRow, mainCurrency, sum } from './common.js';
-import { categoryTotals, compareRange, delta, forecastActive, forecastTotal } from './categories.js';
+import { categoryTotals, compareRange, delta, forecastActive, forecastTotal, forecastRemainder } from './categories.js';
+import { loadRecurring, upcomingBetween } from './recurring.js';
+import { sankey } from './dist.js';
 
 export async function overview(view, { period }) {
   const { start, end } = period;
@@ -18,6 +20,8 @@ export async function overview(view, { period }) {
       <section class="card span-3" id="s-balance"></section>
       ${card('cashflow', 'Einnahmen & Ausgaben', { span: 'span-8', meta: 'letzte 12 Monate' })}
       ${card('accounts', 'Konten', { span: 'span-4', link: '<a href="#/konten">Alle →</a>' })}
+      ${card('flow', 'Geldfluss', { meta: `${esc(period.label)} · Einnahmen → Ausgaben` })}
+      ${forecastActive(period) ? card('expected', `Erwartet bis ${fmtDate(end, { day: 'numeric', month: 'long' })}`, { filter: true, meta: 'Prognose im Detail' }) : ''}
       ${card('categories', 'Ausgaben nach Kategorie', { span: 'span-6', filter: true, link: '<a href="#/kategorien">Analyse →</a>' })}
       ${card('changes', 'Größte Veränderungen', { span: 'span-6', filter: true, meta: `ggü. ${fmtDate(prevStart, { day: 'numeric', month: 'short' })} – ${fmtDate(prevEnd, { day: 'numeric', month: 'short' })}` })}
       ${card('recent', 'Letzte Buchungen', { span: 'span-12', filter: true, link: '<a href="#/buchungen">Alle →</a>' })}
@@ -91,9 +95,9 @@ export async function overview(view, { period }) {
     el.innerHTML = `<div class="list">${list
       .map((a) => {
         const at = a.attributes;
-        return `<div class="row"><div class="avatar">${esc(initials(at.name))}</div>
+        return `<a class="row plain" href="#/konten/${encodeURIComponent(a.id)}"><div class="avatar">${esc(initials(at.name))}</div>
           <div style="min-width:0"><div class="title">${esc(at.name)}</div><div class="subtitle">${esc(ROLE[at.account_role] || 'Konto')}</div></div>
-          <div class="amount">${money(at.current_balance, at.currency_code)}</div></div>`;
+          <div class="amount">${money(at.current_balance, at.currency_code)}</div></a>`;
       })
       .join('')}</div>`;
   });
@@ -137,6 +141,60 @@ export async function overview(view, { period }) {
         <div class="amount">${money(c.value - c.prev, code, { signed: true })}<div>${delta(c.value, c.prev, 'expense', code)}</div></div></a>`)
       .join('')}</div>`;
   });
+
+  fill($('flow'), () => Promise.all([categoryTotals('income', start, end), categoryTotals('expense', start, end)]), (el, [inc, out]) => {
+    const code = mainCurrency([...inc, ...out], 'code');
+    sankey(el, {
+      incomes: inc.filter((c) => c.code === code),
+      expenses: out.filter((c) => c.code === code),
+      code,
+      hrefFor: (n) => `#/kategorien/${encodeURIComponent(n.id)}`,
+    });
+  }, skeleton(1, 300));
+
+  if (showForecast) {
+    const t1 = addDays(today(), 1);
+    fill($('expected'), () => Promise.all([
+      loadRecurring('expense'),
+      loadRecurring('income'),
+      forecastRemainder('category', 'expense', period),
+    ]), (el, [rOut, rIn, remainder]) => {
+      const fixedOut = upcomingBetween(rOut.items, t1, end);
+      const fixedIn = upcomingBetween(rIn.items, t1, end);
+      const code = mainCurrency([...fixedOut, ...remainder.items], 'code');
+      // Variable Ausgaben = typischer Rest je Kategorie minus bereits erwartete Fixposten
+      const fixedByCat = new Map();
+      fixedOut.forEach((f) => fixedByCat.set(f.category, (fixedByCat.get(f.category) || 0) + f.amount));
+      const variable = remainder.items
+        .filter((c) => c.code === code)
+        .map((c) => ({ ...c, value: Math.max(0, c.value - (fixedByCat.get(c.name) || 0)) }))
+        .filter((c) => c.value >= 1)
+        .sort((a, b) => b.value - a.value);
+      const rows = [
+        ...fixedIn.map((f) => ({ date: f.date, name: f.name, sub: `${f.rhythm.label} · ${f.category || 'Einnahme'}`, amount: f.amount, sign: 1, kind: 'wiederkehrend' })),
+        ...fixedOut.map((f) => ({ date: f.date, name: f.name, sub: `${f.rhythm.label} · ${f.category || 'ohne Kategorie'}`, amount: f.amount, sign: -1, kind: 'wiederkehrend' })),
+      ].sort((a, b) => a.date - b.date);
+      const sumIn = sum(fixedIn, (f) => f.amount);
+      const sumOut = sum(fixedOut, (f) => f.amount) + sum(variable, (v) => v.value);
+      el.innerHTML = `
+        <div class="legend" style="margin-bottom:10px"><span>Erwartete Einnahmen <b class="pos">&nbsp;${money(sumIn, code)}</b></span>
+          <span>Erwartete Ausgaben <b>&nbsp;${money(sumOut, code)}</b></span><span>Saldo <b>&nbsp;${money(sumIn - sumOut, code, { signed: true })}</b></span></div>
+        <div class="dist-grid">
+          <div><h3 class="sub-h">Feste Termine <span class="muted">(aus wiederkehrenden Zahlungen)</span></h3>
+            ${rows.length ? `<div class="list">${rows.map((r) => `<div class="row">
+              <div class="avatar date-badge"><b>${r.date.getDate()}.</b><small>${r.date.toLocaleDateString('de-DE', { month: 'short' })}</small></div>
+              <div style="min-width:0"><div class="title">${esc(r.name)}</div><div class="subtitle">${esc(r.sub)}</div></div>
+              <div class="amount ${r.sign > 0 ? 'pos' : ''}">${money(r.sign * r.amount, code, { signed: r.sign > 0 })}</div></div>`).join('')}</div>`
+              : '<div class="empty">Keine festen Termine mehr im Zeitraum.</div>'}</div>
+          <div><h3 class="sub-h">Geschätzte weitere Ausgaben <span class="muted">(typischer Rest je Kategorie)</span></h3>
+            ${variable.length ? `<div class="list">${variable.map((v) => `<a class="row plain" href="#/kategorien/${encodeURIComponent(v.id)}">
+              <div class="avatar">${esc(initials(v.name))}</div>
+              <div style="min-width:0"><div class="title">${esc(v.name)}</div><div class="subtitle">Ø der letzten Perioden im selben Zeitraum</div></div>
+              <div class="amount forecast">≈ ${money(-v.value, code)}</div></a>`).join('')}</div>`
+              : '<div class="empty">Keine weiteren Ausgaben zu erwarten.</div>'}</div>
+        </div>`;
+    }, skeleton(5));
+  }
 
   fill($('recent'), () => api.get('transactions', { start, end, type: 'all', limit: 10 }), (el, res) => {
     const rows = api.flattenTransactions(res.data).slice(0, 10);
@@ -336,7 +394,7 @@ export async function transactions(view, { period, params }) {
 // ---------------------------------------------------------------------------
 // Konten
 
-const ROLE = {
+export const ROLE = {
   defaultAsset: 'Girokonto',
   sharedAsset: 'Gemeinschaftskonto',
   savingAsset: 'Sparkonto',
@@ -367,12 +425,13 @@ export async function accounts(view, { period }) {
       <section class="card tile"><span class="kind">Summe aller Konten</span><span class="balance">${money(total, code)}</span><span class="iban">${active.length} aktive Konten</span></section>
       ${active.map((a, i) => {
         const at = a.attributes;
-        return `<section class="card tile">
+        return `<a class="card tile link-tile" href="#/konten/${encodeURIComponent(a.id)}">
           <span class="kind"><i class="swatch" style="background:${seriesColor(i)}"></i>${esc(ROLE[at.account_role] || 'Konto')}</span>
           <span class="name">${esc(at.name)}</span>
           <span class="balance">${money(at.current_balance, at.currency_code)}</span>
           <span class="iban">${esc(at.iban || at.account_number || '')}</span>
-        </section>`;
+          <span class="tile-go">Buchungen →</span>
+        </a>`;
       }).join('')}
     </div>`;
   }, `<div class="tiles"><section class="card tile">${skeleton(3)}</section></div>`);
@@ -403,9 +462,9 @@ export async function accounts(view, { period }) {
     el.innerHTML = `<h2 style="font-size:15px;margin:8px 0 12px">Verbindlichkeiten</h2><div class="tiles">${active
       .map((a) => {
         const at = a.attributes;
-        return `<section class="card tile"><span class="kind">${esc(LIABILITY[at.liability_type] || 'Verbindlichkeit')}</span>
+        return `<a class="card tile link-tile" href="#/konten/${encodeURIComponent(a.id)}"><span class="kind">${esc(LIABILITY[at.liability_type] || 'Verbindlichkeit')}</span>
           <span class="name">${esc(at.name)}</span><span class="balance">${money(at.current_balance, at.currency_code)}</span>
-          <span class="iban">${at.interest ? `${esc(at.interest)} % Zinsen` : ''}</span></section>`;
+          <span class="iban">${at.interest ? `${esc(at.interest)} % Zinsen` : ''}</span></a>`;
       })
       .join('')}</div>`;
   }, '');

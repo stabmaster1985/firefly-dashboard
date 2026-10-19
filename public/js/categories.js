@@ -5,6 +5,7 @@ import * as api from './api.js';
 import { barChart, legend, seriesColor, cssVar } from './charts.js';
 import { money, percent, esc, fmtDate, fmtMonth, today, startOfMonth, endOfMonth, isoDate, addDays, storage, store, debounce } from './util.js';
 import { skeleton, fill, card, stat, signedAmount, mainCurrency, sum, counterparty, downloadCsv, termsMatcher, multiSelect } from './common.js';
+import { shareStrip, weekdayChart, sizeChart } from './dist.js';
 
 export const NO_CATEGORY = '0';
 
@@ -142,13 +143,21 @@ export async function forecastRemainder(dimKey, kind, period) {
   const windows = remainderWindows(period);
   const lists = await Promise.all(windows.map(([s, e]) => dimTotals(dimKey, kind, s, e)));
   const acc = new Map();
+  const names = new Map();
   for (const list of lists) {
     for (const c of list) {
       const key = `${c.id}|${c.code}`;
       acc.set(key, (acc.get(key) || 0) + c.value / windows.length);
+      names.set(key, c.name);
     }
   }
-  return (id, code) => acc.get(`${id}|${code}`) || 0;
+  const get = (id, code) => acc.get(`${id}|${code}`) || 0;
+  // Einzelposten für die Prognose im Detail
+  get.items = [...acc].map(([key, value]) => {
+    const [id, code] = key.split('|');
+    return { id, code, name: names.get(key), value };
+  });
+  return get;
 }
 
 /** Hochrechnung der Gesamtsumme (Einnahmen oder Ausgaben). */
@@ -329,6 +338,7 @@ async function analysis(view, { period, params, dimKey }) {
       <section class="card span-3" id="c-top"></section>
       <section class="card span-3" id="c-none"></section>
       ${card('c-table', `${D.plural} im Vergleich`, { link: '<button class="link-btn" data-csv="table">CSV ↓</button>' })}
+      ${card('c-dist', 'Verteilung', { meta: esc(period.label) })}
       ${card('c-stack', 'Top 5 im Monatsverlauf', { meta: monthsLabel })}
       ${card('c-matrix', 'Monatsmatrix', { link: `<span class="meta">${monthsLabel} · <button class="link-btn" data-csv="matrix">CSV ↓</button></span>` })}
     </div>`;
@@ -519,7 +529,28 @@ async function analysis(view, { period, params, dimKey }) {
       ${outliers ? `<span><i class="outlier-key"></i>auffällig hoher Monat (${outliers}×)</span>` : ''}<span>Feld anklicken zeigt die Buchungen darunter</span></div>`;
   }
 
+  // Einzelbuchungen des Zeitraums – für Wochentage und Betragsklassen
+  const periodTxs = api.getAll('transactions', { start, end, type: K.txType })
+    .then((groups) => api.flattenTransactions(groups).filter((t) => t.type === K.txType));
+  let distCharts = [];
+  function renderDist(el, d, txs) {
+    distCharts.forEach((c) => c.destroy());
+    distCharts = [];
+    const rows = d.rows.filter(matches);
+    const tests = rows.map((r) => belongsTo(dimKey, r));
+    const own = txs.filter((t) => t.currency_code === d.code && tests.some((test) => test(t)));
+    el.innerHTML = `${shareStrip(rows.map((r) => ({ id: r.id, name: r.name, value: r.value })), { code: d.code, hrefFor: (p) => detailHref(D, p.id, kind) })}
+      <div class="dist-grid">
+        <div><h3 class="sub-h">Nach Wochentag</h3><div class="chart-box short"><canvas aria-label="${K.label} nach Wochentag"></canvas></div></div>
+        <div><h3 class="sub-h">Nach Betragshöhe <span class="muted">(Anzahl Buchungen)</span></h3><div class="chart-box short"><canvas aria-label="Buchungen nach Betragshöhe"></canvas></div></div>
+      </div>`;
+    const [c1, c2] = el.querySelectorAll('canvas');
+    const color = seriesColor(kind === 'income' ? 2 : 0);
+    distCharts = [weekdayChart(c1, own, d.code, color), sizeChart(c2, own, d.code, color)];
+  }
+
   const rerender = (d) => {
+    periodTxs.then((txs) => renderDist($('c-dist'), d, txs)).catch(() => {});
     renderTable($('c-table'), d);
     renderStack($('c-stack'), d);
     renderMatrix($('c-matrix'), d);
@@ -539,6 +570,7 @@ async function analysis(view, { period, params, dimKey }) {
       if (tr && !e.target.closest('a')) location.hash = tr.dataset.href;
     });
   }, skeleton(8));
+  fill($('c-dist'), () => Promise.all([data, periodTxs]), (el, [d, txs]) => renderDist(el, d, txs), skeleton(3, 60));
   fill($('c-stack'), () => data, renderStack, skeleton(1, 280));
   fill($('c-matrix'), () => data, (el, d) => {
     renderMatrix(el, d);
@@ -618,6 +650,7 @@ async function detail(view, { period, params, id, dimKey }) {
       <section class="card span-3" id="d-count"></section>
       <section class="card span-3" id="d-per"></section>
       ${card('d-chart', 'Monatsverlauf', { meta: `${fmtMonth(months[0][0])} – ${fmtMonth(months.at(-1)[0])}` })}
+      ${card('d-dist', 'Verteilung', { meta: esc(period.label) })}
       ${card('d-partners', K.partner, { span: 'span-5', filter: true })}
       ${card('d-tx', 'Buchungen', { span: 'span-7', filter: true, meta: '<span id="d-sort"></span>' })}
     </div>`;
@@ -713,6 +746,19 @@ async function detail(view, { period, params, id, dimKey }) {
     ds.borderSkipped = false;
     chart.update('none');
   }, skeleton(1, 280));
+
+  fill($('d-dist'), () => txs, (el, list) => {
+    const code = mainCurrency(list);
+    const own = list.filter((t) => t.currency_code === code);
+    if (!own.length) return (el.innerHTML = '<div class="empty">Keine Buchungen im Zeitraum.</div>');
+    el.innerHTML = `<div class="dist-grid">
+      <div><h3 class="sub-h">Nach Wochentag</h3><div class="chart-box short"><canvas></canvas></div></div>
+      <div><h3 class="sub-h">Nach Betragshöhe <span class="muted">(Anzahl Buchungen)</span></h3><div class="chart-box short"><canvas></canvas></div></div></div>`;
+    const [c1, c2] = el.querySelectorAll('canvas');
+    const color = seriesColor(kind === 'income' ? 2 : 0);
+    weekdayChart(c1, own, code, color);
+    sizeChart(c2, own, code, color);
+  }, skeleton(1, 200));
 
   fill($('d-partners'), () => txs, (el, list) => {
     const code = mainCurrency(list);

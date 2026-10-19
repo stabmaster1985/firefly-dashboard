@@ -1,0 +1,18 @@
+# Firefly Dashboard – Werte unten anpassen, dann: docker compose up -d --build
+services:
+  firefly-dashboard:
+    build: .
+    container_name: firefly-dashboard
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      FIREFLY_URL: "http://192.168.1.50:8081"     # Adresse deiner Firefly-Instanz
+      FIREFLY_TOKEN: "HIER-DEN-FIREFLY-TOKEN-EINFUEGEN"
+      DASHBOARD_USER: "ich"
+      DASHBOARD_PASSWORD: "HIER-EIN-PASSWORT"
+    volumes:
+      - firefly-dashboard-data:/data   # gespeicherte Automationen
+
+volumes:
+  firefly-dashboard-data:

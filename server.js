@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { createActions } from './lib/actions.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
@@ -24,13 +25,17 @@ const HOST = process.env.HOST || '0.0.0.0';
 const DASHBOARD_USER = process.env.DASHBOARD_USER || '';
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || '';
 const CACHE_SECONDS = Number(process.env.CACHE_SECONDS ?? 60);
+const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
 
 if (!FIREFLY_URL || !FIREFLY_TOKEN) {
   console.error('FIREFLY_URL und FIREFLY_TOKEN müssen gesetzt sein (siehe .env.example).');
   process.exit(1);
 }
 
-// Nur diese Endpunkte dürfen gelesen werden – Schreibzugriffe gibt es nicht.
+// Automationen (Webhooks) – eigene, lokal gespeicherte Konfiguration
+const handleActions = createActions(DATA_DIR);
+
+// Nur diese Firefly-Endpunkte dürfen gelesen werden – in Firefly wird nie geschrieben.
 const ALLOWED = [
   /^about(\/user)?$/,
   /^summary\/basic$/,
@@ -160,6 +165,7 @@ const server = http.createServer((req, res) => {
   }
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname.startsWith('/api/')) return proxy(req, res, url);
+  if (url.pathname === '/local/actions' || url.pathname.startsWith('/local/actions/')) return handleActions(req, res, url);
   if (url.pathname === '/config.json') {
     const config = { fireflyUrl: process.env.FIREFLY_PUBLIC_URL || FIREFLY_URL };
     return send(res, 200, JSON.stringify(config), { 'Content-Type': MIME['.json'] });
