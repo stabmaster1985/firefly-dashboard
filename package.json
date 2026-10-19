@@ -1,0 +1,19 @@
+{
+  "name": "firefly-dashboard",
+  "version": "1.0.0",
+  "description": "Modernes, schreibgeschütztes Web-Dashboard für Firefly III",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "mock": "node mock/firefly-mock.js",
+    "demo": "node mock/demo.js"
+  },
+  "dependencies": {
+    "chart.js": "4.4.7"
+  }
+}
