@@ -467,6 +467,24 @@ const routes = {
   },
 };
 
+// MOCK_WORKERS begrenzt wie PHP-FPM, wie viele Abfragen gleichzeitig laufen
+const queue = [];
+let busy = 0;
+function worker(delay, done) {
+  queue.push([delay, done]);
+  const next = () => {
+    if (busy >= Number(process.env.MOCK_WORKERS || 1000) || !queue.length) return;
+    const [d, fn] = queue.shift();
+    busy += 1;
+    setTimeout(() => {
+      fn();
+      busy -= 1;
+      next();
+    }, d);
+  };
+  next();
+}
+
 http
   .createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
@@ -524,7 +542,11 @@ http
       res.writeHead(404, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ message: `Not mocked: ${key}` }));
     }
-    res.writeHead(200, { 'Content-Type': 'application/vnd.api+json' });
-    res.end(JSON.stringify(handler(url.searchParams)));
+    // MOCK_DELAY simuliert eine echte Firefly-Instanz (PHP braucht pro Abfrage Zeit)
+    const delay = Number(process.env.MOCK_DELAY || 0) * (key === 'summary/basic' ? 4 : 1);
+    worker(delay, () => {
+      res.writeHead(200, { 'Content-Type': 'application/vnd.api+json' });
+      res.end(JSON.stringify(handler(url.searchParams)));
+    });
   })
   .listen(PORT, () => console.log(`Firefly-III-Demo-API auf http://localhost:${PORT} (Token: demo)`));

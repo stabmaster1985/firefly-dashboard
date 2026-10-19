@@ -13,6 +13,7 @@ let fresh = false;
 /** Beim nächsten Rendern den Server-Cache umgehen (Neu-laden-Knopf). */
 export function setFresh(value) {
   fresh = value;
+  if (value) memo.clear();
 }
 
 function query(params = {}) {
@@ -25,12 +26,26 @@ function query(params = {}) {
   return s ? `?${s}` : '';
 }
 
-export async function get(path, params) {
+// Kurzzeit-Speicher im Browser: Hin- und Herwechseln zwischen Seiten ohne
+// erneute Anfragen; gleiche gleichzeitige Anfragen laufen nur einmal.
+const memo = new Map();
+const MEMO_MS = 3 * 60 * 1000;
+
+export function get(path, params) {
+  const url = `/api/${path}${query(params)}`;
+  const hit = memo.get(url);
+  if (!fresh && hit && Date.now() - hit.at < MEMO_MS) return hit.promise;
+  const promise = load(url);
+  memo.set(url, { promise, at: Date.now() });
+  promise.catch(() => memo.delete(url));
+  if (memo.size > 800) memo.delete(memo.keys().next().value);
+  return promise;
+}
+
+async function load(url) {
   let res;
   try {
-    res = await fetch(`/api/${path}${query(params)}`, {
-      headers: fresh ? { 'X-No-Cache': '1' } : {},
-    });
+    res = await fetch(url, { headers: fresh ? { 'X-No-Cache': '1' } : {} });
   } catch (err) {
     throw new ApiError(`Dashboard-Server nicht erreichbar (${err.message})`, 0);
   }
@@ -48,12 +63,15 @@ export async function get(path, params) {
   return body;
 }
 
+/** Seitengröße für Listen – muss zu lib/warmer.js passen (gleicher Cache-Eintrag). */
+const PAGE_SIZE = 250;
+
 /** Holt alle Seiten eines paginierten Endpunkts. */
 export async function getAll(path, params = {}) {
-  const first = await get(path, { ...params, limit: 100, page: 1 });
+  const first = await get(path, { ...params, limit: PAGE_SIZE, page: 1 });
   const pages = first?.meta?.pagination?.total_pages || 1;
   const rest = await Promise.all(
-    Array.from({ length: pages - 1 }, (_, i) => get(path, { ...params, limit: 100, page: i + 2 })),
+    Array.from({ length: pages - 1 }, (_, i) => get(path, { ...params, limit: PAGE_SIZE, page: i + 2 })),
   );
   return [first, ...rest].flatMap((r) => r?.data || []);
 }

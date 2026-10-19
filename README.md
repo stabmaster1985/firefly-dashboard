@@ -144,8 +144,30 @@ auf <http://localhost:8080>.
 | `PORT` / `HOST` | nein | Adresse des Dashboards (Standard `0.0.0.0:8080`) |
 | `DASHBOARD_USER` / `DASHBOARD_PASSWORD` | nein | Passwortschutz per HTTP Basic Auth – **empfohlen**, sobald das Dashboard nicht nur lokal läuft |
 | `FIREFLY_PUBLIC_URL` | nein | Basis für „In Firefly öffnen“-Links |
-| `CACHE_SECONDS` | nein | Zwischenspeicher für API-Antworten (Standard 60, „Neu laden“ umgeht ihn) |
+| `CACHE_SECONDS` | nein | Gültigkeit für Daten des laufenden Zeitraums (Standard 60 s; danach wird sofort die letzte Antwort gezeigt und im Hintergrund erneuert) |
+| `CACHE_HISTORY_HOURS` | nein | Gültigkeit für abgeschlossene Zeiträume (Standard 12 h) |
+| `WARM_MINUTES` | nein | Vorwärmen alle N Minuten (Standard 10, `0` = aus) |
+| `FIREFLY_CONCURRENCY` | nein | Höchstzahl gleichzeitiger Anfragen an Firefly (Standard 4) |
 | `DATA_DIR` | nein | Ablage für Automationen (Standard `./data`, im Docker-Image `/data`) |
+
+## Geschwindigkeit
+
+Firefly III braucht pro Abfrage oft mehrere hundert Millisekunden und bearbeitet nur wenige
+gleichzeitig. Das Dashboard gleicht das aus:
+
+- **Zwischenspeicher mit Gedächtnis:** Abgeschlossene Monate ändern sich kaum und bleiben 12 h
+  gültig, der laufende Zeitraum 60 s. Ist ein Eintrag abgelaufen, wird trotzdem sofort die
+  letzte Antwort gezeigt und im Hintergrund erneuert.
+- **Vorwärmen:** Beim Start und alle 10 Minuten lädt der Server die üblichen Daten (letzte
+  13 Monate, Konten, Kategorien, Buchungen für „Wiederkehrend“) selbst vor.
+- **Weniger und leichtere Abfragen:** gleiche Anfragen laufen nur einmal, große Listen in
+  250er-Paketen, Antworten komprimiert, im Browser 3 Minuten gemerkt.
+- Unten in der Seitenleiste steht die Antwortzeit von Firefly und die Trefferquote des
+  Zwischenspeichers (Maus darüber zeigt die langsamsten Abfragen).
+
+**Neu laden** (Pfeil oben rechts) holt alles frisch aus Firefly – z. B. nachdem du in Firefly
+alte Buchungen umkategorisiert hast, denn abgeschlossene Monate werden sonst bis zu 12 h aus
+dem Zwischenspeicher gezeigt.
 
 ## Hinweise
 

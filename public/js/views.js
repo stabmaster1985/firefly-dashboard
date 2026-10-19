@@ -8,6 +8,11 @@ import { categoryTotals, compareRange, delta, forecastActive, forecastTotal, for
 import { loadRecurring, upcomingBetween } from './recurring.js';
 import { sankey } from './dist.js';
 
+/** Summe aller Einnahmen bzw. Ausgaben je Währung (Map Währung → Betrag). */
+const totalsOf = (kind, start, end) =>
+  api.get(`insight/${kind}/total`, { start, end })
+    .then((list) => new Map((list || []).map((x) => [x.currency_code, Math.abs(Number(x.difference_float ?? x.difference))])));
+
 export async function overview(view, { period }) {
   const { start, end } = period;
   const cmp = compareRange(period);
@@ -28,8 +33,10 @@ export async function overview(view, { period }) {
     </div>`;
   const $ = (id) => view.querySelector(`#${id}`);
 
+  // summary/basic ist Fireflys teuerste Abfrage – nur noch einmal für den Zeitraum
+  // (Nettovermögen); Vergleich und Monatsverlauf über die leichten Summen-Endpunkte.
   const summary = api.get('summary/basic', { start, end });
-  const prevSummary = api.get('summary/basic', { start: prevStart, end: prevEnd }).catch(() => null);
+  const prevSummary = Promise.all([totalsOf('income', prevStart, prevEnd), totalsOf('expense', prevStart, prevEnd)]).catch(() => null);
   const showForecast = forecastActive(period);
   const both = Promise.all([
     summary,
@@ -40,7 +47,7 @@ export async function overview(view, { period }) {
   const until = fmtDate(end, { day: 'numeric', month: 'short' });
   const fcLine = (value, code) => `<br><span class="forecast">≈ ${money(value, code)} bis ${until}</span>`;
   const tile = (id, render) => fill($(id), () => both, render, skeleton(2, 22));
-  const prevOf = (prev, key, code) => (prev ? api.summaryValues(prev, key).find((v) => v.code === code)?.value || 0 : 0);
+  const prevOf = (prev, key, code) => (prev ? prev[key === 'earned' ? 0 : 1].get(code) || 0 : 0);
 
   tile('s-networth', (el, [s]) => {
     const [main, ...rest] = api.summaryValues(s, 'net-worth');
@@ -71,12 +78,12 @@ export async function overview(view, { period }) {
   // Cashflow der letzten 12 Monate (bis zum Ende des gewählten Zeitraums)
   const ref = end > today() ? today() : end;
   const months = Array.from({ length: 12 }, (_, i) => [startOfMonth(ref, i - 11), endOfMonth(ref, i - 11)]);
-  fill($('cashflow'), () => Promise.all(months.map(([s, e]) => api.get('summary/basic', { start: s, end: e }))), (el, sums) => {
-    const code = api.summaryValues(sums.at(-1), 'earned')[0]?.code || api.summaryValues(sums.at(-1), 'spent')[0]?.code || 'EUR';
-    const pick = (s, p) => api.summaryValues(s, p).find((v) => v.code === code)?.value || 0;
+  fill($('cashflow'), () => Promise.all(months.map(([s, e]) => Promise.all([totalsOf('income', s, e), totalsOf('expense', s, e)]))), (el, sums) => {
+    const codes = sums.flatMap(([i, o]) => [...i.keys(), ...o.keys()]);
+    const code = mainCurrency(codes.map((c) => ({ currency_code: c })));
     const series = [
-      { label: 'Einnahmen', data: sums.map((s) => pick(s, 'earned')), color: seriesColor(0) },
-      { label: 'Ausgaben', data: sums.map((s) => Math.abs(pick(s, 'spent'))), color: seriesColor(1) },
+      { label: 'Einnahmen', data: sums.map(([i]) => i.get(code) || 0), color: seriesColor(0) },
+      { label: 'Ausgaben', data: sums.map(([, o]) => o.get(code) || 0), color: seriesColor(1) },
     ];
     const totalIn = sum(series[0].data, (x) => x);
     const totalOut = sum(series[1].data, (x) => x);

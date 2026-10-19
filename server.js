@@ -7,8 +7,11 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { createActions } from './lib/actions.js';
+import { createFirefly } from './lib/firefly.js';
+import { startWarmer } from './lib/warmer.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
@@ -25,6 +28,9 @@ const HOST = process.env.HOST || '0.0.0.0';
 const DASHBOARD_USER = process.env.DASHBOARD_USER || '';
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || '';
 const CACHE_SECONDS = Number(process.env.CACHE_SECONDS ?? 60);
+const CACHE_HISTORY_HOURS = Number(process.env.CACHE_HISTORY_HOURS ?? 12);
+const FIREFLY_CONCURRENCY = Number(process.env.FIREFLY_CONCURRENCY ?? 4);
+const WARM_MINUTES = Number(process.env.WARM_MINUTES ?? 10);
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
 
 if (!FIREFLY_URL || !FIREFLY_TOKEN) {
@@ -63,7 +69,13 @@ const STATIC_FILES = {
   '/vendor/chart.umd.js': path.join(ROOT, 'node_modules/chart.js/dist/chart.umd.js'),
 };
 
-const cache = new Map();
+const firefly = createFirefly({
+  baseUrl: FIREFLY_URL,
+  token: FIREFLY_TOKEN,
+  ttl: CACHE_SECONDS,
+  historyTtl: CACHE_HISTORY_HOURS * 3600,
+  concurrency: Math.max(1, FIREFLY_CONCURRENCY),
+});
 
 function send(res, status, body, headers = {}) {
   res.writeHead(status, {
@@ -104,38 +116,27 @@ async function proxy(req, res, url) {
     });
   }
 
-  const target = `${FIREFLY_URL}/api/v1/${apiPath}${url.search}`;
-  const noCache = req.headers['x-no-cache'] === '1';
-  const hit = cache.get(target);
-  if (!noCache && hit && hit.expires > Date.now()) {
-    return send(res, 200, hit.body, { 'Content-Type': MIME['.json'], 'X-Cache': 'HIT' });
-  }
-
   try {
-    const upstream = await fetch(target, {
-      headers: {
-        Authorization: `Bearer ${FIREFLY_TOKEN}`,
-        Accept: 'application/vnd.api+json, application/json',
-      },
-      signal: AbortSignal.timeout(30_000),
-    });
-    const body = Buffer.from(await upstream.arrayBuffer());
-    if (upstream.ok && CACHE_SECONDS > 0) {
-      cache.set(target, { body, expires: Date.now() + CACHE_SECONDS * 1000 });
-    }
-    send(res, upstream.status, body, {
-      'Content-Type': upstream.headers.get('content-type') || MIME['.json'],
-      'X-Cache': 'MISS',
+    const result = await firefly.get(apiPath, url.searchParams, { fresh: req.headers['x-no-cache'] === '1' });
+    const gzip = result.gz && /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+    send(res, result.status, gzip ? result.gz : result.body, {
+      'Content-Type': result.type,
+      'X-Cache': result.state,
+      'Cache-Control': 'no-store',
+      ...(gzip ? { 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' } : {}),
     });
   } catch (err) {
-    console.error(`Firefly nicht erreichbar (${target}):`, err.message);
+    console.error(`Firefly nicht erreichbar (${apiPath}):`, err.message);
     send(res, 502, JSON.stringify({ message: `Firefly III nicht erreichbar: ${err.message}` }), {
       'Content-Type': MIME['.json'],
     });
   }
 }
 
-function serveStatic(res, url) {
+// Statische Dateien einmal komprimiert vorhalten; ETag spart Übertragungen
+const staticCache = new Map();
+
+function serveStatic(req, res, url) {
   let file = STATIC_FILES[url.pathname];
   if (!file) {
     const rel = path.normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, '');
@@ -146,14 +147,23 @@ function serveStatic(res, url) {
     if (err || !stat.isFile()) {
       // Unbekannte Pfade landen in der App (Hash-Routing)
       file = path.join(ROOT, 'public', 'index.html');
+      stat = fs.statSync(file);
     }
-    fs.readFile(file, (readErr, data) => {
-      if (readErr) return send(res, 404, 'Not found');
-      send(res, 200, data, {
-        'Content-Type': MIME[path.extname(file)] || 'application/octet-stream',
-        'Cache-Control': 'no-cache',
-      });
-    });
+    const etag = `"${stat.size.toString(36)}-${Math.round(stat.mtimeMs).toString(36)}"`;
+    const headers = {
+      'Content-Type': MIME[path.extname(file)] || 'application/octet-stream',
+      'Cache-Control': 'no-cache',
+      ETag: etag,
+    };
+    if (req.headers['if-none-match'] === etag) return send(res, 304, '', headers);
+    let entry = staticCache.get(file);
+    if (!entry || entry.etag !== etag) {
+      const body = fs.readFileSync(file);
+      entry = { etag, body, gz: body.length > 1024 ? zlib.gzipSync(body) : null };
+      staticCache.set(file, entry);
+    }
+    const gzip = entry.gz && /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+    send(res, 200, gzip ? entry.gz : entry.body, gzip ? { ...headers, 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' } : headers);
   });
 }
 
@@ -166,12 +176,17 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname.startsWith('/api/')) return proxy(req, res, url);
   if (url.pathname === '/local/actions' || url.pathname.startsWith('/local/actions/')) return handleActions(req, res, url);
+  if (url.pathname === '/local/stats') {
+    return send(res, 200, JSON.stringify(firefly.summary()), { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' });
+  }
   if (url.pathname === '/config.json') {
     const config = { fireflyUrl: process.env.FIREFLY_PUBLIC_URL || FIREFLY_URL };
     return send(res, 200, JSON.stringify(config), { 'Content-Type': MIME['.json'] });
   }
-  serveStatic(res, url);
+  serveStatic(req, res, url);
 });
+
+if (WARM_MINUTES > 0) startWarmer(firefly, { minutes: WARM_MINUTES });
 
 server.listen(PORT, HOST, () => {
   console.log(`Firefly Dashboard läuft auf http://localhost:${PORT}`);

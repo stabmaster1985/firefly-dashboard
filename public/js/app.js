@@ -98,7 +98,8 @@ async function connect() {
     connectionError = null;
     const email = user?.data?.attributes?.email;
     document.getElementById('instance-info').innerHTML =
-      `Firefly III ${esc(about?.data?.version || '')}${email ? `<br>${esc(email)}` : ''}`;
+      `Firefly III ${esc(about?.data?.version || '')}${email ? `<br>${esc(email)}` : ''}<div id="perf-info" class="perf"></div>`;
+    updatePerf();
   } catch (err) {
     connectionError = err;
   }
@@ -122,6 +123,25 @@ document.addEventListener('pointermove', (e) => {
   tooltip.style.top = `${y}px`;
 });
 window.addEventListener('scroll', () => (tooltip.hidden = true), { passive: true });
+
+// ---- Ladezeit-Anzeige (Seitenleiste) -------------------------------------------
+
+async function updatePerf() {
+  const el = document.getElementById('perf-info');
+  if (!el) return;
+  try {
+    const s = await fetch('/local/stats').then((r) => r.json());
+    const ms = s.upstream.medianMs;
+    el.innerHTML = `${ms !== null ? `Firefly ⌀ ${ms < 1000 ? `${ms} ms` : `${(ms / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} s`}` : 'Firefly –'}`
+      + `${s.cache.hitRate !== null ? ` · Cache ${s.cache.hitRate} %` : ''}`;
+    el.title = `Antwortzeit von Firefly (Median der letzten Abfragen) und Anteil der Antworten aus dem Zwischenspeicher.\n`
+      + `Langsamste: ${s.upstream.slowest.map((x) => `${x.path} ${x.ms} ms`).join(', ') || '–'}\n`
+      + `${s.cache.entries} Einträge, ${s.cache.megabytes} MB · Warteschlange: ${s.upstream.queued}`;
+  } catch {
+    el.textContent = '';
+  }
+}
+setInterval(updatePerf, 30_000);
 
 // ---- Bedienelemente -------------------------------------------------------
 
