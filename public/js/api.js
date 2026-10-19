@@ -57,6 +57,8 @@ async function load(url) {
   } catch (err) {
     throw new ApiError(`Dashboard-Server nicht erreichbar (${err.message})`, 0);
   }
+  // vom Service Worker aus dem Speicher geliefert → Offline-Hinweis zeigen
+  if (res.headers.get('X-FFD-Offline')) window.dispatchEvent(new Event('ffd-offline'));
   const text = await res.text();
   let body = null;
   try {

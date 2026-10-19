@@ -7,6 +7,7 @@ import { skeleton, fill, card, stat, signedAmount, txRow, mainCurrency, sum } fr
 import { categoryTotals, compareRange, delta, forecastActive, forecastTotal, forecastRemainder } from './categories.js';
 import { loadRecurring, upcomingBetween } from './recurring.js';
 import { sankey } from './dist.js';
+import { loadGoals, goalBar, goalStatus } from './goals.js';
 
 /** Summe aller Einnahmen bzw. Ausgaben je Währung (Map Währung → Betrag). */
 const totalsOf = (kind, start, end) =>
@@ -23,6 +24,8 @@ export async function overview(view, { period }) {
       <section class="card span-3" id="s-earned"></section>
       <section class="card span-3" id="s-spent"></section>
       <section class="card span-3" id="s-balance"></section>
+      ${card('hints', 'Hinweise', { span: 'span-6', link: '<a href="#/automationen">Per n8n melden →</a>' })}
+      ${card('goals', 'Ziele', { span: 'span-6', meta: esc(period.label) })}
       ${card('cashflow', 'Einnahmen & Ausgaben', { span: 'span-8', meta: period.model?.isSalary ? 'letzte 12 Gehaltsmonate' : 'letzte 12 Monate' })}
       ${card('accounts', 'Konten', { span: 'span-4', link: '<a href="#/konten">Alle →</a>' })}
       ${card('flow', 'Geldfluss', { meta: `${esc(period.label)} · Einnahmen → Ausgaben` })}
@@ -114,6 +117,41 @@ export async function overview(view, { period }) {
     const code = mainCurrency(cur.length ? cur : prev, 'code');
     return { code, cur: cur.filter((c) => c.code === code), prev: prev.filter((c) => c.code === code) };
   });
+
+  // Hinweise: Warnungen des Servers + Buchungen ohne Kategorie
+  fill($('hints'), () => Promise.all([fetch('/local/alerts').then((r) => r.json()).catch(() => ({ alerts: [] })), cats]), (el, [res, { code, cur }]) => {
+    const ICON = { grosse_buchung: '€', preisaenderung: '±', ausgeblieben: '?' };
+    const rows = (res.alerts || []).slice(0, 5).map((a) => `<div class="row">
+      <div class="avatar hint-${esc(a.art)}">${ICON[a.art] || '!'}</div>
+      <div style="min-width:0"><div class="title">${esc(a.titel)}</div><div class="subtitle">${esc(a.text)}</div></div><div></div></div>`);
+    const none = cur.find((c) => c.id === '0');
+    if (none) {
+      rows.push(`<a class="row plain" href="#/kategorien/0"><div class="avatar hint-kategorie">?</div>
+        <div style="min-width:0"><div class="title">${money(none.value, code)} ohne Kategorie</div><div class="subtitle">Vorschläge zum Kategorisieren ansehen →</div></div><div></div></a>`);
+    }
+    if (!rows.length) {
+      el.closest('.card').hidden = true;
+      return;
+    }
+    el.innerHTML = `<div class="list">${rows.join('')}</div>`;
+  }, skeleton(2));
+
+  // Ziele je Kategorie (eigene Monatsbeträge, unabhängig von Firefly-Budgets)
+  fill($('goals'), () => Promise.all([loadGoals(), cats, showForecast ? forecastRemainder('category', 'expense', period) : null]), (el, [goals, { code, cur }, remainder]) => {
+    const entries = Object.entries(goals);
+    if (!entries.length) {
+      el.innerHTML = `<div class="empty">Noch keine Ziele. Lege auf der Seite einer Kategorie ein Monatsziel fest,
+        z. B. <a href="#/kategorien">„Lebensmittel max. 500 €“</a>.</div>`;
+      return;
+    }
+    const rows = entries.map(([id, g]) => {
+      const value = cur.find((c) => c.id === id)?.value || 0;
+      const fc = remainder ? value + remainder(id, code) : null;
+      return { id, g, value, fc, st: goalStatus(value, g.amount, period, fc) };
+    }).sort((a, b) => b.st.used - a.st.used);
+    el.innerHTML = rows.map((r) => `<div class="goal-row"><a class="plain title" href="#/kategorien/${encodeURIComponent(r.id)}">${esc(r.g.name)}</a>
+      <span class="muted goal-per">${money(r.g.amount, code)} / Monat</span>${goalBar(r.value, r.g.amount, period, code, r.fc)}</div>`).join('');
+  }, skeleton(3));
 
   fill($('categories'), () => cats, (el, { code, cur }) => {
     const items = [...cur].sort((a, b) => b.value - a.value);

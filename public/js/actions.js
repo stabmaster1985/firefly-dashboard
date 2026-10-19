@@ -12,6 +12,14 @@ const DEFAULT_BODY = `{
   "ausgeloest": "{{now}}"
 }`;
 
+const TRIGGERS = {
+  manual: { label: 'Per Knopf', run: '▶ Ausführen', hint: 'Startet, wenn du auf „Ausführen“ klickst. Mitgeschickt wird der gewählte Zeitraum.' },
+  'report-salary': { label: 'Monatsabschluss (Gehaltsmonat)', run: '▶ Letzten Gehaltsmonat jetzt senden', hint: 'Startet automatisch, sobald ein Gehaltsmonat abgeschlossen ist – mit Einnahmen, Ausgaben, Kategorien, Zielen, größten Buchungen und einem fertigen Text. Body leer lassen = alle Daten als JSON.' },
+  'report-calendar': { label: 'Monatsabschluss (Kalendermonat)', run: '▶ Letzten Monat jetzt senden', hint: 'Wie oben, aber zum Monatswechsel am 1.' },
+  alerts: { label: 'Warnungen', run: '▶ Testwarnung senden', hint: 'Startet bei jeder neuen Warnung: große Ausgabe, Abo mit neuem Betrag, ausgebliebene Zahlung. Jede Warnung wird nur einmal gesendet.' },
+  categorize: { label: 'Kategorie übernehmen', run: '▶ Testdaten senden', hint: 'Wird bei „Ohne Kategorie“ → Vorschläge per „Übernehmen“ gestartet. Der Workflow erhält Buchungs-ID und Kategorie und setzt sie in Firefly (z. B. mit dem Firefly-Knoten oder einem HTTP-Request an die Firefly-API).' },
+};
+
 async function local(path, { method = 'GET', body } = {}) {
   const res = await fetch(`/local/actions${path}`, {
     method,
@@ -49,6 +57,11 @@ export async function actions(view, { period }) {
       <span class="meta-line">Startet Webhooks, z. B. n8n-Workflows · der gewählte Zeitraum wird mitgeschickt</span>
     </div>
     <div id="act-editor"></div>
+    <section class="card settings-card"><form id="act-settings" class="settings-row">
+      <label>Gehaltstag <input type="number" name="payday" min="2" max="28" required></label>
+      <label>„Große Ausgabe“ ab <input type="number" name="alertThreshold" min="1" step="1" required> €</label>
+      <button class="btn">Speichern</button><span class="muted" id="set-out">Gilt für Monatsabschluss und Warnungen.</span>
+    </form></section>
     <div class="tiles action-tiles" id="act-list"><section class="card">Lade …</section></div>`;
   const listEl = view.querySelector('#act-list');
   const editorEl = view.querySelector('#act-editor');
@@ -78,9 +91,9 @@ export async function actions(view, { period }) {
       .map((a) => `<section class="card tile action" data-id="${esc(a.id)}" style="--accent-bar:${seriesColor(Number(a.color || 1) - 1)}">
         <div class="action-head"><span class="name">${esc(a.name)}</span><button class="link-btn" data-edit="${esc(a.id)}">Bearbeiten</button></div>
         ${a.description ? `<p class="action-desc">${esc(a.description)}</p>` : ''}
-        <div class="action-meta">${esc(a.method)} · ${esc(new URL(a.url).host)}${a.lastRun
+        <div class="action-meta"><span class="badge trigger">${esc((TRIGGERS[a.trigger] || TRIGGERS.manual).label)}</span> ${esc(a.method)} · ${esc(new URL(a.url).host)}${a.lastRun
           ? ` · zuletzt ${fmtTime(a.lastRun.at)} <span class="badge ${a.lastRun.ok ? 'good' : 'bad'}">${a.lastRun.ok ? 'ok' : `Fehler ${a.lastRun.status || ''}`}</span>` : ''}</div>
-        <button class="btn primary run-btn" data-run="${esc(a.id)}">▶ Ausführen</button>
+        <button class="btn ${(a.trigger || 'manual') === 'manual' ? 'primary' : ''} run-btn" data-run="${esc(a.id)}">${(TRIGGERS[a.trigger] || TRIGGERS.manual).run}</button>
         <div class="run-out"></div>
       </section>`)
       .join('');
@@ -94,25 +107,28 @@ export async function actions(view, { period }) {
     button.textContent = 'Läuft …';
     out.innerHTML = '';
     try {
-      const result = await local(`/${encodeURIComponent(id)}/run`, { method: 'POST', body: { context } });
+      const preview = (a.trigger || 'manual') !== 'manual';
+      const result = await local(`/${encodeURIComponent(id)}/run`, { method: 'POST', body: preview ? { preview: true } : { context } });
       a.lastRun = { at: new Date().toISOString(), ok: result.ok, status: result.status };
       out.innerHTML = resultHtml(result);
     } catch (err) {
       out.innerHTML = resultHtml({ ok: false, status: 0, durationMs: 0, response: err.message });
     } finally {
       button.disabled = false;
-      button.textContent = '▶ Ausführen';
+      button.textContent = (TRIGGERS[a.trigger] || TRIGGERS.manual).run;
     }
   }
 
   function openEditor(action) {
-    const a = action || { name: '', description: '', url: '', method: 'POST', headers: [], body: DEFAULT_BODY, confirm: false, color: '1' };
+    const a = action || { name: '', description: '', url: '', method: 'POST', headers: [], body: DEFAULT_BODY, confirm: false, color: '1', trigger: 'manual' };
     editorEl.innerHTML = `<section class="card editor">
       <div class="card-head"><h2>${action ? 'Automation bearbeiten' : 'Neue Automation'}</h2></div>
       <form id="act-form" class="form-grid">
         <label>Name<input name="name" required maxlength="80" value="${esc(a.name)}" placeholder="z. B. Monatsbericht erstellen"></label>
         <label>Beschreibung<input name="description" maxlength="300" value="${esc(a.description)}" placeholder="Was macht der Workflow?"></label>
         <label class="wide">Webhook-URL<input name="url" required type="url" value="${esc(a.url)}" placeholder="https://n8n.example.com/webhook/…"></label>
+        <label>Auslöser<select name="trigger">${Object.entries(TRIGGERS).map(([k, t]) => `<option value="${k}"${k === (a.trigger || 'manual') ? ' selected' : ''}>${t.label}</option>`).join('')}</select></label>
+        <p class="form-hint trigger-hint">${esc((TRIGGERS[a.trigger] || TRIGGERS.manual).hint)}</p>
         <label>Methode<select name="method">${['POST', 'GET', 'PUT'].map((m) => `<option${m === a.method ? ' selected' : ''}>${m}</option>`).join('')}</select></label>
         <fieldset class="colors"><legend>Farbe</legend>${[1, 2, 3, 4, 5, 6, 7, 8]
           .map((c) => `<label class="swatch-pick"><input type="radio" name="color" value="${c}"${String(c) === String(a.color) ? ' checked' : ''}><i style="background:${seriesColor(c - 1)}"></i></label>`)
@@ -120,7 +136,7 @@ export async function actions(view, { period }) {
         <div class="wide"><div class="field-label">Header <span class="muted">(z. B. für Header-Auth in n8n)</span></div>
           <div id="hdr-rows">${a.headers.map((h) => headerRow(h)).join('')}</div>
           <button type="button" class="link-btn" id="hdr-add">+ Header hinzufügen</button></div>
-        <label class="wide">Body <span class="muted">(JSON; Platzhalter: {{start}} {{end}} {{period}} {{now}} {{action}} – leer = alle Werte als JSON)</span>
+        <label class="wide">Body <span class="muted">(JSON; Platzhalter: {{start}} {{end}} {{period}} {{now}} {{action}}, {{daten}} = alle Daten; leer = alle Daten als JSON)</span>
           <textarea name="body" rows="8" spellcheck="false">${esc(a.body)}</textarea></label>
         <label class="check wide"><input type="checkbox" name="confirm"${a.confirm ? ' checked' : ''}> Vor dem Ausführen nachfragen</label>
         <div class="wide form-actions">
@@ -141,11 +157,19 @@ export async function actions(view, { period }) {
         url: f.get('url'),
         method: f.get('method'),
         color: f.get('color') || '1',
+        trigger: f.get('trigger') || 'manual',
         body: f.get('body'),
         confirm: f.get('confirm') === 'on',
         headers: [...editorEl.querySelectorAll('.hdr-row')].map((r) => ({ name: r.querySelector('[data-k=name]').value, value: r.querySelector('[data-k=value]').value })),
       };
     };
+    form.querySelector('[name=trigger]').addEventListener('change', (e) => {
+      form.querySelector('.trigger-hint').textContent = TRIGGERS[e.target.value].hint;
+      // Für automatische Auslöser ist „alle Daten als JSON“ meist das Richtige
+      const body = form.querySelector('[name=body]');
+      if (e.target.value !== 'manual' && body.value.trim() === DEFAULT_BODY.trim()) body.value = '';
+      if (e.target.value === 'manual' && !body.value.trim()) body.value = DEFAULT_BODY;
+    });
     editorEl.querySelector('#hdr-add').addEventListener('click', () => editorEl.querySelector('#hdr-rows').insertAdjacentHTML('beforeend', headerRow({ name: '', value: '' })));
     editorEl.querySelector('#hdr-rows').addEventListener('click', (e) => e.target.closest('.hdr-del')?.closest('.hdr-row').remove());
     editorEl.querySelector('#act-cancel').addEventListener('click', () => (editorEl.innerHTML = ''));
@@ -154,7 +178,8 @@ export async function actions(view, { period }) {
       e.target.disabled = true;
       out.innerHTML = '<span class="muted">Sende Testaufruf …</span>';
       try {
-        out.innerHTML = resultHtml(await local('/test', { method: 'POST', body: { action: read(), context } }));
+        const cfg = read();
+        out.innerHTML = resultHtml(await local('/test', { method: 'POST', body: { action: cfg, context, preview: cfg.trigger !== 'manual' } }));
       } catch (err) {
         out.innerHTML = resultHtml({ ok: false, status: 0, durationMs: 0, response: err.message });
       } finally {
@@ -184,6 +209,27 @@ export async function actions(view, { period }) {
   }
 
   view.querySelector('#act-new').addEventListener('click', () => openEditor(null));
+
+  // Einstellungen für Zeitplan (Gehaltstag, Schwelle für Warnungen)
+  const setForm = view.querySelector('#act-settings');
+  fetch('/local/settings').then((r) => r.json()).then((st) => {
+    setForm.payday.value = st.payday;
+    setForm.alertThreshold.value = st.alertThreshold;
+  }).catch(() => {});
+  setForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const st = await fetch('/local/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' },
+      body: JSON.stringify({ payday: Number(setForm.payday.value), alertThreshold: Number(setForm.alertThreshold.value) }),
+    }).then((r) => r.json());
+    try {
+      localStorage.setItem('ffd-payday', String(st.payday));
+    } catch {
+      // ohne localStorage gilt der Wert nur auf dem Server
+    }
+    view.querySelector('#set-out').textContent = 'Gespeichert ✓';
+  });
   listEl.addEventListener('click', (e) => {
     const runBtn = e.target.closest('[data-run]');
     if (runBtn) return run(runBtn.dataset.run, runBtn);

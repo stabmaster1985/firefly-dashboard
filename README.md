@@ -39,6 +39,17 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
 - **Konten** – Kontostände und Verlauf als Liniendiagramm, Verbindlichkeiten; Klick auf ein
   Konto öffnet die **Kontoseite** mit Saldo-Verlauf, Ein-/Ausgängen je Monat, Verteilung nach
   Kategorie und allen Buchungen (Details per Klick)
+- **Ziele je Kategorie** – Monatsziel direkt im Dashboard festlegen (unabhängig von
+  Firefly-Budgets): Fortschritt in der Übersicht, Spalte in der Kategorien-Tabelle, Markierung
+  in der Matrix und Ziel-Linie im Monatsverlauf; mit Prognose auch „wird knapp“
+- **Hinweise** – große Ausgaben, Abos mit neuem Betrag, ausgebliebene Zahlungen und Buchungen
+  ohne Kategorie auf einen Blick
+- **Kategorisierungshilfe** – für Buchungen „Ohne Kategorie“ ein Vorschlag aus ähnlichen
+  früheren Buchungen; per Klick an n8n übergeben oder direkt in Firefly öffnen
+- **Jahresrückblick** – Sparquote, Monat für Monat, Highlights, Kategorien im Vergleich zum
+  Vorjahr, größte Ausgaben, Abo-Kosten pro Jahr
+- **Als App aufs Handy** – installierbar (Startbildschirm), startet sofort und zeigt ohne
+  Verbindung die zuletzt geladenen Daten
 - **Automationen** – eigene Knöpfe für Webhooks, z. B. **n8n-Workflows**: in der Oberfläche
   anlegen (URL, Methode, Header, Body mit Platzhaltern wie `{{start}}`/`{{end}}`), testen und
   per Klick starten; Antwort und letzter Lauf werden angezeigt
@@ -68,7 +79,22 @@ Monat“ am 19.), wird mit demselben Abschnitt davor verglichen (1.–19. des Vo
    JJJJ-MM-TT), `{{period}}` (Bezeichnung), `{{now}}`, `{{action}}`.
 4. **Testen**, **Speichern** – danach startet der Knopf den Workflow.
 
-Die Konfiguration speichert der Server in `DATA_DIR/actions.json` (im Container `/data`).
+**Auslöser** – jede Automation startet entweder per Knopf oder automatisch:
+
+| Auslöser | Wann | Was n8n bekommt |
+|---|---|---|
+| Per Knopf | Klick auf „Ausführen“ | gewählter Zeitraum (`start`, `end`, `period`) |
+| Monatsabschluss (Gehalts-/Kalendermonat) | sobald ein Monat abgeschlossen ist | Einnahmen, Ausgaben, Saldo, Sparquote, Vormonat, Kategorien mit Veränderung, Ziele, größte Buchungen, Auffälliges und einen fertigen Text (`text`) |
+| Warnungen | bei jeder neuen Warnung (einmalig) | `art` (grosse_buchung, preisaenderung, ausgeblieben), `titel`, `text`, `details` |
+| Kategorie übernehmen | Klick auf „Übernehmen“ bei einem Vorschlag | `transaction_group_id`, `transaction_journal_id`, `kategorie`, … – der Workflow setzt die Kategorie in Firefly (z. B. HTTP-Request `PUT /api/v1/transactions/{id}`) |
+
+Body leer lassen = alle Daten als JSON; im Body-Text fügt `{{daten}}` sie ebenfalls ein. Mit
+„Jetzt senden“ bzw. „Testen“ lässt sich das Ergebnis vorab ansehen. Gehaltstag und die Schwelle
+für „große Ausgabe“ stehen oben auf der Seite Automationen. Der erste Monatsabschluss wird zum
+nächsten Monatswechsel verschickt, bestehende Warnungen beim Einrichten nicht nachträglich.
+
+Die Konfiguration speichert der Server in `DATA_DIR` (im Container `/data`): Automationen,
+Ziele, Einstellungen und was bereits verschickt wurde.
 Der Aufruf geht vom Dashboard-Server aus, nicht vom Browser – die n8n-Adresse muss also vom
 Server aus erreichbar sein (im selben Docker-Netz z. B. `http://n8n:5678/webhook/…`).
 
@@ -172,6 +198,13 @@ gleichzeitig. Das Dashboard gleicht das aus:
 **Neu laden** (Pfeil oben rechts) holt alles frisch aus Firefly – z. B. nachdem du in Firefly
 alte Buchungen umkategorisiert hast, denn abgeschlossene Monate werden sonst bis zu 12 h aus
 dem Zwischenspeicher gezeigt.
+
+## Als App installieren
+
+Im Browser des Handys „Zum Startbildschirm hinzufügen“ wählen. Für die vollständige
+App-Installation (Android/Chrome) und den Offline-Modus muss das Dashboard über **HTTPS**
+erreichbar sein, z. B. über denselben Reverse Proxy wie Firefly – über `http://IP:8080`
+funktioniert es nur als normales Lesezeichen.
 
 ## Hinweise
 

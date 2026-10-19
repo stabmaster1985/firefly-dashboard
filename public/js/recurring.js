@@ -25,7 +25,7 @@ const LEVELS = {
 const DAY = 86400000;
 
 /** Nächster Termin: Monatsrhythmen bleiben auf ihrem Kalendertag (1. bleibt 1.). */
-function stepDate(d, rhythm, anchorDay) {
+export function stepDate(d, rhythm, anchorDay) {
   if (!rhythm.months) return addDays(d, rhythm.days);
   const y = d.getFullYear();
   const m = d.getMonth() + rhythm.months;

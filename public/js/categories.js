@@ -6,6 +6,7 @@ import { barChart, legend, seriesColor, cssVar } from './charts.js';
 import { money, percent, esc, fmtDate, fmtMonth, today, isoDate, addDays, storage, store, debounce, CALENDAR } from './util.js';
 import { skeleton, fill, card, stat, signedAmount, mainCurrency, sum, counterparty, downloadCsv, termsMatcher, multiSelect } from './common.js';
 import { shareStrip, weekdayChart, sizeChart } from './dist.js';
+import { loadGoals, saveGoal, goalStatus, goalBar } from './goals.js';
 
 export const NO_CATEGORY = '0';
 
@@ -375,7 +376,8 @@ async function analysis(view, { period, params, dimKey }) {
     dimTotals(dimKey, kind, cmp.start, cmp.end),
     Promise.all(months.map(([s, e]) => dimTotals(dimKey, kind, s, e))),
     showForecast ? forecastRemainder(dimKey, kind, period) : null,
-  ]).then(([cur, prev, matrix, remainder]) => {
+    dimKey === 'category' && kind === 'expense' ? loadGoals() : {},
+  ]).then(([cur, prev, matrix, remainder, goals]) => {
     const code = mainCurrency([...cur, ...prev, ...matrix.flat()], 'code');
     cur = onlyCurrency(cur, code);
     prev = onlyCurrency(prev, code);
@@ -394,9 +396,11 @@ async function analysis(view, { period, params, dimKey }) {
       r.avg = r.total / months.length;
       r.typical = typicalMonth(r.months);
       r.forecast = remainder ? r.value + remainder(r.id, code) : null;
+      r.goal = goals[r.id]?.amount ?? null;
+      r.goalSt = r.goal ? goalStatus(r.value, r.goal, period, r.forecast) : null;
     });
     rows.sort((a, b) => b.total - a.total);
-    return { code, rows, total: sum(rows, (r) => r.value), prevTotal: sum(rows, (r) => r.prev) };
+    return { code, rows, hasGoals: rows.some((r) => r.goal), total: sum(rows, (r) => r.value), prevTotal: sum(rows, (r) => r.prev) };
   });
 
   const tile = (id, render) => fill($(id), () => data, render, skeleton(2, 22));
@@ -442,7 +446,7 @@ async function analysis(view, { period, params, dimKey }) {
   // Vergleichstabelle, per Klick auf die Spaltenköpfe sortierbar
   let sortKey = 'value';
   let sortDir = -1;
-  const cols = [
+  const baseCols = [
     ['name', D.singular, ''],
     ['value', 'Betrag', 'num'],
     ...(showForecast ? [['forecast', 'Prognose', 'num']] : []),
@@ -452,9 +456,13 @@ async function analysis(view, { period, params, dimKey }) {
     ['avg', 'Ø / Monat', 'num hide-sm'],
     [null, 'Verlauf', 'hide-sm'],
   ];
-  const keyOf = (r, k) => (k === 'name' ? r.name.toLowerCase() : k === 'change' ? r.value - r.prev : k === 'share' ? r.value : r[k]);
+  const keyOf = (r, k) => (k === 'name' ? r.name.toLowerCase() : k === 'change' ? r.value - r.prev : k === 'share' ? r.value : k === 'goal' ? (r.goalSt?.used ?? -1) : r[k]);
+  const goalCell = (r, code) => (r.goalSt
+    ? `<td class="num" title="Ziel ${money(r.goal, code)} pro Monat · ${money(r.goalSt.limit, code)} im Zeitraum"><span class="badge ${r.goalSt.cls}">${percent(r.goalSt.used)}</span></td>`
+    : `<td class="num"><a class="link-btn" href="${detailHref(D, r.id, kind)}?ziel=1" title="Monatsziel festlegen">+ Ziel</a></td>`);
 
   function renderTable(el, d) {
+    const cols = d.hasGoals ? [...baseCols.slice(0, showForecast ? 3 : 2), ['goal', 'Ziel', 'num'], ...baseCols.slice(showForecast ? 3 : 2)] : baseCols;
     const rows = d.rows.filter(matches).sort((a, b) => (keyOf(a, sortKey) > keyOf(b, sortKey) ? 1 : -1) * sortDir);
     const max = Math.max(...rows.map((r) => r.value), 1);
     const fv = sum(rows, (r) => r.value);
@@ -468,6 +476,7 @@ async function analysis(view, { period, params, dimKey }) {
           <td><a class="plain desc" href="${detailHref(D, r.id, kind)}">${esc(r.name)}</a></td>
           <td class="num"><b>${money(r.value, d.code)}</b></td>
           ${showForecast ? fc(r) : ''}
+          ${d.hasGoals ? goalCell(r, d.code) : ''}
           <td class="hide-sm"><div class="share"><div class="track"><div class="fill" style="width:${(r.value / max) * 100}%"></div></div><span>${percent(d.total ? r.value / d.total : 0)}</span></div></td>
           <td class="num hide-sm muted">${money(r.prev, d.code)}</td>
           <td class="num">${delta(r.value, r.prev, kind, d.code)}</td>
@@ -476,6 +485,7 @@ async function analysis(view, { period, params, dimKey }) {
         </tr>`)
         .join('')}</tbody>${filtered() ? `<tfoot><tr><td><b>Summe Auswahl (${rows.length})</b></td><td class="num"><b>${money(fv, d.code)}</b></td>
           ${showForecast ? `<td class="num forecast">≈ ${money(sum(rows, (r) => r.forecast), d.code)}</td>` : ''}
+          ${d.hasGoals ? '<td></td>' : ''}
           <td class="hide-sm"><span class="muted">${percent(d.total ? fv / d.total : 0)} vom Gesamt</span></td><td class="num hide-sm muted">${money(fp, d.code)}</td>
           <td class="num">${delta(fv, fp, kind, d.code)}</td><td class="num hide-sm">${money(sum(rows, (r) => r.avg), d.code)}</td><td class="hide-sm"></td></tr></tfoot>` : ''}
         </table></div>`
@@ -525,10 +535,11 @@ async function analysis(view, { period, params, dimKey }) {
       const rowMax = Math.max(...r.months) || 1;
       const t = v / rowMax;
       const odd = isOutlier(v, r.typical);
+      const overGoal = r.goal && v > r.goal;
       if (odd) outliers += 1;
-      const tip = `${r.name} · ${monthTitle(months[i])}: ${money(v, d.code)}${r.avg ? ` (${pctSigned.format(v / r.avg - 1)} ggü. Ø)` : ''}${odd ? `\n▲ Auffällig: ${pctSigned.format(v / r.typical - 1)} über dem üblichen Monat (${money(r.typical, d.code)})` : ''}\nKlicken für Buchungen`;
+      const tip = `${r.name} · ${monthTitle(months[i])}: ${money(v, d.code)}${r.avg ? ` (${pctSigned.format(v / r.avg - 1)} ggü. Ø)` : ''}${odd ? `\n▲ Auffällig: ${pctSigned.format(v / r.typical - 1)} über dem üblichen Monat (${money(r.typical, d.code)})` : ''}${overGoal ? `\n✕ Über dem Ziel von ${money(r.goal, d.code)}` : ''}\nKlicken für Buchungen`;
       return v
-        ? `<td class="heat${t > 0.6 ? ' strong' : ''}${odd ? ' outlier' : ''}" style="--t:${t.toFixed(3)}" data-tip="${esc(tip)}" data-row="${esc(r.id)}" data-month="${i}">${intFmt.format(v)}</td>`
+        ? `<td class="heat${t > 0.6 ? ' strong' : ''}${odd ? ' outlier' : ''}${overGoal ? ' over-goal' : ''}" style="--t:${t.toFixed(3)}" data-tip="${esc(tip)}" data-row="${esc(r.id)}" data-month="${i}">${intFmt.format(v)}</td>`
         : '<td class="heat empty-cell">·</td>';
     };
     const body = rows
@@ -542,7 +553,8 @@ async function analysis(view, { period, params, dimKey }) {
         <td class="num muted">${intFmt.format(sum(colTotals, (x) => x) / months.length)}</td><td class="num"><b>${intFmt.format(sum(colTotals, (x) => x))}</b></td></tr></tfoot>
     </table></div>
     <div class="legend" style="margin-top:12px"><span>Beträge in ${esc(d.code)} · Farbintensität je Zeile relativ zum stärksten Monat</span>
-      ${outliers ? `<span><i class="outlier-key"></i>auffällig hoher Monat (${outliers}×)</span>` : ''}<span>Feld anklicken zeigt die Buchungen darunter</span></div>`;
+      ${outliers ? `<span><i class="outlier-key"></i>auffällig hoher Monat (${outliers}×)</span>` : ''}
+      ${rows.some((r) => r.goal) ? '<span><i class="goal-key"></i>über dem Monatsziel</span>' : ''}<span>Feld anklicken zeigt die Buchungen darunter</span></div>`;
   }
 
   // Einzelbuchungen des Zeitraums – für Wochentage und Betragsklassen
@@ -656,9 +668,11 @@ async function detail(view, { period, params, id, dimKey }) {
   const titleEl = document.getElementById('page-title');
   const showForecast = forecastActive(period);
   const isNone = String(id) === NO_CATEGORY && dimKey === 'category';
+  const withGoals = dimKey === 'category' && kind === 'expense';
 
   view.innerHTML = `
     <div class="toolbar"><a class="back" href="${D.base}${kind === 'income' ? '?art=einnahmen' : ''}">← Alle ${D.plural}</a>
+      ${withGoals ? '<div id="goal-edit" class="goal-edit"></div>' : ''}
       <span class="meta-line">${K.label} · Vergleich mit ${fmtDate(cmp.start)} – ${fmtDate(cmp.end)}</span></div>
     <div class="grid">
       <section class="card span-3" id="d-total"></section>
@@ -666,6 +680,7 @@ async function detail(view, { period, params, id, dimKey }) {
       <section class="card span-3" id="d-count"></section>
       <section class="card span-3" id="d-per"></section>
       ${card('d-chart', 'Monatsverlauf', { meta: `${fmtMonth(months[0].label)} – ${fmtMonth(months.at(-1).label)}${months[0].label === months[0][1] ? ' · Gehaltsmonate' : ''}` })}
+      ${isNone && kind === 'expense' ? card('d-suggest', 'Vorschläge zum Kategorisieren', { filter: true, meta: '<span id="d-suggest-meta"></span>' }) : ''}
       ${card('d-dist', 'Verteilung', { meta: esc(period.label) })}
       ${card('d-partners', K.partner, { span: 'span-5', filter: true })}
       ${card('d-tx', 'Buchungen', { span: 'span-7', filter: true, meta: '<span id="d-sort"></span>' })}
@@ -679,7 +694,8 @@ async function detail(view, { period, params, id, dimKey }) {
     dimTotals(dimKey, kind, cmp.start, cmp.end),
     Promise.all(months.map(([s, e]) => dimTotals(dimKey, kind, s, e))),
     showForecast ? forecastRemainder(dimKey, kind, period) : null,
-  ]).then(([cur, prev, matrix, remainder]) => {
+    withGoals ? loadGoals() : {},
+  ]).then(([cur, prev, matrix, remainder, goals]) => {
     const all = [...cur, ...prev, ...matrix.flat()];
     const own = all.filter((c) => c.id === String(id));
     const code = mainCurrency(own, 'code');
@@ -689,6 +705,7 @@ async function detail(view, { period, params, id, dimKey }) {
     return {
       code, name: own[0]?.name, value: v, prev: value(prev), months: monthsV,
       typical: typicalMonth(monthsV), forecast: remainder ? v + remainder(String(id), code) : null,
+      goal: goals[String(id)]?.amount ?? null,
     };
   });
 
@@ -711,10 +728,99 @@ async function detail(view, { period, params, id, dimKey }) {
     }
   }).catch(() => {});
 
+  // Monatsziel festlegen / ändern
+  if (withGoals) {
+    const host = $('goal-edit');
+    Promise.all([loadGoals(), nameP, totals]).then(([goals, name, t]) => {
+      const goal = goals[String(id)];
+      const show = (editing) => {
+        host.innerHTML = editing
+          ? `<form class="goal-form"><label>Monatsziel <input type="number" min="1" step="1" inputmode="decimal" value="${goal ? goal.amount : Math.round((sum(t.months, (x) => x) / months.length) / 10) * 10 || ''}"> €</label>
+              <button class="btn primary">Speichern</button>${goal ? '<button type="button" class="btn" data-remove>Entfernen</button>' : ''}<button type="button" class="btn" data-cancel>Abbrechen</button></form>`
+          : `<button class="chip" data-edit>${goal ? `Ziel: ${money(goal.amount, t.code)} / ${period.model?.isSalary ? 'Gehaltsmonat' : 'Monat'} ✎` : '+ Monatsziel festlegen'}</button>`;
+        if (editing) host.querySelector('input').select();
+      };
+      show(params.get('ziel') === '1');
+      // nach dem Speichern ohne ?ziel=1 neu anzeigen, sonst öffnet sich der Editor wieder
+      const done = () => {
+        const qs = new URLSearchParams(params);
+        qs.delete('ziel');
+        history.replaceState(null, '', `${detailHref(D, id, kind).split('?')[0]}${qs.toString() ? `?${qs}` : ''}`);
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      };
+      host.addEventListener('click', async (e) => {
+        if (e.target.closest('[data-edit]')) show(true);
+        if (e.target.closest('[data-cancel]')) show(false);
+        if (e.target.closest('[data-remove]')) {
+          await saveGoal(String(id), name, 0);
+          done();
+        }
+      });
+      host.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const amount = Number(host.querySelector('input').value);
+        if (amount > 0) {
+          await saveGoal(String(id), name, amount);
+          done();
+        }
+      });
+    }).catch(() => {});
+  }
+
+  // Vorschläge für Buchungen ohne Kategorie: ähnliche, bereits kategorisierte Buchungen
+  if (isNone && kind === 'expense') {
+    fill($('d-suggest'), () => Promise.all([txs, loadReference(), categorizeAction()]), (el, [list, ref, action]) => {
+      const suggestions = suggestCategories(list, ref);
+      $('d-suggest-meta').textContent = `${suggestions.filter((x) => x.category).length} von ${list.length} mit Vorschlag`;
+      if (!list.length) return (el.innerHTML = '<div class="empty">Alles kategorisiert. 🎉</div>');
+      const ff = window.FFD_CONFIG?.fireflyUrl;
+      el.innerHTML = `<div class="table-wrap scroll"><table><tbody>${suggestions
+        .map((x, i) => `<tr style="cursor:default">
+          <td class="date">${fmtDate(x.t.date)}</td>
+          <td><div class="desc">${esc(x.t.description)}</div><div class="flow">${esc(counterparty(x.t))} · ${money(x.t.amount, x.t.currency_code)}</div></td>
+          <td>${x.category
+            ? `<div><span class="badge ${x.confidence >= 80 ? 'good' : 'warn'}">${esc(x.category)}</span> <span class="muted">${x.confidence} %</span></div><div class="flow">${esc(x.reason)}</div>`
+            : '<span class="muted">kein Vorschlag</span>'}</td>
+          <td class="num suggest-actions">
+            ${x.category && action ? `<button class="btn small" data-apply="${i}">Übernehmen</button>` : ''}
+            ${ff ? `<a class="link-btn" href="${esc(ff)}/transactions/edit/${encodeURIComponent(x.t.groupId)}" target="_blank" rel="noopener">In Firefly ↗</a>` : ''}
+          </td></tr>`)
+        .join('')}</tbody></table></div>
+        <div class="legend" style="margin-top:12px"><span>${action
+          ? `„Übernehmen“ startet die Automation „${esc(action.name)}“ – sie setzt die Kategorie in Firefly.`
+          : 'Tipp: Mit einer Automation „Kategorie übernehmen“ (n8n) lassen sich Vorschläge per Klick in Firefly eintragen.'}
+          Für wiederkehrende Fälle lohnt sich eine Firefly-Regel (Empfänger → Kategorie).</span></div>`;
+      el.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-apply]');
+        if (!btn) return;
+        const x = suggestions[Number(btn.dataset.apply)];
+        btn.disabled = true;
+        btn.textContent = 'Sende …';
+        try {
+          const res = await fetch(`/local/actions/${encodeURIComponent(action.id)}/run`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' },
+            body: JSON.stringify({ context: {
+              typ: 'kategorie_setzen', transaction_group_id: x.t.groupId, transaction_journal_id: x.t.transaction_journal_id,
+              kategorie: x.category, kategorie_id: x.categoryId, beschreibung: x.t.description, empfaenger: counterparty(x.t),
+              betrag: x.t.amount, datum: String(x.t.date).slice(0, 10),
+            } }),
+          }).then((r) => r.json());
+          btn.textContent = res.ok ? 'Gesendet ✓' : `Fehler ${res.status || ''}`;
+          btn.classList.toggle('done', Boolean(res.ok));
+        } catch {
+          btn.textContent = 'Fehler';
+          btn.disabled = false;
+        }
+      });
+    }, skeleton(5));
+  }
+
   const tile = (sel, loader, render) => fill($(sel), loader, render, skeleton(2, 22));
   tile('d-total', () => totals, (el, d) =>
     (el.innerHTML = stat(`${K.label} im Zeitraum`, money(d.value, d.code),
-      `${delta(d.value, d.prev, kind, d.code)} ggü. ${cmp.label} (${money(d.prev, d.code)})${d.forecast !== null ? `<br><span class="forecast">≈ ${money(d.forecast, d.code)} bis ${fmtDate(end, { day: 'numeric', month: 'short' })}</span>` : ''}`)));
+      `${delta(d.value, d.prev, kind, d.code)} ggü. ${cmp.label} (${money(d.prev, d.code)})${d.forecast !== null ? `<br><span class="forecast">≈ ${money(d.forecast, d.code)} bis ${fmtDate(end, { day: 'numeric', month: 'short' })}</span>` : ''}`)
+      + (d.goal ? goalBar(d.value, d.goal, period, d.code, d.forecast) : '')));
   tile('d-avg', () => totals, (el, d) => {
     const avg = sum(d.months, (x) => x) / months.length;
     const odd = d.months.map((v, i) => [v, i]).filter(([v]) => isOutlier(v, d.typical));
@@ -744,12 +850,13 @@ async function detail(view, { period, params, id, dimKey }) {
     if (extra) series.push({ label: 'Prognose (noch erwartet)', data: months.map((_, i) => (i === months.length - 1 ? extra : 0)), color: `${base}33` });
     el.innerHTML = `<div class="legend"><span><i style="background:${base}"></i>im gewählten Zeitraum</span><span><i style="background:${base}55"></i>davor</span>
       ${extra ? `<span><i style="background:${base}33;outline:1px dashed ${base}"></i>Prognose</span>` : ''}
-      ${d.months.some((v) => isOutlier(v, d.typical)) ? '<span><i class="outlier-key"></i>auffälliger Monat</span>' : ''}<span>Ø <b>&nbsp;${money(avg, d.code)}</b> pro Monat</span></div>
+      ${d.months.some((v) => isOutlier(v, d.typical)) ? '<span><i class="outlier-key"></i>auffälliger Monat</span>' : ''}
+      ${d.goal ? `<span><i class="line-key goal"></i>Ziel ${money(d.goal, d.code)}</span>` : ''}<span>Ø <b>&nbsp;${money(avg, d.code)}</b> pro Monat</span></div>
       <div class="chart-box" style="margin-top:12px"><canvas aria-label="${esc(K.label)} je Monat"></canvas></div>
       <div class="legend" style="margin-top:8px"><span>Balken anklicken zeigt die Buchungen des Monats darunter</span></div>`;
     const q = D.query({ id: String(id), name });
     const chart = barChart(el.querySelector('canvas'), {
-      labels: months.map((m) => m.label), series, currency: d.code, average: avg, stacked: Boolean(extra),
+      labels: months.map((m) => m.label), series, currency: d.code, average: avg, goal: d.goal, stacked: Boolean(extra),
       onClick: (i) => showMonthPanel(detailPanel, {
         dimKey, kind, rows: [{ id: String(id), name }], month: months[i], title: name,
         link: `#/buchungen?q=${encodeURIComponent(q)}&type=${K.txType}&von=${isoDate(months[i][0])}&bis=${isoDate(months[i][1])}`,
@@ -820,4 +927,67 @@ async function detail(view, { period, params, id, dimKey }) {
       render();
     });
   }, skeleton(6));
+}
+
+// ---------------------------------------------------------------------------
+// Kategorisierungshilfe
+
+/** Kategorisierte Ausgaben der letzten 24 Monate als Vergleichsbasis (gleicher Cache wie „Wiederkehrend“). */
+function loadReference() {
+  const t0 = today();
+  const from = new Date(t0.getFullYear(), t0.getMonth() - 24, 1);
+  return api.getAll('transactions', { start: from, end: t0, type: 'withdrawal' })
+    .then((groups) => api.flattenTransactions(groups).filter((t) => t.category_name));
+}
+
+/** Automation mit Auslöser „Kategorie übernehmen“, falls eingerichtet. */
+function categorizeAction() {
+  return fetch('/local/actions').then((r) => r.json()).then((list) => list.find((a) => a.trigger === 'categorize') || null).catch(() => null);
+}
+
+const normName = (s) => String(s || '').toLowerCase().replace(/[0-9]+/g, ' ').replace(/[^\p{L} ]+/gu, ' ').replace(/\s+/g, ' ').trim();
+
+/**
+ * Schlägt je Buchung eine Kategorie vor: zuerst nach gleichem Empfänger,
+ * sonst nach den ersten Wörtern des Buchungstexts. Sicherheit = Anteil der
+ * passenden früheren Buchungen mit dieser Kategorie.
+ */
+function suggestCategories(list, reference) {
+  const index = (keyOf) => {
+    const map = new Map();
+    for (const t of reference) {
+      const key = keyOf(t);
+      if (!key) continue;
+      const m = map.get(key) || new Map();
+      const c = m.get(t.category_name) || { n: 0, id: t.category_id };
+      c.n += 1;
+      m.set(t.category_name, c);
+      map.set(key, m);
+    }
+    return map;
+  };
+  const byParty = index((t) => normName(t.destination_name));
+  const firstWords = (t) => normName(t.description).split(' ').slice(0, 2).join(' ');
+  const byText = index((t) => (firstWords(t).length > 3 ? firstWords(t) : ''));
+  const best = (m) => {
+    if (!m) return null;
+    const total = [...m.values()].reduce((a, c) => a + c.n, 0);
+    const [name, c] = [...m].sort((a, b) => b[1].n - a[1].n)[0];
+    return { name, id: c.id, n: c.n, total, share: c.n / total };
+  };
+  return list
+    .map((t) => {
+      const party = best(byParty.get(normName(t.destination_name)));
+      const text = best(byText.get(firstWords(t)));
+      const pick = party && party.n >= 2 && party.share >= 0.6 ? { ...party, how: `${party.n}× bei „${t.destination_name}“` }
+        : text && text.n >= 2 && text.share >= 0.6 ? { ...text, how: `${text.n}× ähnlicher Text „${firstWords(t)}“` } : null;
+      return {
+        t,
+        category: pick?.name || null,
+        categoryId: pick?.id ?? null,
+        confidence: pick ? Math.round(pick.share * 100) : 0,
+        reason: pick ? `bisher ${pick.how}` : '',
+      };
+    })
+    .sort((a, b) => b.confidence - a.confidence || String(b.t.date).localeCompare(String(a.t.date)));
 }

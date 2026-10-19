@@ -77,7 +77,7 @@ function create(canvas, config) {
  * Balken je Monat – gruppiert (Einnahmen vs. Ausgaben) oder gestapelt
  * (Kategorien). Optional mit gestrichelter Durchschnittslinie.
  */
-export function barChart(canvas, { labels, series, currency = 'EUR', stacked = false, average = null, onClick = null, format = null }) {
+export function barChart(canvas, { labels, series, currency = 'EUR', stacked = false, average = null, goal = null, onClick = null, format = null }) {
   const surface = cssVar('--surface-1');
   const datasets = series.map((s, i) => ({
     label: s.label,
@@ -103,6 +103,20 @@ export function barChart(canvas, { labels, series, currency = 'EUR', stacked = f
       borderColor: cssVar('--text-secondary'),
       borderWidth: 1.5,
       borderDash: [5, 4],
+      pointRadius: 0,
+      pointHoverRadius: 0,
+      order: 0,
+    });
+  }
+  if (goal) {
+    datasets.push({
+      type: 'line',
+      label: 'Ziel',
+      stack: 'goal',
+      data: labels.map(() => goal),
+      borderColor: cssVar('--status-critical'),
+      borderWidth: 1.5,
+      borderDash: [2, 3],
       pointRadius: 0,
       pointHoverRadius: 0,
       order: 0,

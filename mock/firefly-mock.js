@@ -137,7 +137,14 @@ for (let m = new Date(firstDay); m <= today; m = new Date(m.getFullYear(), m.get
   if (mo === 6) add(day(14), 'withdrawal', 1240, 'Sommerurlaub Ostsee', kk, ext('Booking.com'), { category: 'Urlaub', tags: ['Urlaub'] });
   if (rand() < 0.3) add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(20, 60), 'Geschenk', kk, ext(pick(['Thalia', 'Blumen Meyer', 'Amazon'])), { category: 'Geschenke' });
 }
+// Eine aktuelle große Ausgabe (für die Warnungen)
+add(addDays(today, -4), 'withdrawal', 649, 'Neue Waschmaschine', kk, ext('MediaMarkt'), { category: 'Shopping' });
 journals.sort((a, b) => b.date - a.date || Number(b.id) - Number(a.id));
+// Ein paar jüngere Buchungen ohne Kategorie (für die Kategorisierungshilfe)
+journals.filter((j) => /^Einkauf (REWE|EDEKA)$|^Tanken$|^Netflix$/.test(j.description)).slice(0, 5).forEach((j) => {
+  j.category = null;
+  j.budget = null;
+});
 
 // Zusätzliche Tags für die Tag-Auswertung
 for (const j of journals) {

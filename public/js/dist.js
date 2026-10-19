@@ -72,6 +72,7 @@ export function sizeChart(canvas, txs, code, color = seriesColor(0)) {
     format: (v) => intFmt.format(v),
   });
   chart.options.plugins.tooltip.callbacks.afterLabel = (ctx) => ` zusammen ${money(sums[ctx.dataIndex], code)}`;
+  chart.options.scales.y.ticks.precision = 0; // Anzahl: nur ganze Zahlen auf der Achse
   chart.update('none');
   return chart;
 }

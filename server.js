@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { createActions } from './lib/actions.js';
 import { createFirefly } from './lib/firefly.js';
 import { startWarmer } from './lib/warmer.js';
+import { createAutomation } from './lib/automation.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
@@ -63,6 +64,7 @@ const MIME = {
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
+  '.webmanifest': 'application/manifest+json',
 };
 
 const STATIC_FILES = {
@@ -188,6 +190,7 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname.startsWith('/api/')) return proxy(req, res, url);
   if (url.pathname === '/local/actions' || url.pathname.startsWith('/local/actions/')) return handleActions(req, res, url);
+  if (['/local/settings', '/local/goals', '/local/alerts'].includes(url.pathname)) return handleAutomation(req, res, url);
   if (url.pathname === '/local/stats') {
     return send(res, 200, JSON.stringify(firefly.summary()), { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' });
   }
@@ -197,6 +200,9 @@ const server = http.createServer((req, res) => {
   }
   serveStatic(req, res, url);
 });
+
+// Ziele, Einstellungen, Monatsabschluss und Warnungen
+const handleAutomation = createAutomation({ dataDir: DATA_DIR, firefly, actions: handleActions });
 
 if (WARM_MINUTES > 0) warmNow = startWarmer(firefly, { minutes: WARM_MINUTES, monthStarts: () => [...monthStarts] });
 

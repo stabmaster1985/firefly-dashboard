@@ -6,6 +6,7 @@ import { categories, categoryDetail, tags, tagDetail, forecastEnabled } from './
 import { recurring } from './recurring.js';
 import { accountDetail } from './account.js';
 import { actions } from './actions.js';
+import { yearReview } from './year.js';
 import { applyCardFilter } from './common.js';
 import { destroyCharts } from './charts.js';
 import { PERIODS, SALARY_PERIODS, periodById, customPeriodId, parseDate, isoDate, debounce, storage, store, esc, payday } from './util.js';
@@ -18,6 +19,7 @@ const ROUTES = {
   buchungen: { view: views.transactions, title: 'Buchungen', nav: 'transactions' },
   konten: { view: views.accounts, title: 'Konten', nav: 'accounts' },
   automationen: { view: actions, title: 'Automationen', nav: 'actions' },
+  jahr: { view: yearReview, title: 'Jahresrückblick', nav: 'year', noPeriod: true },
 };
 const DETAIL = {
   kategorien: { view: categoryDetail, title: 'Kategorie', nav: 'categories' },
@@ -95,11 +97,17 @@ function showConnectionError(err) {
 
 async function connect() {
   try {
-    const [about, user, config] = await Promise.all([
+    const [about, user, config, settings] = await Promise.all([
       api.get('about'),
       api.get('about/user').catch(() => null),
       fetch('/config.json').then((r) => r.json()).catch(() => ({})),
+      fetch('/local/settings').then((r) => r.json()).catch(() => null),
     ]);
+    // Gehaltstag kommt vom Server (gilt so auf allen Geräten)
+    if (settings?.payday && String(settings.payday) !== storage('ffd-payday', '')) {
+      store('ffd-payday', String(settings.payday));
+      fillPeriodOptions();
+    }
     window.FFD_CONFIG = config;
     connectionError = null;
     const email = user?.data?.attributes?.email;
@@ -202,6 +210,12 @@ paydayForm.addEventListener('submit', (e) => {
   const day = Math.round(Number(paydayInput.value));
   if (!(day >= 2 && day <= 28)) return;
   store('ffd-payday', String(day));
+  // auch dem Server mitteilen – der Monatsabschluss nutzt denselben Gehaltstag
+  fetch('/local/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' },
+    body: JSON.stringify({ payday: day }),
+  }).catch(() => {});
   paydayForm.hidden = true;
   fillPeriodOptions();
   render();
@@ -387,5 +401,14 @@ themeBtn.addEventListener('click', () => {
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
   if (!document.documentElement.dataset.theme) render();
 });
+
+// ---- App-Installation & Offline-Hinweis -----------------------------------------
+
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+const offlineBanner = document.getElementById('offline-banner');
+window.addEventListener('ffd-offline', () => (offlineBanner.hidden = false));
+window.addEventListener('online', () => (offlineBanner.hidden = true));
 
 connect();
