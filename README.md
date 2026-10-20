@@ -162,6 +162,27 @@ volumes:
   firefly-dashboard-data:
 ```
 
+### Aktualisieren per n8n
+
+`n8n/firefly-dashboard-update.json` ist ein fertiger n8n-Workflow, der das Dashboard auf dem
+Docker-Host per SSH aktualisiert: Repository nach `~/firefly-diy` holen (beim ersten Lauf
+klonen, danach `git pull`), neu bauen und starten (`docker compose up -d --build`), alte Images
+aufräumen und prüfen, ob der Container läuft. Lokale Änderungen, z. B. Token und Passwort in der
+`docker-compose.yml`, bleiben erhalten (`git pull --autostash`).
+
+1. In n8n **Import from File** → `n8n/firefly-dashboard-update.json`.
+2. Im Knoten **Update auf CT 114** eine SSH-Zugangsdaten anlegen (Host = IP des LXC 114,
+   Benutzer, privater Schlüssel). Der Benutzer braucht Docker-Rechte (root oder Gruppe `docker`)
+   sowie `git` auf dem Host.
+3. Im Knoten **Webhook** eine Header-Auth-Zugangsdaten anlegen (z. B. Name `X-Update-Key`,
+   langer Zufallswert) und den Workflow aktivieren.
+
+Gestartet wird per **Test workflow**, per `POST` auf den Webhook (z. B. als Knopf unter
+Automationen im Dashboard – mit dem Header von oben) oder, wenn aktiviert, täglich um 4 Uhr.
+Der Webhook antwortet sofort mit 202, weil sich das Dashboard beim Neustart selbst beendet;
+das Ergebnis steht in den n8n-Ausführungen, ein Fehler bricht den Workflow mit der Ausgabe ab
+(und löst einen eingestellten Error-Workflow aus).
+
 ## Demo ohne eigene Firefly-Instanz
 
 ```bash
