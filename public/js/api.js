@@ -18,7 +18,10 @@ export function setMonthStart(day) {
 /** Beim nächsten Rendern den Server-Cache umgehen (Neu-laden-Knopf). */
 export function setFresh(value) {
   fresh = value;
-  if (value) memo.clear();
+  if (value) {
+    memo.clear();
+    dismissedP = null; // auch Ausgeblendetes von anderen Geräten neu holen
+  }
 }
 
 /** Nach einer Änderung in Firefly: Browser-Zwischenspeicher verwerfen. */
@@ -112,4 +115,50 @@ export function flattenTransactions(groups) {
       amount: Number(t.amount),
     })),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Ausgeblendete Vorschläge (auf dem Server, damit sie auf allen Geräten gelten)
+
+let dismissedP = null;
+const OLD_KEYS = { duplicates: 'ffd-dup-ok', structure: 'ffd-struct-ignore' };
+
+const postDismissed = (body) => fetch('/local/dismissed', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' },
+  body: JSON.stringify(body),
+}).then((r) => r.json());
+
+/** { duplicates: Set, structure: Set } – übernimmt einmalig, was früher nur im Browser lag. */
+export function loadDismissed() {
+  dismissedP ||= (async () => {
+    const data = await fetch('/local/dismissed').then((r) => r.json()).catch(() => ({ duplicates: [], structure: [] }));
+    for (const [list, key] of Object.entries(OLD_KEYS)) {
+      let old = [];
+      try {
+        old = JSON.parse(localStorage.getItem(key) || '[]');
+      } catch {
+        // kein localStorage – nichts zu übernehmen
+      }
+      if (!old.length) continue;
+      const merged = await postDismissed({ list, add: old }).catch(() => null);
+      if (merged) {
+        data[list] = merged[list];
+        try {
+          localStorage.removeItem(key);
+        } catch {
+          // egal – beim nächsten Mal wird nur erneut zusammengeführt
+        }
+      }
+    }
+    return { duplicates: new Set(data.duplicates || []), structure: new Set(data.structure || []) };
+  })();
+  return dismissedP;
+}
+
+/** Vorschlag ausblenden (Liste „duplicates“ oder „structure“). */
+export async function dismiss(list, key) {
+  const sets = await loadDismissed();
+  sets[list].add(key);
+  await postDismissed({ list, add: key }).catch(() => {});
 }

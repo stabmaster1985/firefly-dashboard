@@ -3,7 +3,7 @@
 // Export (Firefly-Regeln, CSV oder n8n) macht es auf Wunsch dauerhaft.
 
 import * as api from './api.js';
-import { money, esc, fmtDate, today, debounce, isoDate, storage, store } from './util.js';
+import { money, esc, fmtDate, today, debounce, isoDate } from './util.js';
 import { skeleton, card, stat, sum, mainCurrency, downloadCsv, txAttrs, bindTxDetails } from './common.js';
 import { detectRecurring } from './recurring.js';
 import { FIELDS, OPS, AUTO_TAGS, applyRules, suggestRules, describeRule, toFireflyRules, counterpartyOf, normParty, ruleMatches } from './rules.js';
@@ -48,16 +48,18 @@ export async function lab(view, { params }) {
 
   let txs;
   let stored;
+  let dismissed;
   let categorizeAction;
   let rulesAction;
   try {
-    [txs, stored, [categorizeAction, rulesAction]] = await Promise.all([
+    [txs, stored, [categorizeAction, rulesAction], dismissed] = await Promise.all([
       api.getAll('transactions', { start: from, end: t0, type: base.type })
         .then((groups) => api.flattenTransactions(groups).filter((t) => t.type === base.type)),
       fetch('/local/rules').then((r) => r.json()),
       fetch('/local/actions').then((r) => r.json())
         .then((l) => ['categorize', 'rules'].map((trigger) => l.find((a) => a.trigger === trigger) || null))
         .catch(() => [null, null]),
+      api.loadDismissed(),
     ]);
   } catch (err) {
     view.querySelector('.grid').innerHTML = `<section class="card span-12"><div class="empty">Konnte nicht geladen werden: ${esc(err.message)}</div></section>`;
@@ -146,12 +148,11 @@ export async function lab(view, { params }) {
   }
 
   // Struktur-Vorschläge: Tags (Themen, Reisen) und Kategorien (zusammenfassen, aufteilen)
-  const ignored = () => new Set(JSON.parse(storage('ffd-struct-ignore', '[]')));
   const sameRule = (a, b) => JSON.stringify(a.when) === JSON.stringify(b.when) && a.setCategory === b.setCategory
     && JSON.stringify(a.addTags) === JSON.stringify(b.addTags);
   const STRUCT_ICON = { wort: '#', reise: '✈', name: '≈', ueberschneidung: '∩', klein: '↘', aufteilen: '⑂' };
   function renderStructure() {
-    const ign = ignored();
+    const ign = dismissed.structure;
     const fresh = (s) => !ign.has(s.title) && !s.rules.every((r) => rules.some((x) => sameRule(x, r)));
     const lists = { tags: suggestTags(txs, rules).filter(fresh), kategorien: suggestCategoryStructure(txs).filter(fresh) };
     $('l-struct-tabs').innerHTML = [['tags', 'Tags'], ['kategorien', 'Kategorien']]
@@ -256,8 +257,9 @@ export async function lab(view, { params }) {
     const structIgnore = e.target.closest('[data-struct-ignore]');
     if (structIgnore) {
       const s = $('l-struct').structure[Number(structIgnore.dataset.structIgnore)];
-      store('ffd-struct-ignore', JSON.stringify([...ignored(), s.title].slice(-300)));
-      return renderStructure();
+      structIgnore.disabled = true;
+      api.dismiss('structure', s.title).then(renderStructure);
+      return;
     }
     const take = e.target.closest('[data-take]');
     if (take) {

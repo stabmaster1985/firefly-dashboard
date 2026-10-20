@@ -2,7 +2,7 @@
 // hilft, Fehler beim (CSV-)Import früh zu bemerken.
 
 import * as api from './api.js';
-import { money, esc, fmtDate, today, addDays, startOfMonth, storage, store } from './util.js';
+import { money, esc, fmtDate, today, addDays, startOfMonth } from './util.js';
 import { skeleton, fill, card, txAttrs, bindTxDetails, signedAmount, counterparty } from './common.js';
 import { actionFor, runAction } from './txedit.js';
 
@@ -25,20 +25,13 @@ const dayOf = (t) => Math.floor(new Date(String(t.date).slice(0, 10)).getTime() 
 const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
 const pairKey = (a, b) => [a.transaction_journal_id, b.transaction_journal_id].sort().join('-');
 
-const dismissed = () => new Set(JSON.parse(storage('ffd-dup-ok', '[]')));
-function dismiss(key) {
-  const set = dismissed();
-  set.add(key);
-  store('ffd-dup-ok', JSON.stringify([...set].slice(-500)));
-}
 
 /**
  * Paare gleicher Buchungen (Art, Betrag, Konten, Währung) höchstens 3 Tage
  * auseinander. Stufe: „sicher“ (gleiche Referenz/externe ID), „wahrscheinlich“
  * (gleicher Text am selben Tag), sonst „möglich“.
  */
-export function findDuplicates(txs) {
-  const ok = dismissed();
+export function findDuplicates(txs, ok = new Set()) {
   const groups = new Map();
   for (const t of txs) {
     const key = [t.type, Math.abs(t.amount).toFixed(2), t.currency_code, t.source_id ?? t.source_name, t.destination_id ?? t.destination_name].join('|');
@@ -104,8 +97,8 @@ export async function importStatus(history) {
 // Hinweise für die Übersicht
 
 export async function checkHints() {
-  const history = await loadHistory();
-  const [dups, status] = await Promise.all([findDuplicates(history), importStatus(history)]);
+  const [history, dismissed] = await Promise.all([loadHistory(), api.loadDismissed()]);
+  const [dups, status] = await Promise.all([findDuplicates(history, dismissed.duplicates), importStatus(history)]);
   const rows = [];
   const serious = dups.filter((d) => d.level >= 2).length;
   if (dups.length) {
@@ -163,9 +156,9 @@ export async function check(view) {
     });
   }, skeleton(4));
 
-  fill($('c-dup'), () => history, (el, txs) => {
+  fill($('c-dup'), () => Promise.all([history, api.loadDismissed()]), (el, [txs, dismissed]) => {
     const render = () => {
-      const pairs = findDuplicates(txs);
+      const pairs = findDuplicates(txs, dismissed.duplicates);
       $('c-dup-meta').textContent = `${pairs.length} Treffer · letzte 24 Monate`;
       if (!pairs.length) return (el.innerHTML = '<div class="empty">Keine doppelten Buchungen gefunden. 🎉</div>');
       const flat = pairs.flatMap((p) => [p.a, p.b]);
@@ -181,15 +174,15 @@ export async function check(view) {
           ${row(p.a, i * 2)}${row(p.b, i * 2 + 1)}`;
       }).join('')}</tbody></table></div>
       <div class="legend" style="margin-top:12px"><span>Zeile anklicken → Details mit „In Firefly öffnen“, dort die überzählige Buchung löschen.
-        „Kein Duplikat“ blendet ein Paar dauerhaft aus (in diesem Browser).</span></div>`;
+        „Kein Duplikat“ blendet ein Paar dauerhaft aus (auf allen Geräten).</span></div>`;
       bindTxDetails(el, (k) => flat[Number(k)]);
     };
     render();
     el.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-ok]');
       if (!btn) return;
-      dismiss(btn.dataset.ok);
-      render();
+      btn.disabled = true;
+      api.dismiss('duplicates', btn.dataset.ok).then(render);
     });
   }, skeleton(6));
 }
