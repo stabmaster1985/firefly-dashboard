@@ -199,8 +199,10 @@ export async function overview(view, { period }) {
       incomes: inc.filter((c) => c.code === code),
       expenses: out.filter((c) => c.code === code),
       code,
-      hrefFor: (n) => `#/kategorien/${encodeURIComponent(n.id)}`,
+      onSelect: (n) => flowTransactions(panel, n, { start, end, code }),
     });
+    el.insertAdjacentHTML('beforeend', '<div class="flow-tx"></div><div class="legend" style="margin-top:8px"><span>Block, Band oder Name anklicken zeigt die Buchungen dazu.</span></div>');
+    const panel = el.querySelector('.flow-tx');
   }, skeleton(1, 300));
 
   if (showForecast) {
@@ -496,6 +498,58 @@ export async function accounts(view, { period }) {
       })
       .join('')}</div>`;
   }, '');
+}
+
+/**
+ * Buchungen zu einem Block des Geldflusses (Einnahme- oder Ausgabenkategorie,
+ * „Sonstige“) – mit Details, Sortierung und Sprüngen zur Analyse und ins Labor.
+ */
+async function flowTransactions(panel, n, { start, end, code }) {
+  if (!n) return (panel.innerHTML = '');
+  if (n.kind === 'saved' || n.kind === 'reserve') {
+    panel.innerHTML = `<div class="flow-panel"><h3>${esc(n.name)} · ${money(n.value, code)}</h3>
+      <p class="muted small-text">${n.kind === 'saved' ? 'Was von den Einnahmen übrig blieb (Einnahmen − Ausgaben)' : 'Was mehr ausgegeben als eingenommen wurde'} – das ist ein Saldo, keine einzelne Buchung.
+      Umbuchungen aufs Sparkonto siehst du unter <a href="#/konten">Konten</a>.</p></div>`;
+    return;
+  }
+  const type = n.kind === 'in' ? 'deposit' : 'withdrawal';
+  const ids = new Set((n.rest ? n.items : [n]).map((x) => String(x.id)));
+  panel.innerHTML = `<div class="flow-panel">${skeleton(3)}</div>`;
+  let list;
+  try {
+    list = api.flattenTransactions(await api.getAll('transactions', { start, end, type }))
+      .filter((t) => t.type === type && ids.has(t.category_id ? String(t.category_id) : '0'));
+  } catch (err) {
+    panel.innerHTML = `<div class="empty">Konnte nicht geladen werden: ${esc(err.message)}</div>`;
+    return;
+  }
+  if (!panel.isConnected) return;
+  const total = sum(list.filter((t) => t.currency_code === code), (t) => t.amount);
+  const basis = n.kind === 'in' ? 'einnahmen' : 'ausgaben';
+  const lab = `#/labor?${new URLSearchParams({ basis, von: isoDate(start), bis: isoDate(end > today() ? today() : end), ...(n.rest ? {} : { kategorie: n.name }) })}`;
+  const analysis = !n.rest ? `#/kategorien/${encodeURIComponent(n.id)}${n.kind === 'in' ? '?art=einnahmen' : ''}` : null;
+  let order = 'amount';
+  const draw = () => {
+    const rows = [...list].sort((a, b) => (order === 'date' ? String(b.date).localeCompare(String(a.date)) : b.amount - a.amount));
+    panel.innerHTML = `<div class="flow-panel">
+      <div class="flow-panel-head"><h3>${esc(n.name)} · ${list.length} Buchung${list.length === 1 ? '' : 'en'} · ${money(total, code)}</h3>
+        <span class="links"><button class="link-btn" data-order="amount" aria-pressed="${order === 'amount'}">Größte</button> · <button class="link-btn" data-order="date" aria-pressed="${order === 'date'}">Neueste</button>
+        ${analysis ? ` · <a href="${analysis}">Kategorie-Analyse →</a>` : ''} · <a href="${lab}">Im Labor bearbeiten →</a></span></div>
+      ${rows.length ? `<div class="table-wrap scroll"><table><tbody>${rows.map((t, i) => `<tr ${txAttrs(i)}>
+          <td class="date">${fmtDate(t.date)}</td>
+          <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(n.kind === 'in' ? t.source_name : t.destination_name)}${n.rest ? ` · ${esc(t.category_name || 'Ohne Kategorie')}` : ''}</div></td>
+          <td class="num">${signedAmount(t)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Keine einzelnen Buchungen gefunden.</div>'}
+    </div>`;
+    bindTxDetails(panel, (i) => rows[Number(i)]);
+  };
+  panel.onclick = (e) => {
+    const b = e.target.closest('[data-order]');
+    if (!b) return;
+    order = b.dataset.order;
+    draw();
+  };
+  draw();
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // ---------------------------------------------------------------------------

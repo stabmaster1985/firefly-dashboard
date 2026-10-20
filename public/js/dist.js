@@ -12,7 +12,7 @@ function topWithRest(items, max) {
   const sorted = [...items].sort((a, b) => b.value - a.value);
   const top = sorted.slice(0, max);
   const rest = sorted.slice(max);
-  if (rest.length) top.push({ name: `Sonstige (${rest.length})`, value: sum(rest, (x) => x.value), rest: true });
+  if (rest.length) top.push({ name: `Sonstige (${rest.length})`, value: sum(rest, (x) => x.value), rest: true, items: rest });
   return top;
 }
 
@@ -80,7 +80,11 @@ export function sizeChart(canvas, txs, code, color = seriesColor(0)) {
 // ---------------------------------------------------------------------------
 // Geldfluss: Einnahmen → Gesamt → Ausgaben (+ Gespart bzw. aus Rücklagen)
 
-export function sankey(host, { incomes, expenses, code, hrefFor = null }) {
+/**
+ * onSelect(node | null): macht Blöcke, Bänder und Beschriftungen anklickbar
+ * (z. B. um die Buchungen darunter anzuzeigen). node: { name, value, kind, id, rest, items }.
+ */
+export function sankey(host, { incomes, expenses, code, hrefFor = null, onSelect = null }) {
   const totalIn = sum(incomes, (x) => x.value);
   const totalOut = sum(expenses, (x) => x.value);
   if (!totalIn && !totalOut) return (host.innerHTML = '<div class="empty">Keine Daten im Zeitraum.</div>');
@@ -127,33 +131,47 @@ export function sankey(host, { incomes, expenses, code, hrefFor = null }) {
     if (n.rest) return cssVar('--axis');
     return n.kind === 'in' ? seriesColor(2) : seriesColor(i);
   };
-  const link = (x0, y0, h0, x1, y1, h1, color, tip) => {
+  const sel = (key) => (onSelect ? ` data-sk="${key}"` : '');
+  const link = (x0, y0, h0, x1, y1, h1, color, tip, key) => {
     const xm = (x0 + x1) / 2;
     return `<path class="sk-link" d="M${x0},${y0} C${xm},${y0} ${xm},${y1} ${x1},${y1} L${x1},${y1 + h1} C${xm},${y1 + h1} ${xm},${y0 + h0} ${x0},${y0 + h0} Z"
-      fill="${color}" data-tip="${esc(tip)}"/>`;
+      fill="${color}" data-tip="${esc(tip)}"${sel(key)}/>`;
   };
 
   let svg = '';
   let mid = midY;
   L.forEach((n, i) => {
     const c = colorOf(n, i);
-    svg += link(xL + nodeW, n.y, n.h, xM, mid, n.h, c, `${n.name} → Gesamt: ${money(n.value, code)}`);
-    svg += `<rect x="${xL}" y="${n.y}" width="${nodeW}" height="${n.h}" rx="3" fill="${c}"/>`;
-    svg += `<text x="${xL - 8}" y="${n.y + n.h / 2}" text-anchor="end" dominant-baseline="middle"><tspan class="sk-name">${esc(n.name)}</tspan><tspan x="${xL - 8}" dy="15" class="sk-val">${money(n.value, code)}</tspan></text>`;
+    const key = `L${i}`;
+    svg += link(xL + nodeW, n.y, n.h, xM, mid, n.h, c, `${n.name} → Gesamt: ${money(n.value, code)}${onSelect ? ' · Klick zeigt die Buchungen' : ''}`, key);
+    svg += `<rect x="${xL}" y="${n.y}" width="${nodeW}" height="${n.h}" rx="3" fill="${c}"${sel(key)}/>`;
+    svg += `<text x="${xL - 8}" y="${n.y + n.h / 2}" text-anchor="end" dominant-baseline="middle"${sel(key)}><tspan class="sk-name">${esc(n.name)}</tspan><tspan x="${xL - 8}" dy="15" class="sk-val">${money(n.value, code)}</tspan></text>`;
     mid += n.h;
   });
   mid = midY;
   R.forEach((n, i) => {
     const c = colorOf(n, i);
-    const href = hrefFor && n.kind === 'out' && !n.rest ? hrefFor(n) : null;
-    svg += link(xM + nodeW, mid, n.h, xR, n.y, n.h, c, `Gesamt → ${n.name}: ${money(n.value, code)} (${percent(n.value / total)})`);
-    const label = `<text x="${xR + nodeW + 8}" y="${n.y + n.h / 2}" dominant-baseline="middle"><tspan class="sk-name">${esc(n.name)}</tspan><tspan x="${xR + nodeW + 8}" dy="15" class="sk-val">${money(n.value, code)} · ${percent(n.value / total)}</tspan></text>`;
-    svg += `<rect x="${xR}" y="${n.y}" width="${nodeW}" height="${n.h}" rx="3" fill="${c}"/>`;
+    const key = `R${i}`;
+    const href = !onSelect && hrefFor && n.kind === 'out' && !n.rest ? hrefFor(n) : null;
+    svg += link(xM + nodeW, mid, n.h, xR, n.y, n.h, c, `Gesamt → ${n.name}: ${money(n.value, code)} (${percent(n.value / total)})${onSelect ? ' · Klick zeigt die Buchungen' : ''}`, key);
+    const label = `<text x="${xR + nodeW + 8}" y="${n.y + n.h / 2}" dominant-baseline="middle"${sel(key)}><tspan class="sk-name">${esc(n.name)}</tspan><tspan x="${xR + nodeW + 8}" dy="15" class="sk-val">${money(n.value, code)} · ${percent(n.value / total)}</tspan></text>`;
+    svg += `<rect x="${xR}" y="${n.y}" width="${nodeW}" height="${n.h}" rx="3" fill="${c}"${sel(key)}/>`;
     svg += href ? `<a href="${href}" class="sk-target">${label}</a>` : label;
     mid += n.h;
   });
   svg += `<rect x="${xM}" y="${midY}" width="${nodeW}" height="${midH}" rx="3" fill="${cssVar('--text-secondary')}"/>`;
 
-  host.innerHTML = `<div class="table-wrap"><svg class="sankey" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Geldfluss von Einnahmen zu Ausgaben">${svg}</svg></div>
+  host.innerHTML = `<div class="table-wrap"><svg class="sankey${onSelect ? ' selectable' : ''}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Geldfluss von Einnahmen zu Ausgaben">${svg}</svg></div>
     <div class="legend sankey-hint"><span>← zum Ansehen seitlich wischen →</span></div>`;
+  if (!onSelect) return;
+  const svgEl = host.querySelector('svg');
+  let current = null;
+  svgEl.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-sk]');
+    const key = el?.dataset.sk ?? null;
+    current = key && key !== current ? key : null; // zweiter Klick hebt die Auswahl auf
+    svgEl.classList.toggle('has-sel', Boolean(current));
+    svgEl.querySelectorAll('[data-sk]').forEach((x) => x.classList.toggle('sk-on', x.dataset.sk === current));
+    onSelect(current ? (current[0] === 'L' ? L : R)[Number(current.slice(1))] : null);
+  });
 }

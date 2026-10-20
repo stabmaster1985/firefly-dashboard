@@ -23,6 +23,15 @@ export async function lab(view, { params }) {
   const base = BASES[baseKey];
   const t0 = today();
   const from = new Date(t0.getFullYear(), t0.getMonth() - 24, 1); // gleicher Cache wie „Wiederkehrend“
+  // Einschränkung (aus der Adresse, damit Links wie „Im Labor bearbeiten“ sie mitgeben können)
+  const scope = {
+    von: /^\d{4}-\d{2}-\d{2}$/.test(params.get('von') || '') ? params.get('von') : '',
+    bis: /^\d{4}-\d{2}-\d{2}$/.test(params.get('bis') || '') ? params.get('bis') : '',
+    konto: params.get('konto') || '',
+    kategorie: params.get('kategorie') || '',
+    text: params.get('text') || '',
+  };
+  const scoped = Object.values(scope).some(Boolean);
 
   view.innerHTML = `
     <div class="toolbar">
@@ -31,6 +40,7 @@ export async function lab(view, { params }) {
       <div class="chips" role="group" aria-label="Automatische Tags" id="lab-auto"></div>
       <span class="meta-line">Nur Probe – Firefly bleibt unverändert · Buchungen seit ${fmtDate(from)}</span>
     </div>
+    <form class="lab-scope${scoped ? ' active' : ''}" id="lab-scope"></form>
     <div class="grid">
       <section class="card span-3" id="l-count"></section>
       <section class="card span-3" id="l-changed"></section>
@@ -51,13 +61,13 @@ export async function lab(view, { params }) {
   ['l-count', 'l-changed', 'l-none', 'l-tags'].forEach((id) => ($(id).innerHTML = skeleton(2, 22)));
   ['l-progress', 'l-groups', 'l-rules', 'l-suggest', 'l-struct', 'l-compare', 'l-tagtable', 'l-tx'].forEach((id) => ($(id).innerHTML = skeleton(5)));
 
-  let txs;
+  let allTxs;
   let stored;
   let dismissed;
   let categorizeAction;
   let rulesAction;
   try {
-    [txs, stored, [categorizeAction, rulesAction], dismissed] = await Promise.all([
+    [allTxs, stored, [categorizeAction, rulesAction], dismissed] = await Promise.all([
       api.getAll('transactions', { start: from, end: t0, type: base.type })
         .then((groups) => api.flattenTransactions(groups).filter((t) => t.type === base.type)),
       fetch('/local/rules').then((r) => r.json()),
@@ -79,9 +89,22 @@ export async function lab(view, { params }) {
   let progressBy = 'category';
   let focus = null; // { by: 'category' | 'party', value } – Filter der Buchungsliste
   let tagFilter = null;
-  const code = mainCurrency(txs);
-  const knownCategories = [...new Set(txs.map((t) => t.category_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
-  const recurringParties = new Set(detectRecurring(txs, base.type === 'deposit' ? 'income' : 'expense').items
+  const accountOf = (t) => (t.type === 'deposit' ? t.destination_name : t.source_name) || '';
+  const inScope = (t) => {
+    const d = String(t.date).slice(0, 10);
+    if (scope.von && d < scope.von) return false;
+    if (scope.bis && d > scope.bis) return false;
+    if (scope.konto && accountOf(t) !== scope.konto) return false;
+    if (scope.kategorie && (t.category_name || 'Ohne Kategorie') !== scope.kategorie) return false;
+    if (scope.text && !`${t.description} ${counterpartyOf(t)} ${t.notes || ''}`.toLowerCase().includes(scope.text.toLowerCase())) return false;
+    return true;
+  };
+  // txs = was das Labor zeigt und auswertet; allTxs = alles (für Regeln ohne Fehltreffer, Abo-Erkennung)
+  const txs = scoped ? allTxs.filter(inScope) : allTxs;
+  const code = mainCurrency(allTxs);
+  const knownCategories = [...new Set(allTxs.map((t) => t.category_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
+  renderScope();
+  const recurringParties = new Set(detectRecurring(allTxs, base.type === 'deposit' ? 'income' : 'expense').items
     .filter((r) => r.active).map((r) => normParty(r.party || r.name)));
 
   let rev = stored.rev ?? 0;
@@ -120,12 +143,13 @@ export async function lab(view, { params }) {
   }
   const save = debounce(saveNow, 400);
 
-  const knownTags = [...new Set([...txs.flatMap((t) => t.tags || []), ...rules.flatMap((r) => r.addTags || [])])].sort((a, b) => a.localeCompare(b, 'de'));
+  const knownTags = [...new Set([...allTxs.flatMap((t) => t.tags || []), ...rules.flatMap((r) => r.addTags || [])])].sort((a, b) => a.localeCompare(b, 'de'));
   const groups = createGroupsPanel({
     view,
     card: $('l-groups'),
     bar: $('l-pickbar'),
     txs,
+    allTxs,
     basis: baseKey,
     knownCategories,
     knownTags,
@@ -159,7 +183,7 @@ export async function lab(view, { params }) {
     const noneBefore = results.filter((x) => !x.t.category_name).length;
     const noneAfter = results.filter((x) => !x.r.category).length;
 
-    $('l-count').innerHTML = stat('Buchungen', String(results.length), `${base.label} seit ${fmtDate(from, { month: 'short', year: 'numeric' })}`);
+    $('l-count').innerHTML = stat('Buchungen', String(results.length), scoped ? `${base.label} in der Einschränkung (von ${allTxs.length})` : `${base.label} seit ${fmtDate(from, { month: 'short', year: 'numeric' })}`);
     $('l-changed').innerHTML = stat('Neu kategorisiert', String(changed.length), `zusammen ${money(sum(changed, (x) => x.t.amount), code)}`);
     $('l-none').innerHTML = stat('Ohne Kategorie', `${noneBefore} → ${noneAfter}`, noneBefore ? `${Math.round((1 - noneAfter / noneBefore) * 100)} % davon zugeordnet` : 'war schon alles zugeordnet');
     $('l-tags').innerHTML = stat('Getaggt', String(tagged.length), `${new Set(tagged.flatMap((x) => x.r.tags)).size} verschiedene Tags`);
@@ -333,6 +357,58 @@ export async function lab(view, { params }) {
     bindTxDetails($('l-tx'), (i) => rows[Number(i)]?.t);
   }
 
+  // ---- Einschränkung ------------------------------------------------------------------
+  function renderScope() {
+    const form = $('lab-scope');
+    const accounts = [...new Set(allTxs.map(accountOf).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
+    const cats = ['Ohne Kategorie', ...knownCategories];
+    const y = t0.getFullYear();
+    const iso = (d) => isoDate(d);
+    const PRESETS = [
+      ['', 'alle (24 Monate)', '', ''],
+      ['jahr', `${y}`, `${y}-01-01`, iso(t0)],
+      ['vorjahr', `${y - 1}`, `${y - 1}-01-01`, `${y - 1}-12-31`],
+      ['12m', 'letzte 12 Monate', iso(new Date(y, t0.getMonth() - 12, t0.getDate() + 1)), iso(t0)],
+      ['3m', 'letzte 3 Monate', iso(new Date(y, t0.getMonth() - 3, t0.getDate() + 1)), iso(t0)],
+    ];
+    const preset = PRESETS.find(([, , v, b]) => v === scope.von && b === scope.bis)?.[0] ?? 'eigener';
+    form.innerHTML = `<span class="scope-label">Einschränken:</span>
+      <label>Zeitraum <select name="zeit">${PRESETS.map(([k, l]) => `<option value="${k}"${k === preset ? ' selected' : ''}>${l}</option>`).join('')}<option value="eigener"${preset === 'eigener' ? ' selected' : ''}>eigener …</option></select></label>
+      <span class="scope-dates"${preset === 'eigener' ? '' : ' hidden'}><input type="date" name="von" value="${esc(scope.von)}" aria-label="von"> – <input type="date" name="bis" value="${esc(scope.bis)}" aria-label="bis"></span>
+      <label>Konto <select name="konto"><option value="">alle</option>${accounts.map((a) => `<option${a === scope.konto ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select></label>
+      <label>Kategorie <select name="kategorie"><option value="">alle</option>${cats.map((c) => `<option${c === scope.kategorie ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+      <label>Text <input type="search" name="text" value="${esc(scope.text)}" placeholder="Beschreibung, Empfänger …" size="16"></label>
+      ${scoped ? `<span class="scope-info"><b>${txs.length}</b> von ${allTxs.length} Buchungen · <button type="button" class="link-btn" data-scope-clear>Einschränkung aufheben</button></span>` : ''}`;
+    const apply = () => {
+      const f = new FormData(form);
+      const zeit = f.get('zeit');
+      const p = PRESETS.find(([k]) => k === zeit);
+      const next = new URLSearchParams();
+      if (baseKey !== 'ausgaben') next.set('basis', baseKey);
+      const von = zeit === 'eigener' ? f.get('von') : p?.[2];
+      const bis = zeit === 'eigener' ? f.get('bis') : p?.[3];
+      if (von) next.set('von', von);
+      if (bis) next.set('bis', bis);
+      for (const k of ['konto', 'kategorie', 'text']) if (f.get(k)) next.set(k, String(f.get(k)).trim());
+      location.hash = `#/labor${next.toString() ? `?${next}` : ''}`;
+    };
+    form.addEventListener('change', (e) => {
+      if (e.target.name === 'zeit' && e.target.value === 'eigener') {
+        form.querySelector('.scope-dates').hidden = false;
+        return;
+      }
+      if (e.target.name !== 'text') apply();
+    });
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      apply();
+    });
+    form.querySelector('[name=text]').addEventListener('keydown', (e) => e.key === 'Enter' && (e.preventDefault(), apply()));
+    form.querySelector('[data-scope-clear]')?.addEventListener('click', () => {
+      location.hash = `#/labor${baseKey === 'ausgaben' ? '' : `?basis=${baseKey}`}`;
+    });
+  }
+
   // ---- Bearbeitungsstand -----------------------------------------------------------
   // erledigt = in einer Gruppe, von einer Labor-Regel erfasst oder als „passt so“ markiert
   const idOf = (t) => String(t.transaction_journal_id);
@@ -374,11 +450,15 @@ export async function lab(view, { params }) {
       byKey.set(key, g);
     }
     const total = results.length || 1;
-    const done = total - counts.offen;
-    const pct = Math.round((done / total) * 100);
+    const done = results.length - counts.offen;
+    const pct = results.length ? Math.round((done / results.length) * 100) : 0;
     $('l-progress-tabs').innerHTML = [['category', 'nach Kategorie'], ['party', 'nach Empfänger']]
       .map(([k, l]) => `<button class="chip" data-progress-by="${k}" aria-pressed="${k === progressBy}">${l}</button>`).join('');
     const rows = [...byKey.values()].filter((g) => g.open).sort((a, b) => b.open - a.open || b.sum - a.sum);
+    if (!results.length) {
+      $('l-progress').innerHTML = `<div class="empty">Keine Buchungen${scoped ? ' in dieser Einschränkung' : ''}.</div>`;
+      return;
+    }
     $('l-progress').innerHTML = `<div class="progress-head">
         <div class="progress-num"><b>${done}</b> von ${results.length} erledigt <span class="muted">(${pct} %)</span></div>
         <div class="progress-bar" role="img" aria-label="${pct} Prozent erledigt">
@@ -588,7 +668,7 @@ export async function lab(view, { params }) {
     } else if (kind === 'n8n' && categorizeAction) {
       // Kategorie geändert oder neue Tags; Tags gehen als komplette neue Liste mit
       const changes = results.filter((x) => x.r.changed || x.r.tags.some((tag) => !(x.t.tags || []).includes(tag)));
-      if (!window.confirm(`${changes.length} Änderungen an „${categorizeAction.name}“ übergeben? Der Workflow schreibt sie dann in Firefly.`)) return;
+      if (!window.confirm(`${changes.length} Änderungen an „${categorizeAction.name}“ übergeben? Der Workflow schreibt sie dann in Firefly.${scoped ? '\n\nNur Buchungen innerhalb der aktuellen Einschränkung.' : ''}`)) return;
       btn.textContent = changes.length > 50 ? 'Sende … (dauert bei vielen Änderungen ein paar Minuten)' : 'Sende …';
       const payload = {
         typ: 'kategorien_uebernehmen',

@@ -29,8 +29,14 @@ async function request(path, { method = 'GET', body } = {}) {
  */
 export function createGroupsPanel(ctx) {
   const { card, bar, txs } = ctx;
+  // index/byId: was das Labor gerade zeigt (ggf. eingeschränkt) – für Anzeige und „Ähnliche finden“.
+  // full*: alle Buchungen – Regeln dürfen auch außerhalb der Einschränkung nichts Falsches treffen.
   const index = buildIndex(txs);
   const byId = new Map(txs.map((t) => [idOf(t), t]));
+  const all = ctx.allTxs || txs;
+  let fullIndexCache = null;
+  const fullIndex = () => (fullIndexCache ||= all === txs ? index : buildIndex(all));
+  const fullById = all === txs ? byId : new Map(all.map((t) => [idOf(t), t]));
   const picked = new Set(); // Auswahl in den Listen (nur in dieser Sitzung)
   let data = { groups: [], trash: [] };
   let openId = null;
@@ -142,7 +148,7 @@ export function createGroupsPanel(ctx) {
     const members = g.include.map((id) => byId.get(id)).filter(Boolean).sort((a, b) => String(b.date).localeCompare(String(a.date)));
     const missing = g.include.length - members.length;
     const excluded = g.exclude.map((id) => byId.get(id)).filter(Boolean);
-    const plan = members.length ? proposeRules(index, g.include, { kind: g.kind, name: g.name, groupId: g.id }) : null;
+    const plan = members.length ? proposeRules(fullIndex(), g.include, { kind: g.kind, name: g.name, groupId: g.id }) : null;
     const names = g.kind === 'tag' ? ctx.knownTags : ctx.knownCategories;
     return `<div class="group-editor">
       <div class="group-head">
@@ -155,7 +161,7 @@ export function createGroupsPanel(ctx) {
       ${g.source ? `<p class="muted small-text">Entstanden aus: ${esc(g.source)}</p>` : ''}
 
       <h3>In der Gruppe (${members.length})</h3>
-      ${missing ? `<p class="muted small-text">${missing} weitere Buchung${missing === 1 ? '' : 'en'} gespeichert, aber nicht in dieser Ansicht (älter als 24 Monate, in Firefly gelöscht oder ${g.basis === 'einnahmen' ? 'Ausgaben' : 'Einnahmen'}-Ansicht) – sie bleiben erhalten.</p>` : ''}
+      ${missing ? `<p class="muted small-text">${missing} weitere Buchung${missing === 1 ? '' : 'en'} gespeichert, aber nicht in dieser Ansicht (außerhalb der Einschränkung, älter als 24 Monate, in Firefly gelöscht oder ${g.basis === 'einnahmen' ? 'Ausgaben' : 'Einnahmen'}-Ansicht) – sie bleiben erhalten und zählen beim Übernehmen mit.</p>` : ''}
       ${members.length ? `<div class="table-wrap scroll group-table"><table><tbody>${members.map((t, k) => txRowHtml(t, `m:${k}`, {
         actions: `<button class="link-btn" data-g-remove="${esc(idOf(t))}" title="aus der Gruppe nehmen">entfernen</button><button class="link-btn" data-g-exclude="${esc(idOf(t))}" title="als Gegenbeispiel merken">gehört nicht dazu</button>`,
       })).join('')}</tbody></table></div>` : '<div class="empty">Noch leer – hake unten Buchungen an.</div>'}
@@ -316,7 +322,7 @@ export function createGroupsPanel(ctx) {
 
   /** Regeln der Gruppe ins Labor übernehmen (ersetzt frühere Regeln derselben Gruppe). */
   async function apply(g, { quiet = false } = {}) {
-    const plan = proposeRules(index, g.include, { kind: g.kind, name: g.name, groupId: g.id });
+    const plan = proposeRules(fullIndex(), g.include, { kind: g.kind, name: g.name, groupId: g.id });
     const clean = plan.rules.map(({ label, count, oneOff, ...rule }) => rule);
     const others = ctx.getRules().filter((r) => r.groupId !== g.id);
     // Kategorie-Gruppen vorne einreihen (die erste passende Regel bestimmt die Kategorie)
@@ -335,11 +341,11 @@ export function createGroupsPanel(ctx) {
    * Zeitraum, einzelne Buchungen direkt setzen.
    */
   async function transfer(g) {
-    const plan = proposeRules(index, g.include, { kind: g.kind, name: g.name, groupId: g.id });
+    const plan = proposeRules(fullIndex(), g.include, { kind: g.kind, name: g.name, groupId: g.id });
     const period = card.querySelector('[data-g-period]')?.value || 'none';
     const permanent = plan.rules.filter((r) => !r.oneOff).map(({ label, count, oneOff, ...rule }) => rule);
     const oneOffIds = plan.rules.filter((r) => r.oneOff).flatMap((r) => String(r.when[0].value).split(','));
-    const oneOffTx = oneOffIds.map((id) => byId.get(id)).filter(Boolean);
+    const oneOffTx = oneOffIds.map((id) => fullById.get(id)).filter(Boolean);
     const lines = [
       permanent.length ? `• ${permanent.length} Regel(n) in Firefly-Regelgruppe „${fireflyGroupTitle(g)}“ anlegen/aktualisieren` : '',
       permanent.length ? `• anwenden auf: ${PERIODS[period]}` : '',

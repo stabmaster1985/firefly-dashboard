@@ -77,7 +77,7 @@ export const PAGES = {
     what: 'Die Werkstatt zum Aufräumen: Kategorien und Tags probeweise neu ordnen, Regeln bauen, Gruppen zusammenstellen – und erst am Ende nach Firefly übertragen.',
     app: 'Alles ist zunächst nur eine Probe auf Basis der Buchungen der letzten 24 Monate. Regeln, Gruppen und ausgeblendete Vorschläge speichert der Dashboard-Server (bleiben über Geräte und Updates erhalten).',
     firefly: 'Nichts, solange du nur probierst. Firefly ändert sich erst bei: „In Firefly anlegen“ (Regeln), „Änderungen an n8n übergeben“ (Kategorien/Tags direkt an Buchungen) oder „Nach Firefly übertragen“ in einer Gruppe. ' + VIA_N8N,
-    tips: ['Typischer Ablauf: Vorschläge ansehen → als Gruppe bearbeiten → Ähnliche finden → Nach Firefly übertragen.', 'Oben „Ausgaben/Einnahmen“ wechselt die Grundlage.', 'Auto-Tags (Abo, Online, …) sind nur eine Probe-Hilfe und gehen nur über „Änderungen an n8n übergeben“ nach Firefly.'],
+    tips: ['Typischer Ablauf: Vorschläge ansehen → als Gruppe bearbeiten → Ähnliche finden → Nach Firefly übertragen.', 'Oben „Ausgaben/Einnahmen“ wechselt die Grundlage.', '„Einschränken“ (Zeitraum, Konto, Kategorie, Text) wirkt auf alles im Labor: Fortschritt, Vorschläge, Buchungen, „Ähnliche finden“ und „Änderungen an n8n übergeben“. Regeln aus Gruppen werden trotzdem gegen alle Buchungen geprüft, damit sie außerhalb keine Fehltreffer erzeugen.', 'Auto-Tags (Abo, Online, …) sind nur eine Probe-Hilfe und gehen nur über „Änderungen an n8n übergeben“ nach Firefly.'],
     cards: ['l-progress', 'l-groups', 'l-rules', 'l-suggest', 'l-struct', 'l-compare', 'l-tagtable', 'l-tx'],
   },
   year: {
@@ -112,7 +112,7 @@ export const CARDS = {
   goals: { title: 'Ziele', what: 'Eigene Monatsziele je Kategorie (unabhängig von Firefly-Budgets) und wie weit du im Zeitraum bist.', app: 'Ein Ziel legst du auf der Detailseite einer Kategorie fest („+ Monatsziel festlegen“); gespeichert wird es auf dem Dashboard-Server.', firefly: 'Nichts – Ziele sind keine Firefly-Budgets.' },
   cashflow: { title: 'Einnahmen & Ausgaben', what: 'Einnahmen und Ausgaben der letzten 12 Monate (bzw. Gehaltsmonate).', app: 'Mit Durchschnitt und Sparquote darunter.', firefly: READ_ONLY },
   accounts: { title: 'Konten', what: 'Aktuelle Kontostände.', app: 'Klick öffnet die Kontoseite.', firefly: READ_ONLY },
-  flow: { title: 'Geldfluss', what: 'Woher das Geld kommt und wohin es geht – Einnahmen → Ausgaben → Gespart.', app: 'Breite der Bänder = Betrag.', firefly: READ_ONLY },
+  flow: { title: 'Geldfluss', what: 'Woher das Geld kommt und wohin es geht – Einnahmen → Ausgaben → Gespart.', app: 'Breite der Bänder = Betrag. Klick auf einen Block, ein Band oder einen Namen zeigt darunter die Buchungen dazu (mit Details); von dort geht es zur Kategorie-Analyse oder – mit Zeitraum und Kategorie als Einschränkung – ins Labor. Nochmal klicken hebt die Auswahl auf.', firefly: READ_ONLY },
   expected: { title: 'Erwartet bis Periodenende', what: 'Prognose: Welche wiederkehrenden Zahlungen und üblichen Ausgaben bis zum Ende des Zeitraums noch kommen.', app: 'Nur sichtbar mit eingeschalteter Prognose.', firefly: READ_ONLY },
   categories: { title: 'Ausgaben nach Kategorie', what: 'Die größten Ausgabenblöcke im Zeitraum.', app: 'Klick auf eine Kategorie öffnet ihre Detailseite.', firefly: READ_ONLY },
   changes: { title: 'Größte Veränderungen', what: 'Kategorien, die sich gegenüber der Vorperiode am stärksten verändert haben.', app: 'Laufende Zeiträume werden fair mit demselben Abschnitt davor verglichen.', firefly: READ_ONLY },

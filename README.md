@@ -5,7 +5,8 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
 
 - **Übersicht** – Nettovermögen, Einnahmen und Ausgaben mit Vergleich zur Vorperiode, Saldo &
   Sparquote, Cashflow der letzten 12 Monate, **Geldfluss-Diagramm** (Einnahmen → Ausgaben →
-  Gespart), Ausgaben nach Kategorie, größte Veränderungen je Kategorie und letzte Buchungen
+  Gespart; Klick auf einen Block oder ein Band zeigt die Buchungen dazu, mit Sprung zur Analyse
+  oder ins Labor), Ausgaben nach Kategorie, größte Veränderungen je Kategorie und letzte Buchungen
 - **Kategorien** – die Analyse-Seite für Ausgaben und Einnahmen:
   - Vergleichstabelle (sortierbar) mit Betrag, Anteil, Vorperiode, Veränderung, Ø pro Monat und
     Mini-Verlauf je Kategorie
@@ -85,6 +86,9 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
     („Dashboard: <Name>“, auch nach Umbenennen wiedergefunden), werden auf Wunsch auf alle
     vorhandenen Buchungen bzw. die letzten 24 Monate angewendet, und die einzelnen Buchungen
     werden direkt gesetzt. Erneutes Übertragen aktualisiert die Regeln statt sie zu verdoppeln
+  - **Einschränken** – Zeitraum, Konto, Kategorie und Suchtext grenzen alles im Labor ein
+    (Fortschritt, Vorschläge, Buchungen, „Ähnliche finden“, Übergabe an n8n); Regeln aus Gruppen
+    werden trotzdem gegen alle Buchungen geprüft, damit sie außerhalb keine Fehltreffer erzeugen
   - **Fortschritt** – zeigt, was schon erledigt ist (in einer Gruppe, von einer Labor-Regel erfasst
     oder als **„passt so“** markiert) und was noch offen ist, aufgeteilt nach Kategorie oder
     Empfänger; Klick filtert die Buchungsliste auf genau diese offenen Buchungen. „Passt so“ geht
