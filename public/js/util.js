@@ -35,7 +35,10 @@ export function parseDate(value) {
   return new Date(y, m - 1, d);
 }
 
-export function fmtDate(value, opts = { day: '2-digit', month: '2-digit', year: 'numeric' }) {
+// Auf dem Handy zweistellige Jahreszahl (spart in Tabellen Platz für den Betrag)
+const narrow = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 760px)') : null;
+
+export function fmtDate(value, opts = { day: '2-digit', month: '2-digit', year: narrow?.matches ? '2-digit' : 'numeric' }) {
   const d = parseDate(value);
   return d ? d.toLocaleDateString(LOCALE, opts) : '–';
 }

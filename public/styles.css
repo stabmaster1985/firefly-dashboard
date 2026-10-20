@@ -848,3 +848,56 @@ button.cal-day { cursor: pointer; }
 .lab-scope .amount-input { width: 80px; }
 .bar-form { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
 .bar-form input { height: 30px; width: 150px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--grid); background: var(--surface-1); color: var(--text-primary); font: inherit; font-size: 13px; }
+
+/* ---- Handy ------------------------------------------------------------------- */
+.show-sm { display: none; }
+@media (max-width: 760px) {
+  .show-sm { display: inline; }
+  /* Eingabefelder ab 16px – sonst zoomt iOS beim Antippen in die Seite */
+  input:not([type=checkbox]):not([type=radio]), select, textarea { font-size: 16px !important; }
+  /* Kopfzeile: Titel + Symbole in einer Zeile, darunter Suche und Zeitraum; scrollt mit,
+     statt dauerhaft ein Drittel des Bildschirms zu belegen */
+  .topbar { position: static; background: var(--page); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 6px; padding: 12px 0 10px; }
+  .topbar h1 { flex: 1 0 calc(100% - 172px); min-width: 0; font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .topbar-actions { display: contents; }
+  .topbar .icon-btn { order: 1; width: 36px; height: 36px; }
+  .topbar .search { order: 2; flex: 1 1 0; min-width: 0; }
+  .topbar .period-wrap { order: 3; flex: 0 1 170px; }
+  .card { padding: 14px 12px; }
+  /* Tabellen: kompakter, damit der Betrag sichtbar bleibt */
+  table { font-size: 14px; }
+  th { white-space: normal; font-size: 11px; }
+  td.date { font-size: 13px; }
+  td .flow { overflow-wrap: anywhere; }
+  td.num { padding-left: 4px; }
+  /* Filter-Chips nebeneinander, seitlich wischbar statt umzubrechen */
+  .toolbar .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; flex: 1 1 100%; }
+  .toolbar .chips .chip { flex: none; }
+  /* größere Tippflächen */
+  .help-btn { width: 30px; height: 30px; font-size: 14px; }
+  .link-btn { padding: 6px 2px; }
+  .chip.small, .chips.small .chip { height: 34px; }
+  .pick-cell { width: 34px; }
+  .pick-cell input, td input[data-sim] { width: 22px; height: 22px; }
+  .icon-btn.small { width: 34px; height: 34px; }
+  .card-filter { height: 36px; }
+  .card-tools { flex-wrap: wrap; }
+  .card-tools .meta { order: 3; flex: 1 1 100%; line-height: 1.2; }
+  .lab-scope { padding: 10px 12px; }
+  .lab-scope label { flex: 1 1 100%; justify-content: space-between; }
+  .lab-scope select, .lab-scope input { height: 36px; max-width: none; flex: 1; }
+  .lab-scope .amount-input { width: 0; min-width: 0; flex: 1 1 0; }
+  .span-3 { grid-column: span 6; }
+  .stat .value { font-size: 20px; }
+  .scope-info { margin-left: 0; }
+  /* Auswahlleiste als schmales Fach über der Navigation, Inhalt bleibt erreichbar */
+  .pick-bar { left: 8px; right: auto; transform: none; width: calc(100vw - 16px); max-width: none; box-sizing: border-box; bottom: calc(68px + env(safe-area-inset-bottom)); gap: 8px; padding: 10px 12px;
+    max-height: 45vh; overflow-y: auto; font-size: 14px; }
+  .pick-bar > span:first-child { flex: 1 1 100%; }
+  .pick-bar .bar-form { flex: 1 1 100%; }
+  .pick-bar .bar-form input { flex: 1 1 0; width: 0; min-width: 0; height: 36px; }
+  .pick-bar select { height: 36px; flex: 1 1 100%; }
+  .pick-bar .btn { height: 36px; }
+  body:has(.pick-bar:not([hidden])) .main { padding-bottom: 340px; }
+}
+@media (max-width: 760px) { .page summary { padding: 6px 0; } }

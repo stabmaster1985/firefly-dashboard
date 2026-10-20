@@ -278,7 +278,7 @@ export async function transactions(view, { period, params }) {
   view.innerHTML = `
     <section class="card">
       <div class="toolbar">
-        <input class="input" id="tx-search" type="search" placeholder="Suchen … (z. B. REWE, category_is:&quot;Lebensmittel&quot;, amount_more:100)" value="${esc(state.q)}" aria-label="Buchungen durchsuchen">
+        <input class="input" id="tx-search" type="search" placeholder="Suchen … (z. B. REWE, amount_more:100)" value="${esc(state.q)}" aria-label="Buchungen durchsuchen">
         <select class="input select" id="tx-cat" aria-label="Kategorie"><option value="">Alle Kategorien</option></select>
         <div class="chips" role="group" aria-label="Buchungsart">
           ${TYPES.map(([id, label]) => `<button class="chip" data-type="${id}" aria-pressed="${id === state.type}">${label}</button>`).join('')}
@@ -288,7 +288,7 @@ export async function transactions(view, { period, params }) {
       <div class="legend" id="tx-summary" style="margin-bottom:12px"></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th class="pick-cell"><input type="checkbox" id="tx-pick-all" aria-label="Alle angezeigten auswählen" title="Alle angezeigten auswählen"></th><th>Datum</th><th>Beschreibung</th><th class="hide-sm">Kategorie</th><th class="num">Betrag</th></tr></thead>
+          <thead><tr><th class="pick-cell"><input type="checkbox" id="tx-pick-all" aria-label="Alle angezeigten auswählen" title="Alle angezeigten auswählen"></th><th class="hide-sm">Datum</th><th>Beschreibung</th><th class="hide-sm">Kategorie</th><th class="num">Betrag</th></tr></thead>
           <tbody id="tx-body"></tbody>
         </table>
       </div>
@@ -345,8 +345,8 @@ export async function transactions(view, { period, params }) {
     body.innerHTML = state.rows
       .map((t, i) => `<tr ${txAttrs(i)}>
         <td class="pick-cell"><input type="checkbox" data-txpick="${i}" ${picked.has(jid(t)) ? 'checked' : ''} aria-label="auswählen"></td>
-        <td class="date">${fmtDate(t.date)}</td>
-        <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(t.source_name)} → ${esc(t.destination_name)}</div>${t.notes ? `<div class="flow note">${esc(t.notes)}</div>` : ''}</td>
+        <td class="date hide-sm">${fmtDate(t.date)}</td>
+        <td><div class="desc">${esc(t.description)}</div><div class="flow"><span class="show-sm">${fmtDate(t.date)} · </span>${esc(t.source_name)} → ${esc(t.destination_name)}</div>${t.notes ? `<div class="flow note">${esc(t.notes)}</div>` : ''}</td>
         <td class="hide-sm">${t.category_name ? `<span class="cat">${esc(t.category_name)}</span>` : ''}${(t.tags || []).map((x) => ` <span class="tag">${esc(x)}</span>`).join('')}</td>
         <td class="num">${signedAmount(t)}</td></tr>`)
       .join('');

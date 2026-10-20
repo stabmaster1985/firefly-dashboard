@@ -351,8 +351,8 @@ export async function lab(view, { params }) {
       : `${focus ? `<span class="chip small" aria-pressed="true">${focus.by === 'party' ? 'Empfänger' : 'Kategorie'}: ${esc(focus.value)} <button class="chip-x" data-unfocus aria-label="Filter entfernen">✕</button></span> ` : ''}${modes}`;
     $('l-tx').innerHTML = rows.length
       ? `<div class="table-wrap scroll"><table><tbody>${rows.slice(0, 500).map(({ t, r }, i) => `<tr ${txAttrs(i)}>${groups.pickCell(t)}
-          <td class="date">${fmtDate(t.date)}</td>
-          <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(counterpartyOf(t))}</div></td>
+          <td class="date hide-sm">${fmtDate(t.date)}</td>
+          <td><div class="desc">${esc(t.description)}</div><div class="flow"><span class="show-sm">${fmtDate(t.date)} · </span>${esc(counterpartyOf(t))}</div></td>
           <td>${r.changed ? `<span class="muted strike">${esc(t.category_name || 'ohne')}</span> → <b>${esc(r.category || 'ohne')}</b>` : esc(r.category || '–')}
             ${r.tags.length ? `<div>${r.tags.map((x) => `<span class="tag">${esc(x)}</span>`).join('')}</div>` : ''}
             <div class="status-line">${statusBadge(statusOf(t, r), idOf(t))}</div></td>

@@ -134,7 +134,10 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
 - **Hilfe überall** – ein **?** an jeder Karte und oben rechts für die ganze Seite erklärt jeweils:
   wofür es da ist, was im Dashboard passiert und was (nicht) in Firefly passiert. Die Seite
   `#/hilfe` sammelt alle Themen mit Suche
-- Hell-/Dunkelmodus, optimiert fürs Handy
+- Hell-/Dunkelmodus, optimiert fürs Handy: kompakte Kopfzeile, die mitscrollt; Eingabefelder in 16 px
+  (kein automatisches Hineinzoomen auf dem iPhone); große Tippflächen; in Buchungslisten steht das Datum
+  unter der Beschreibung, damit der Betrag immer sichtbar bleibt; die Auswahlleiste im Labor liegt als
+  schmales Fach über der Navigation
 
 Der Vergleich mit der Vorperiode ist fair: Läuft der gewählte Zeitraum noch (z. B. „Dieser
 Monat“ am 19.), wird mit demselben Abschnitt davor verglichen (1.–19. des Vormonats).
