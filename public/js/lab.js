@@ -320,7 +320,7 @@ export async function lab(view, { params }) {
       // Kategorie geändert oder neue Tags; Tags gehen als komplette neue Liste mit
       const changes = results.filter((x) => x.r.changed || x.r.tags.some((tag) => !(x.t.tags || []).includes(tag)));
       if (!window.confirm(`${changes.length} Änderungen an „${categorizeAction.name}“ übergeben? Der Workflow schreibt sie dann in Firefly.`)) return;
-      btn.textContent = 'Sende …';
+      btn.textContent = changes.length > 50 ? 'Sende … (dauert bei vielen Änderungen ein paar Minuten)' : 'Sende …';
       const payload = {
         typ: 'kategorien_uebernehmen',
         aenderungen: changes.map(({ t, r }) => ({
