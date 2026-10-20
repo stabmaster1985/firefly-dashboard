@@ -192,6 +192,15 @@ aufräumen und prüfen, ob der Container läuft. Lokale Änderungen, z. B. Token
 3. Im Knoten **Webhook** eine Header-Auth-Zugangsdaten anlegen (z. B. Name `X-Update-Key`,
    langer Zufallswert) und den Workflow aktivieren.
 
+**Update-Knopf im Dashboard:** Lege unter Automationen eine Automation mit Auslöser
+**Dashboard aktualisieren** und der Webhook-URL dieses Workflows an. Oben auf der Seite
+Automationen zeigt die Karte **Dashboard-Version** den laufenden Commit und – sobald es auf
+GitHub Neues gibt – die neuen Commits und den Knopf zum Aktualisieren; die Seite lädt nach dem
+Neustart von selbst neu. In der Seitenleiste erscheint dann „Update verfügbar“. Die Prüfung
+fragt höchstens einmal pro Stunde bei GitHub nach (`UPDATE_CHECK=0` schaltet sie ab,
+`UPDATE_REPO` wählt ein anderes Repository). Die Version schreibt der Docker-Build aus dem
+`.git`-Verzeichnis in die Datei `version.json`.
+
 Gestartet wird per **Test workflow**, per `POST` auf den Webhook (z. B. als Knopf unter
 Automationen im Dashboard – mit dem Header von oben) oder, wenn aktiviert, täglich um 4 Uhr.
 Der Webhook antwortet sofort mit 202, weil sich das Dashboard beim Neustart selbst beendet;

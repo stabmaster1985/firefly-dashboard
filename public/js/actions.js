@@ -19,6 +19,7 @@ const TRIGGERS = {
   alerts: { label: 'Warnungen', run: '▶ Testwarnung senden', hint: 'Startet bei jeder neuen Warnung: große Ausgabe, Abo mit neuem Betrag, ausgebliebene Zahlung. Jede Warnung wird nur einmal gesendet.' },
   categorize: { label: 'Kategorie übernehmen', run: '▶ Testdaten senden', hint: 'Startet, wenn du in den Details einer Buchung eine Kategorie setzt oder bei „Ohne Kategorie“ einen Vorschlag übernimmst. Der Workflow erhält Buchungs-ID und Kategorie (typ „kategorie_setzen“) und setzt sie in Firefly – fertiger Workflow: n8n/firefly-buchung-bearbeiten.json.' },
   import: { label: 'Import starten', run: '▶ Import starten', hint: 'Erscheint als Knopf auf der Seite „Prüfen“ beim Import-Status, z. B. für deinen n8n-Workflow, der die Bank-CSV abholt und importiert. Mitgeschickt werden die Konten, die überfällig wirken.' },
+  update: { label: 'Dashboard aktualisieren', run: '▶ Jetzt aktualisieren', hint: 'Erscheint oben unter „Dashboard-Version“, sobald es auf GitHub eine neuere Version gibt – z. B. für den n8n-Workflow n8n/firefly-dashboard-update.json. Achtung: auch „Testen“ startet das Update wirklich.' },
   tags: { label: 'Tags setzen', run: '▶ Testdaten senden', hint: 'Startet, wenn du in den Details einer Buchung einen Tag hinzufügst oder entfernst. Der Workflow erhält Buchungs-ID und die komplette neue Tag-Liste (typ „tags_setzen“) – derselbe n8n-Workflow wie für Kategorien kann beides.' },
 };
 
@@ -58,6 +59,7 @@ export async function actions(view, { period }) {
       <button class="btn primary" id="act-new">+ Neue Automation</button>
       <span class="meta-line">Startet Webhooks, z. B. n8n-Workflows · der gewählte Zeitraum wird mitgeschickt</span>
     </div>
+    <section class="card version-card" id="act-version"><div class="skeleton" style="height:40px"></div></section>
     <div id="act-editor"></div>
     <section class="card settings-card"><form id="act-settings" class="settings-row">
       <label>Gehaltstag <input type="number" name="payday" min="2" max="28" required></label>
@@ -211,6 +213,7 @@ export async function actions(view, { period }) {
   }
 
   view.querySelector('#act-new').addEventListener('click', () => openEditor(null));
+  versionCard(view.querySelector('#act-version'));
 
   // Einstellungen für Zeitplan (Gehaltstag, Schwelle für Warnungen)
   const setForm = view.querySelector('#act-settings');
@@ -239,6 +242,88 @@ export async function actions(view, { period }) {
     if (edit) openEditor(list.find((a) => a.id === edit.dataset.edit));
   });
   reload();
+}
+
+// ---- Dashboard-Version & Update ------------------------------------------------
+
+const short = (sha) => String(sha || '').slice(0, 7);
+
+/** Laufende Version, neue Commits auf GitHub und Knopf für die Update-Automation. */
+async function versionCard(el, { force = false } = {}) {
+  let v;
+  try {
+    v = await fetch(`/local/version${force ? '?refresh=1' : ''}`).then((r) => r.json());
+  } catch {
+    el.hidden = true;
+    return;
+  }
+  if (!el.isConnected) return;
+  const updateAction = await local('').then((l) => l.find((a) => a.trigger === 'update')).catch(() => null);
+  const cur = v.current || {};
+  const stand = cur.commit
+    ? `<b>${esc(short(cur.commit))}</b>${cur.branch ? ` (${esc(cur.branch)})` : ''}${cur.updatedAt ? ` · Stand ${fmtTime(cur.updatedAt)}` : ''}`
+    : '<span class="muted">unbekannt (ohne Git-Daten gebaut)</span>';
+  let state = '';
+  if (!v.enabled) state = '<span class="muted">Update-Prüfung ist ausgeschaltet (UPDATE_CHECK=0).</span>';
+  else if (v.error) state = `<span class="badge warn">Prüfung fehlgeschlagen</span> <span class="muted">${esc(v.error)}</span>`;
+  else if (v.status === 'current') state = `<span class="badge good">aktuell</span>${v.latest?.commit !== cur.commit ? ' <span class="muted">(neuer als GitHub)</span>' : ''}`;
+  else if (v.status === 'unknown') state = '<span class="badge warn">Eigener Stand</span> <span class="muted">Dieser Commit ist auf GitHub nicht bekannt (z. B. lokale Änderungen).</span>';
+  else if (v.latest) {
+    state = `<span class="badge warn">Update verfügbar${v.behind ? ` · ${v.behind} neue${v.behind === 1 ? 'r Commit' : ' Commits'}` : ''}</span>`;
+    if (v.commits?.length) {
+      state += `<ul class="commit-list">${v.commits.map((c) => `<li><code>${esc(short(c.commit))}</code> ${esc(c.message)} <span class="muted">${c.date ? fmtDate(c.date) : ''}</span></li>`).join('')}</ul>`;
+    } else if (v.latest.message) {
+      state += `<ul class="commit-list"><li><code>${esc(short(v.latest.commit))}</code> ${esc(v.latest.message)}</li></ul>`;
+    }
+  }
+  const outdated = v.status === 'update';
+  el.innerHTML = `<div class="card-head"><h2>Dashboard-Version</h2><span class="meta">${v.repo ? `<a href="https://github.com/${esc(v.repo)}/commits" target="_blank" rel="noopener">${esc(v.repo)} ↗</a>` : ''}</span></div>
+    <p class="version-line">Läuft: ${stand}</p>
+    <div>${state}</div>
+    <div class="version-actions">
+      <button class="btn" data-v="check">Jetzt prüfen</button>
+      ${updateAction ? `<button class="btn ${outdated ? 'primary' : ''}" data-v="update">▶ ${esc(updateAction.name)}</button>` : '<span class="muted">Für einen Update-Knopf: Automation mit Auslöser „Dashboard aktualisieren“ anlegen (n8n-Vorlage: n8n/firefly-dashboard-update.json).</span>'}
+    </div>
+    <div class="run-out" id="v-out"></div>`;
+  el.querySelector('[data-v=check]').addEventListener('click', (e) => {
+    e.target.disabled = true;
+    versionCard(el, { force: true });
+  });
+  el.querySelector('[data-v=update]')?.addEventListener('click', async (e) => {
+    if (!window.confirm('Dashboard jetzt aktualisieren? Es ist danach kurz nicht erreichbar.')) return;
+    e.target.disabled = true;
+    const out = el.querySelector('#v-out');
+    out.innerHTML = '<span class="muted">Starte Update …</span>';
+    const result = await local(`/${encodeURIComponent(updateAction.id)}/run`, { method: 'POST', body: { context: { typ: 'update', von: cur.commit || null, auf: v.latest?.commit || null } } })
+      .catch((err) => ({ ok: false, status: 0, durationMs: 0, response: err.message }));
+    if (!result.ok) {
+      out.innerHTML = resultHtml(result);
+      e.target.disabled = false;
+      return;
+    }
+    // Neustart abwarten: sobald eine andere Version läuft, Seite neu laden
+    out.innerHTML = '<span class="badge good">Update gestartet</span> <span class="muted">Das Dashboard wird neu gebaut und startet neu – die Seite lädt danach von selbst neu (meist 1–3 Minuten).</span>';
+    const started = Date.now();
+    const poll = async () => {
+      if (!el.isConnected) return;
+      const now = await fetch('/local/version', { cache: 'no-store' }).then((r) => r.json()).catch(() => null);
+      if (now?.current?.commit && now.current.commit !== cur.commit) return location.reload();
+      if (Date.now() - started > 10 * 60_000) {
+        out.innerHTML = '<span class="badge warn">Noch keine neue Version</span> <span class="muted">Bitte in n8n die Ausführung des Workflows prüfen.</span>';
+        return;
+      }
+      setTimeout(poll, 10_000);
+    };
+    setTimeout(poll, 15_000);
+  });
+}
+
+/** Kurzinfo für die Seitenleiste: Version und Hinweis auf ein Update. */
+export async function versionBadge(host) {
+  const v = await fetch('/local/version').then((r) => r.json()).catch(() => null);
+  if (!v?.current?.commit || !host) return;
+  const outdated = v.status === 'update' && !v.error;
+  host.innerHTML = `Version ${esc(short(v.current.commit))}${outdated ? ` · <a href="#/automationen" class="update-link">Update verfügbar${v.behind ? ` (${v.behind})` : ''} →</a>` : ''}`;
 }
 
 function headerRow(h) {

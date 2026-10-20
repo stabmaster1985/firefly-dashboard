@@ -5,7 +5,7 @@ import * as views from './views.js';
 import { categories, categoryDetail, tags, tagDetail, forecastEnabled } from './categories.js';
 import { recurring } from './recurring.js';
 import { accountDetail } from './account.js';
-import { actions } from './actions.js';
+import { actions, versionBadge } from './actions.js';
 import { yearReview } from './year.js';
 import { lab } from './lab.js';
 import { check } from './check.js';
@@ -116,8 +116,9 @@ async function connect() {
     connectionError = null;
     const email = user?.data?.attributes?.email;
     document.getElementById('instance-info').innerHTML =
-      `Firefly III ${esc(about?.data?.version || '')}${email ? `<br>${esc(email)}` : ''}<div id="perf-info" class="perf"></div>`;
+      `Firefly III ${esc(about?.data?.version || '')}${email ? `<br>${esc(email)}` : ''}<div id="version-info"></div><div id="perf-info" class="perf"></div>`;
     updatePerf();
+    versionBadge(document.getElementById('version-info'));
   } catch (err) {
     connectionError = err;
   }

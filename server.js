@@ -13,6 +13,7 @@ import { createActions } from './lib/actions.js';
 import { createFirefly } from './lib/firefly.js';
 import { startWarmer } from './lib/warmer.js';
 import { createAutomation } from './lib/automation.js';
+import { createVersion } from './lib/version.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
@@ -33,6 +34,8 @@ const CACHE_HISTORY_HOURS = Number(process.env.CACHE_HISTORY_HOURS ?? 12);
 const FIREFLY_CONCURRENCY = Number(process.env.FIREFLY_CONCURRENCY ?? 4);
 const WARM_MINUTES = Number(process.env.WARM_MINUTES ?? 10);
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
+const UPDATE_REPO = process.env.UPDATE_REPO ?? 'stabmaster1985/firefly-dashboard';
+const UPDATE_CHECK = process.env.UPDATE_CHECK !== '0';
 
 if (!FIREFLY_URL || !FIREFLY_TOKEN) {
   console.error('FIREFLY_URL und FIREFLY_TOKEN müssen gesetzt sein (siehe .env.example).');
@@ -80,6 +83,9 @@ const firefly = createFirefly({
 // Automationen (Webhooks) – eigene, lokal gespeicherte Konfiguration.
 // Ändert eine Automation Buchungen in Firefly, ist der Zwischenspeicher veraltet.
 const handleActions = createActions(DATA_DIR, { onDataChange: () => firefly.invalidate() });
+
+// Laufende Version und Prüfung auf neue Commits (GitHub)
+const version = createVersion({ root: ROOT, repo: UPDATE_REPO, enabled: UPDATE_CHECK });
 
 function send(res, status, body, headers = {}) {
   res.writeHead(status, {
@@ -193,6 +199,10 @@ const server = http.createServer((req, res) => {
   if (url.pathname.startsWith('/api/')) return proxy(req, res, url);
   if (url.pathname === '/local/actions' || url.pathname.startsWith('/local/actions/')) return handleActions(req, res, url);
   if (['/local/settings', '/local/goals', '/local/alerts', '/local/rules'].includes(url.pathname)) return handleAutomation(req, res, url);
+  if (url.pathname === '/local/version') {
+    return version.get({ force: url.searchParams.get('refresh') === '1' }).then((v) =>
+      send(res, 200, JSON.stringify(v), { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' }));
+  }
   if (url.pathname === '/local/stats') {
     return send(res, 200, JSON.stringify(firefly.summary()), { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' });
   }
@@ -211,6 +221,8 @@ if (WARM_MINUTES > 0) warmNow = startWarmer(firefly, { minutes: WARM_MINUTES, mo
 server.listen(PORT, HOST, () => {
   console.log(`Firefly Dashboard läuft auf http://localhost:${PORT}`);
   console.log(`Firefly III: ${FIREFLY_URL}`);
+  const v = version.current();
+  if (v.commit) console.log(`Version: ${v.commit.slice(0, 7)}${v.branch ? ` (${v.branch})` : ''}`);
   if (!DASHBOARD_PASSWORD) {
     console.log('Hinweis: Kein DASHBOARD_PASSWORD gesetzt – jeder im Netzwerk kann das Dashboard öffnen.');
   }

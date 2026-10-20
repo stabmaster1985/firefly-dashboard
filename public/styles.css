@@ -617,6 +617,13 @@ tr.dup-head .link-btn { margin-left: 8px; }
 tbody tr.dup-head:first-child td { padding-top: 4px; }
 .import-run { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; font-size: 13px; }
 .import-run .run-out { flex-basis: 100%; }
+.version-card { margin-bottom: 16px; }
+.version-line { margin: 0 0 8px; }
+.version-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; font-size: 13px; }
+.commit-list { margin: 10px 0 0; padding-left: 18px; font-size: 13px; display: grid; gap: 4px; }
+.commit-list code { font-size: 12px; color: var(--text-muted); }
+#version-info { margin-top: 6px; }
+.update-link { color: var(--accent); font-weight: 600; text-decoration: none; }
 .btn.small { height: 30px; padding: 0 10px; font-size: 13px; }
 .btn.done { color: var(--positive); }
 .suggest-actions { white-space: nowrap; }
