@@ -8,6 +8,7 @@ import { accountDetail } from './account.js';
 import { actions } from './actions.js';
 import { yearReview } from './year.js';
 import { lab } from './lab.js';
+import { check } from './check.js';
 import { applyCardFilter } from './common.js';
 import { destroyCharts } from './charts.js';
 import { PERIODS, SALARY_PERIODS, periodById, customPeriodId, parseDate, isoDate, debounce, storage, store, esc, payday } from './util.js';
@@ -22,6 +23,7 @@ const ROUTES = {
   automationen: { view: actions, title: 'Automationen', nav: 'actions' },
   jahr: { view: yearReview, title: 'Jahresrückblick', nav: 'year', noPeriod: true },
   labor: { view: lab, title: 'Kategorien-Labor', nav: 'lab', noPeriod: true },
+  pruefen: { view: check, title: 'Prüfen', nav: 'check', noPeriod: true },
 };
 const DETAIL = {
   kategorien: { view: categoryDetail, title: 'Kategorie', nav: 'categories' },

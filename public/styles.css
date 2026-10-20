@@ -611,6 +611,12 @@ td.heat.over-goal { box-shadow: inset 0 -3px 0 var(--status-critical); }
 .hint-grosse_buchung { background: rgba(208, 59, 59, 0.12); color: var(--negative); }
 .hint-preisaenderung, .hint-ausgeblieben { background: rgba(250, 178, 25, 0.18); color: #9a6700; }
 .hint-kategorie { background: var(--accent-soft); color: var(--accent); }
+.hint-dup, .hint-import { background: rgba(250, 178, 25, 0.18); color: #9a6700; font-size: 14px !important; }
+tr.dup-head td { cursor: default; background: none !important; padding-top: 18px; border-bottom: 0; }
+tr.dup-head .link-btn { margin-left: 8px; }
+tbody tr.dup-head:first-child td { padding-top: 4px; }
+.import-run { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; font-size: 13px; }
+.import-run .run-out { flex-basis: 100%; }
 .btn.small { height: 30px; padding: 0 10px; font-size: 13px; }
 .btn.done { color: var(--positive); }
 .suggest-actions { white-space: nowrap; }

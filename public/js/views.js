@@ -7,6 +7,7 @@ import { skeleton, fill, card, stat, signedAmount, txRow, txAttrs, bindTxDetails
 import { categoryTotals, compareRange, delta, forecastActive, forecastTotal, forecastRemainder } from './categories.js';
 import { loadRecurring, upcomingBetween } from './recurring.js';
 import { sankey } from './dist.js';
+import { checkHints } from './check.js';
 import { loadGoals, goalBar, goalStatus } from './goals.js';
 
 /** Summe aller Einnahmen bzw. Ausgaben je Währung (Map Währung → Betrag). */
@@ -119,7 +120,7 @@ export async function overview(view, { period }) {
   });
 
   // Hinweise: Warnungen des Servers + Buchungen ohne Kategorie
-  fill($('hints'), () => Promise.all([fetch('/local/alerts').then((r) => r.json()).catch(() => ({ alerts: [] })), cats]), (el, [res, { code, cur }]) => {
+  fill($('hints'), () => Promise.all([fetch('/local/alerts').then((r) => r.json()).catch(() => ({ alerts: [] })), cats, checkHints().catch(() => [])]), (el, [res, { code, cur }, checks]) => {
     const ICON = { grosse_buchung: '€', preisaenderung: '±', ausgeblieben: '?' };
     const rows = (res.alerts || []).slice(0, 5).map((a) => `<div class="row">
       <div class="avatar hint-${esc(a.art)}">${ICON[a.art] || '!'}</div>
@@ -128,6 +129,10 @@ export async function overview(view, { period }) {
     if (none) {
       rows.push(`<a class="row plain" href="#/kategorien/0"><div class="avatar hint-kategorie">?</div>
         <div style="min-width:0"><div class="title">${money(none.value, code)} ohne Kategorie</div><div class="subtitle">Vorschläge zum Kategorisieren ansehen →</div></div><div></div></a>`);
+    }
+    for (const c of checks) {
+      rows.push(`<a class="row plain" href="#/pruefen"><div class="avatar ${c.cls}">${esc(c.icon)}</div>
+        <div style="min-width:0"><div class="title">${esc(c.title)}</div><div class="subtitle">${esc(c.sub)}</div></div><div></div></a>`);
     }
     if (!rows.length) {
       el.closest('.card').hidden = true;

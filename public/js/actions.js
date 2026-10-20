@@ -18,6 +18,7 @@ const TRIGGERS = {
   'report-calendar': { label: 'Monatsabschluss (Kalendermonat)', run: '▶ Letzten Monat jetzt senden', hint: 'Wie oben, aber zum Monatswechsel am 1.' },
   alerts: { label: 'Warnungen', run: '▶ Testwarnung senden', hint: 'Startet bei jeder neuen Warnung: große Ausgabe, Abo mit neuem Betrag, ausgebliebene Zahlung. Jede Warnung wird nur einmal gesendet.' },
   categorize: { label: 'Kategorie übernehmen', run: '▶ Testdaten senden', hint: 'Startet, wenn du in den Details einer Buchung eine Kategorie setzt oder bei „Ohne Kategorie“ einen Vorschlag übernimmst. Der Workflow erhält Buchungs-ID und Kategorie (typ „kategorie_setzen“) und setzt sie in Firefly – fertiger Workflow: n8n/firefly-buchung-bearbeiten.json.' },
+  import: { label: 'Import starten', run: '▶ Import starten', hint: 'Erscheint als Knopf auf der Seite „Prüfen“ beim Import-Status, z. B. für deinen n8n-Workflow, der die Bank-CSV abholt und importiert. Mitgeschickt werden die Konten, die überfällig wirken.' },
   tags: { label: 'Tags setzen', run: '▶ Testdaten senden', hint: 'Startet, wenn du in den Details einer Buchung einen Tag hinzufügst oder entfernst. Der Workflow erhält Buchungs-ID und die komplette neue Tag-Liste (typ „tags_setzen“) – derselbe n8n-Workflow wie für Kategorien kann beides.' },
 };
 

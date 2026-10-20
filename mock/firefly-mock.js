@@ -139,6 +139,16 @@ for (let m = new Date(firstDay); m <= today; m = new Date(m.getFullYear(), m.get
 }
 // Eine aktuelle große Ausgabe (für die Warnungen)
 add(addDays(today, -4), 'withdrawal', 649, 'Neue Waschmaschine', kk, ext('MediaMarkt'), { category: 'Shopping' });
+// Eine doppelt importierte Buchung (für die Dubletten-Erkennung)
+{
+  const orig = journals.find((j) => j.description.startsWith('Einkauf ') && j.date >= addDays(today, -20));
+  if (orig) journals.push({ ...orig, id: String(nextId++), tags: [...orig.tags] });
+}
+// Bargeld-Konto zuletzt nicht gepflegt (für den Import-Status)
+for (let i = journals.length - 1; i >= 0; i--) {
+  const j = journals[i];
+  if ((j.source === cash || j.destination === cash) && j.date > addDays(today, -26)) journals.splice(i, 1);
+}
 journals.sort((a, b) => b.date - a.date || Number(b.id) - Number(a.id));
 // Ein paar jüngere Buchungen ohne Kategorie (für die Kategorisierungshilfe)
 journals.filter((j) => /^Einkauf (REWE|EDEKA)$|^Tanken$|^Netflix$/.test(j.description)).slice(0, 5).forEach((j) => {

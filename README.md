@@ -61,6 +61,13 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   Buchungen ohne Kategorie, bekannte Händler; Zahlungsdienste wie PayPal nach Buchungstext).
   Vorher/Nachher je Kategorie, Auswertung nach Tags, Export als **Firefly-Regeln** (JSON),
   CSV oder Übergabe an n8n
+- **Prüfen** – Datenqualität auf einen Blick:
+  - **Import-Status je Konto**: letzte Buchung und üblicher Abstand; „überfällig“, wenn ein Konto
+    deutlich länger als sonst keine Buchung hat (CSV-Import vergessen?). Eine Automation mit
+    Auslöser **Import starten** (z. B. dein n8n-Workflow für die Bank-CSV) erscheint dort als Knopf
+  - **Mögliche doppelte Buchungen**: gleiche Art, Betrag und Konten höchstens 3 Tage auseinander,
+    eingestuft als sicher / wahrscheinlich / möglich; „Kein Duplikat“ blendet ein Paar aus
+  - beides erscheint auch unter **Hinweise** in der Übersicht
 - **Jahresrückblick** – Sparquote, Monat für Monat, Highlights, Kategorien im Vergleich zum
   Vorjahr, größte Ausgaben, Abo-Kosten pro Jahr
 - **Als App aufs Handy** – installierbar (Startbildschirm), startet sofort und zeigt ohne
