@@ -70,8 +70,9 @@ export function createGroupsPanel(ctx) {
   }
 
   /** Eine Änderung speichern; bei Erfolg den Stand vom Server übernehmen. */
-  async function change(ops) {
-    const g = group();
+  /** Änderung an einer Gruppe speichern (Standard: die geöffnete). */
+  async function change(ops, id = openId) {
+    const g = data.groups.find((x) => x.id === id);
     if (!g) return;
     try {
       replaceGroup(await request(`/${encodeURIComponent(g.id)}`, { method: 'POST', body: { ops } }));
@@ -235,8 +236,14 @@ export function createGroupsPanel(ctx) {
     }
     bar.hidden = false;
     const target = [...data.groups].sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    const names = (kind) => [...new Set([...(kind === 'tag' ? ctx.knownTags : ctx.knownCategories), ...data.groups.filter((g) => g.kind === kind).map((g) => g.name)])]
+      .sort((a, b) => a.localeCompare(b, 'de'));
     bar.innerHTML = `<span><b>${picked.size}</b> ausgewählt</span>
-      <button class="btn small primary" data-pick-new>Neue Gruppe …</button>
+      <form class="bar-form" data-quick="category" title="Setzt die Kategorie im Labor (Probe) – über eine Gruppe gleichen Namens"><input name="v" list="pick-cats" placeholder="Kategorie …" aria-label="Kategorie setzen" autocomplete="off"><button class="btn small primary">Setzen</button></form>
+      <form class="bar-form" data-quick="tag" title="Vergibt den Tag im Labor (Probe) – über eine Gruppe gleichen Namens"><input name="v" list="pick-tags" placeholder="Tag …" aria-label="Tag hinzufügen" autocomplete="off"><button class="btn small">Hinzufügen</button></form>
+      <datalist id="pick-cats">${names('category').map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+      <datalist id="pick-tags">${names('tag').map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+      <button class="btn small" data-pick-new>Neue Gruppe …</button>
       <button class="btn small" data-pick-ok title="Kategorie passt so – als erledigt markieren">✓ Passt so</button>
       <button class="link-btn" data-pick-unok>„Passt so“ aufheben</button>
       ${target.length ? `<select data-pick-to aria-label="Zu Gruppe hinzufügen"><option value="">Zu Gruppe hinzufügen …</option>${target.map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}</select>` : ''}
@@ -343,7 +350,7 @@ export function createGroupsPanel(ctx) {
     const next = g.kind === 'category' ? [...clean, ...others] : [...others, ...clean];
     const ok = await ctx.setRules(next);
     if (!ok) return;
-    await change([{ op: 'set', status: 'uebernommen', ruleIds: clean.map((r) => r.id) }]);
+    await change([{ op: 'set', status: 'uebernommen', ruleIds: clean.map((r) => r.id) }], g.id);
     if (!quiet) ctx.toast(`„${g.name}“ übernommen: ${clean.length} Regel${clean.length === 1 ? '' : 'n'} im Labor.`);
   }
 
@@ -417,7 +424,7 @@ export function createGroupsPanel(ctx) {
       result.message = err.message;
     }
     api.forget();
-    await change([{ op: 'set', transfer: result }]);
+    await change([{ op: 'set', transfer: result }], g.id);
     ctx.toast(result.ok ? `„${g.name}“ ist in Firefly: ${result.rules} Regeln, ${result.oneOff} einzelne Buchungen.` : `Übertragung fehlgeschlagen: ${result.message}`);
   }
 
@@ -456,6 +463,36 @@ export function createGroupsPanel(ctx) {
       renderBar();
     }
   });
+  /**
+   * Schnell: Kategorie/Tag für die Auswahl setzen. Dahinter steckt eine Gruppe mit
+   * diesem Namen (gibt es sie schon, wird sie ergänzt), die gleich als Labor-Regel
+   * übernommen wird – nach Firefly geht es wie gewohnt über die Gruppe.
+   */
+  async function quickSet(kind, name) {
+    const ids = [...picked];
+    const existing = data.groups.find((g) => g.kind === kind && g.name.toLowerCase() === name.toLowerCase());
+    let g;
+    try {
+      g = existing
+        ? await request(`/${encodeURIComponent(existing.id)}`, { method: 'POST', body: { ops: [{ op: 'add', ids }] } })
+        : await request('', { method: 'POST', body: { name, kind, include: ids, source: `${ids.length} im Labor ausgewählte Buchungen`, basis: ctx.basis } });
+    } catch (err) {
+      ctx.toast(`Nicht gespeichert: ${err.message}`);
+      return;
+    }
+    replaceGroup(g);
+    clearPicked();
+    await apply(g, { quiet: true });
+    ctx.toast(`${ids.length} Buchung${ids.length === 1 ? '' : 'en'} → ${KIND[kind]} „${g.name}“ (Gruppe ${existing ? 'ergänzt' : 'angelegt'}, im Labor übernommen). `
+      + 'Nach Firefly: Gruppe öffnen → „Nach Firefly übertragen“.');
+  }
+  bar.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const form = e.target.closest('[data-quick]');
+    const name = form?.v.value.trim();
+    if (name && picked.size) quickSet(form.dataset.quick, name);
+  });
+
   bar.addEventListener('change', async (e) => {
     const sel = e.target.closest('[data-pick-to]');
     if (!sel || !sel.value) return;

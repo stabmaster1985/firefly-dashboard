@@ -77,6 +77,9 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
     Kategorien) oder aufzuteilen (z. B. „Shopping“ in Elektronik, Kleidung, Wohnen …). Jeder
     Vorschlag zeigt die betroffenen Buchungen und wird per „Übernehmen“ zu Labor-Regeln;
     Regeln können dafür auch ein Datum (zwischen) enthalten
+  - **Kategorie/Tag schnell setzen** – Buchungen anhaken, in der Leiste unten Kategorie „Setzen“
+    bzw. Tag „Hinzufügen“: legt eine Gruppe mit diesem Namen an (oder ergänzt sie) und übernimmt
+    sie gleich als Labor-Regel; nach Firefly geht es über „Nach Firefly übertragen“ in der Gruppe
   - **Gruppen** – Buchungen selbst zusammenstellen (Häkchen in allen Labor-Listen oder „Als Gruppe
     bearbeiten“ bei einem Vorschlag), Namen und Art (Kategorie/Tag) frei wählen und mit
     **„Ähnliche finden“** schrittweise erweitern: gleiche Empfänger, seltene gemeinsame Wörter im
