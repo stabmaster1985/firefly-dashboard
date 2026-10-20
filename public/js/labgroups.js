@@ -5,12 +5,16 @@
 
 import { money, esc, fmtDate } from './util.js';
 import { txAttrs, bindTxDetails } from './common.js';
-import { counterpartyOf } from './rules.js';
+import * as api from './api.js';
+import { counterpartyOf, toFireflyRules } from './rules.js';
 import { buildIndex, findSimilar, proposeRules } from './similar.js';
 
 const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
 const KIND = { category: 'Kategorie', tag: 'Tag' };
 const idOf = (t) => String(t.transaction_journal_id);
+const PERIODS = { all: 'alle vorhandenen Buchungen', '24': 'Buchungen der letzten 24 Monate', none: 'nur künftige Buchungen' };
+const pad = (n) => String(n).padStart(2, '0');
+const isoDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 async function request(path, { method = 'GET', body } = {}) {
   const res = await fetch(`/local/groups${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -145,8 +149,25 @@ export function createGroupsPanel(ctx) {
         <div class="list plan">${plan.rules.map((r) => `<div class="row"><div class="avatar">${r.oneOff ? '1×' : '⟳'}</div>
           <div style="min-width:0"><div class="title">${esc(r.label)}</div><div class="subtitle">${r.count} Buchung${r.count === 1 ? '' : 'en'} · ${r.oneOff ? 'einmalig (per „Änderungen an n8n übergeben“)' : 'dauerhaft – greift auch bei künftigen Buchungen'}</div></div><div></div></div>`).join('')}</div>
         <div class="group-actions"><button class="btn primary" data-g-apply>${g.status === 'uebernommen' ? 'Regeln aktualisieren' : 'Als Labor-Regeln übernehmen'}</button>
-          <span class="muted small-text">${plan.permanent} Regel${plan.permanent === 1 ? '' : 'n'} ohne Fehltreffer${plan.oneOff ? `, ${plan.oneOff} einzeln` : ''}. Die Gruppe bleibt gespeichert und lässt sich später weiter bearbeiten.</span></div>` : ''}
+          <span class="muted small-text">${plan.permanent} Regel${plan.permanent === 1 ? '' : 'n'} ohne Fehltreffer${plan.oneOff ? `, ${plan.oneOff} einzeln` : ''}. Die Gruppe bleibt gespeichert und lässt sich später weiter bearbeiten.</span></div>
+        ${transferHtml(g, plan)}` : ''}
     </div>`;
+  }
+
+  /** Abschnitt „Nach Firefly übertragen“ mit Vorschau, was dort passiert. */
+  function transferHtml(g, plan) {
+    const { rules: rulesAction, categorize } = ctx.actions;
+    const last = g.transfer;
+    const missing = [!rulesAction && plan.permanent ? '„Firefly-Regeln anlegen“' : '', !categorize && plan.oneOff ? '„Kategorie übernehmen“' : ''].filter(Boolean);
+    return `<h3>Nach Firefly übertragen</h3>
+      <ul class="transfer-plan small-text">
+        ${plan.permanent ? `<li><b>${plan.permanent} Regel${plan.permanent === 1 ? '' : 'n'}</b> in der Firefly-Regelgruppe „${esc(fireflyGroupTitle(g))}“ anlegen bzw. aktualisieren – Firefly ${g.kind === 'tag' ? 'taggt' : 'kategorisiert'} damit künftig neue Buchungen beim Import selbst.</li>` : '<li>Keine dauerhafte Regel möglich – nur einzelne Buchungen.</li>'}
+        ${plan.permanent ? `<li>Die Regeln anwenden auf: <select data-g-period>${Object.entries(PERIODS).map(([k, l]) => `<option value="${k}"${k === (last?.period || 'all') ? ' selected' : ''}>${l}</option>`).join('')}</select></li>` : ''}
+        ${plan.oneOff ? `<li><b>${plan.oneOff} einzelne Buchung${plan.oneOff === 1 ? '' : 'en'}</b> direkt ${g.kind === 'tag' ? `mit Tag „${esc(g.name)}“ versehen` : `auf „${esc(g.name)}“ setzen`} (einmalig).</li>` : ''}
+      </ul>
+      ${missing.length ? `<p class="small-text warn-text">Dafür fehlt in den <a href="#/automationen">Automationen</a> noch: ${missing.join(' und ')} (n8n-Vorlage firefly-buchung-bearbeiten.json).</p>` : ''}
+      <div class="group-actions"><button class="btn primary" data-g-transfer ${missing.length ? 'disabled' : ''}>Nach Firefly übertragen</button>
+        ${last ? `<span class="small-text ${last.ok ? 'muted' : 'warn-text'}">Zuletzt übertragen ${fmtDate(last.at)}: ${last.ok ? `${last.rules} Regeln, ${last.oneOff} einzeln, ${esc(PERIODS[last.period] || '')}` : `Fehler – ${esc(last.message)}`}</span>` : ''}</div>`;
   }
 
   function render() {
@@ -226,6 +247,7 @@ export function createGroupsPanel(ctx) {
       return change([{ op: 'exclude', ids }]);
     }
     if (btn('[data-g-apply]')) return apply(g);
+    if (btn('[data-g-transfer]')) return transfer(g);
   });
 
   card.addEventListener('change', (e) => {
@@ -255,7 +277,7 @@ export function createGroupsPanel(ctx) {
   }
 
   /** Regeln der Gruppe ins Labor übernehmen (ersetzt frühere Regeln derselben Gruppe). */
-  async function apply(g) {
+  async function apply(g, { quiet = false } = {}) {
     const plan = proposeRules(index, g.include, { kind: g.kind, name: g.name, groupId: g.id });
     const clean = plan.rules.map(({ label, count, oneOff, ...rule }) => rule);
     const others = ctx.getRules().filter((r) => r.groupId !== g.id);
@@ -264,10 +286,75 @@ export function createGroupsPanel(ctx) {
     const ok = await ctx.setRules(next);
     if (!ok) return;
     await change([{ op: 'set', status: 'uebernommen', ruleIds: clean.map((r) => r.id) }]);
-    ctx.toast(`„${g.name}“ übernommen: ${clean.length} Regel${clean.length === 1 ? '' : 'n'} im Labor.`);
+    if (!quiet) ctx.toast(`„${g.name}“ übernommen: ${clean.length} Regel${clean.length === 1 ? '' : 'n'} im Labor.`);
   }
 
-  // Häkchen in den übrigen Labor-Listen
+  const fireflyGroupTitle = (g) => `Dashboard: ${g.name}`;
+
+  /**
+   * Nur diese Gruppe nach Firefly: Regeln in eine eigene Firefly-Regelgruppe
+   * (wiedergefunden über „gid:<id>“, auch nach Umbenennen), anwenden im gewählten
+   * Zeitraum, einzelne Buchungen direkt setzen.
+   */
+  async function transfer(g) {
+    const plan = proposeRules(index, g.include, { kind: g.kind, name: g.name, groupId: g.id });
+    const period = card.querySelector('[data-g-period]')?.value || 'none';
+    const permanent = plan.rules.filter((r) => !r.oneOff).map(({ label, count, oneOff, ...rule }) => rule);
+    const oneOffIds = plan.rules.filter((r) => r.oneOff).flatMap((r) => String(r.when[0].value).split(','));
+    const oneOffTx = oneOffIds.map((id) => byId.get(id)).filter(Boolean);
+    const lines = [
+      permanent.length ? `• ${permanent.length} Regel(n) in Firefly-Regelgruppe „${fireflyGroupTitle(g)}“ anlegen/aktualisieren` : '',
+      permanent.length ? `• anwenden auf: ${PERIODS[period]}` : '',
+      oneOffTx.length ? `• ${oneOffTx.length} einzelne Buchung(en) direkt setzen` : '',
+    ].filter(Boolean);
+    if (!window.confirm(`„${g.name}“ nach Firefly übertragen?\n\n${lines.join('\n')}\n\nDas ändert Daten in Firefly.`)) return;
+    const button = card.querySelector('[data-g-transfer]');
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Überträgt … (kann ein paar Minuten dauern)';
+    }
+    await apply(g, { quiet: true }); // Labor-Regeln auf denselben Stand bringen
+    const result = { ok: true, rules: 0, oneOff: 0, period, message: '' };
+    try {
+      if (permanent.length || g.transfer) {
+        const today = new Date();
+        const regeln = toFireflyRules(permanent).filter((r) => !r.hinweis)
+          .map((r, i, all) => ({ ...r, order: all.length - i, description: `Aus der Dashboard-Gruppe „${g.name}“ · id:${r.labor_id}` }));
+        const payload = {
+          typ: 'regeln_anlegen',
+          gruppe: fireflyGroupTitle(g),
+          gruppe_key: `gid:${g.id}`,
+          regeln,
+          anwenden: !regeln.length || period === 'none' ? null
+            : { start: period === 'all' ? '2000-01-01' : isoDay(new Date(today.getFullYear(), today.getMonth() - 24, 1)), end: isoDay(today) },
+        };
+        const res = await ctx.runAction(ctx.actions.rules, payload);
+        if (!res.ok) throw new Error(`Regeln: ${res.status ? `HTTP ${res.status}` : res.response || 'fehlgeschlagen'}`);
+        result.rules = regeln.length;
+      }
+      if (oneOffTx.length) {
+        const payload = {
+          typ: 'kategorien_uebernehmen',
+          aenderungen: oneOffTx.map((t) => ({
+            transaction_group_id: t.groupId, transaction_journal_id: t.transaction_journal_id, datum: String(t.date).slice(0, 10),
+            beschreibung: t.description, betrag: t.amount, kategorie_alt: t.category_name || null,
+            ...(g.kind === 'category' ? { kategorie: g.name } : { kategorie: null, tags: [...new Set([...(t.tags || []), g.name])] }),
+          })),
+        };
+        const res = await ctx.runAction(ctx.actions.categorize, payload);
+        if (!res.ok) throw new Error(`Einzelne Buchungen: ${res.status ? `HTTP ${res.status}` : res.response || 'fehlgeschlagen'}`);
+        result.oneOff = oneOffTx.length;
+      }
+    } catch (err) {
+      result.ok = false;
+      result.message = err.message;
+    }
+    api.forget();
+    await change([{ op: 'set', transfer: result }]);
+    ctx.toast(result.ok ? `„${g.name}“ ist in Firefly: ${result.rules} Regeln, ${result.oneOff} einzelne Buchungen.` : `Übertragung fehlgeschlagen: ${result.message}`);
+  }
+
+  // Häkchen in den übrigen Labor-Listen (ctx.view ist der Container dieser Seite)
   ctx.view.addEventListener('change', (e) => {
     const cb = e.target.closest('[data-pick]');
     if (!cb) return;

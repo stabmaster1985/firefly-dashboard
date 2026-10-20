@@ -80,7 +80,11 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
     Schluss bildet das Labor daraus möglichst wenige Regeln, die keine Buchung außerhalb der
     Gruppe treffen (dauerhaft, auch für künftige Buchungen); der Rest wird einmalig gesetzt.
     Gruppen werden Schritt für Schritt auf dem Server gespeichert – über Tage, Geräte und
-    Updates hinweg; gelöschte liegen 30 Tage im Papierkorb
+    Updates hinweg; gelöschte liegen 30 Tage im Papierkorb. **„Nach Firefly übertragen“** überträgt
+    nur diese eine Gruppe: ihre Regeln landen in einer eigenen Firefly-Regelgruppe
+    („Dashboard: <Name>“, auch nach Umbenennen wiedergefunden), werden auf Wunsch auf alle
+    vorhandenen Buchungen bzw. die letzten 24 Monate angewendet, und die einzelnen Buchungen
+    werden direkt gesetzt. Erneutes Übertragen aktualisiert die Regeln statt sie zu verdoppeln
 - **Prüfen** – Datenqualität auf einen Blick:
   - **Import-Status je Konto**: letzte Buchung und üblicher Abstand; „überfällig“, wenn ein Konto
     deutlich länger als sonst keine Buchung hat (CSV-Import vergessen?). Eine Automation mit

@@ -222,7 +222,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Regelgruppe des Labors suchen (Titel kommt vom Dashboard)\nconst title = $('Webhook').first().json.body.gruppe;\nconst found = ($input.first().json.data || []).find((g) => g.attributes.title === title);\nreturn [{ json: { id: found ? found.id : '' } }];"
+        "jsCode": "// Regelgruppe suchen: über die Markierung (gruppe_key, z. B. „gid:…“) in der\n// Beschreibung – so auch nach dem Umbenennen –, sonst über den Titel\nconst body = $('Webhook').first().json.body;\nconst groups = $input.first().json.data || [];\nconst found = (body.gruppe_key && groups.find((g) => (g.attributes.description || '').includes(body.gruppe_key)))\n  || groups.find((g) => g.attributes.title === body.gruppe);\nreturn [{ json: { id: found ? found.id : '', rename: Boolean(found && found.attributes.title !== body.gruppe) } }];"
       },
       "id": "r2",
       "name": "Gruppe finden",
@@ -283,7 +283,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ title: $('Webhook').first().json.body.gruppe, description: 'Regeln aus dem Kategorien-Labor des Firefly Dashboards', active: true }) }}",
+        "jsonBody": "={{ JSON.stringify({ title: $('Webhook').first().json.body.gruppe, description: 'Regeln aus dem Firefly Dashboard' + ($('Webhook').first().json.body.gruppe_key ? ' · ' + $('Webhook').first().json.body.gruppe_key : ''), active: true }) }}",
         "options": {
           "response": {
             "response": {
@@ -303,6 +303,74 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "r3bc",
+              "leftValue": "={{ $json.rename }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "r3b",
+      "name": "Umbenennen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1580,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $('Einstellungen').first().json.firefly_url }}/api/v1/rule-groups/{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.api+json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ title: $('Webhook').first().json.body.gruppe }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "r4b",
+      "name": "Gruppe umbenennen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1800,
+        440
+      ]
+    },
+    {
+      "parameters": {
         "jsCode": "const j = $input.first().json;\nreturn [{ json: { id: String(j.data?.id ?? j.id) } }];"
       },
       "id": "r5",
@@ -310,7 +378,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1800,
+        2020,
         260
       ]
     },
@@ -342,7 +410,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2020,
+        2240,
         260
       ]
     },
@@ -355,7 +423,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2240,
+        2460,
         260
       ]
     },
@@ -390,7 +458,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2460,
+        2680,
         260
       ]
     },
@@ -403,7 +471,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2680,
+        2900,
         260
       ],
       "executeOnce": true
@@ -437,7 +505,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        2900,
+        3120,
         260
       ]
     },
@@ -469,7 +537,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3120,
+        3340,
         160
       ]
     },
@@ -484,7 +552,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        3340,
+        3560,
         260
       ]
     }
@@ -603,7 +671,7 @@
         ],
         [
           {
-            "node": "Gruppen-ID",
+            "node": "Umbenennen?",
             "type": "main",
             "index": 0
           }
@@ -611,6 +679,35 @@
       ]
     },
     "Gruppe anlegen": {
+      "main": [
+        [
+          {
+            "node": "Gruppen-ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Umbenennen?": {
+      "main": [
+        [
+          {
+            "node": "Gruppe umbenennen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gruppen-ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gruppe umbenennen": {
       "main": [
         [
           {

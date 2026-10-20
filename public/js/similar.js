@@ -105,8 +105,12 @@ export function findSimilar(index, includeIds, excludeIds = [], { limit = 150 } 
   return out.sort((x, y) => y.score - x.score).slice(0, limit);
 }
 
-let seq = 0;
-const newId = () => `g${Date.now().toString(36)}${(seq++).toString(36)}`;
+/** Stabile Regel-ID aus Gruppe + Bedingung – so wird eine Regel beim erneuten Übertragen aktualisiert statt neu angelegt. */
+const stableId = (groupId, when) => {
+  let h = 5381;
+  for (const ch of `${groupId}|${JSON.stringify(when)}`) h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0;
+  return `g${h.toString(36)}`;
+};
 
 /**
  * Möglichst wenige, möglichst allgemeine Regeln für genau diese Gruppe:
@@ -117,7 +121,7 @@ const newId = () => `g${Date.now().toString(36)}${(seq++).toString(36)}`;
 export function proposeRules(index, includeIds, { kind, name, groupId }) {
   const inc = new Set(includeIds.filter((id) => index.byId.has(id)));
   const action = kind === 'tag' ? { setCategory: '', addTags: [name] } : { setCategory: name, addTags: [] };
-  const make = (when, label) => ({ id: newId(), enabled: true, when, ...action, groupId, label });
+  const make = (when, label) => ({ id: stableId(groupId, when.map((c) => (c.field === 'journal' ? { field: 'journal' } : c))), enabled: true, when, ...action, groupId, label });
 
   const candidates = [];
   const seen = new Set();

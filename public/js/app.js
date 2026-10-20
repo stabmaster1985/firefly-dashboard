@@ -82,7 +82,12 @@ async function render() {
   periodSelect.title = period.label;
   api.setMonthStart(period.model.day);
   window.scrollTo({ top: 0 });
-  await route.view(viewEl, { period, params, id: id && decodeURIComponent(id) });
+  // Jede Seite bekommt einen frischen Container: Listener früherer Aufrufe verschwinden mit
+  // ihm, und eine Seite, die noch lädt, merkt am fehlenden isConnected, dass sie ersetzt wurde.
+  const page = document.createElement('div');
+  page.className = 'page';
+  viewEl.replaceChildren(page);
+  await route.view(page, { period, params, id: id && decodeURIComponent(id) });
 }
 
 function showConnectionError(err) {

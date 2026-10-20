@@ -775,3 +775,7 @@ button.cal-day { cursor: pointer; }
   .pick-bar { bottom: 76px; }
   .toast { bottom: 140px; right: 16px; }
 }
+.transfer-plan { margin: 0 0 8px; padding-left: 18px; display: grid; gap: 6px; }
+.transfer-plan select { height: 28px; border-radius: 8px; border: 1px solid var(--grid); background: var(--surface-1); color: var(--text-primary); font: inherit; font-size: 13px; }
+.warn-text { color: #9a6700; }
+

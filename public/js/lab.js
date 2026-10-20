@@ -127,6 +127,9 @@ export async function lab(view, { params }) {
     knownCategories,
     knownTags,
     toast,
+    actions: { rules: rulesAction, categorize: categorizeAction },
+    runAction: (action, payload) => fetch(`/local/actions/${encodeURIComponent(action.id)}/run`, { method: 'POST', headers, body: JSON.stringify({ context: { ...payload, daten: payload } }) })
+      .then((x) => x.json()).catch((err) => ({ ok: false, response: err.message })),
     getRules: () => rules,
     setRules: async (next) => {
       rules = next;
@@ -451,7 +454,8 @@ export async function lab(view, { params }) {
         ...results.map(({ t, r }) => [String(t.date).slice(0, 10), t.description, counterpartyOf(t), t.amount, t.category_name || '', r.category || '', r.tags.join(', ')]),
       ]);
     } else if (kind === 'ff-rules' && rulesAction) {
-      const all = toFireflyRules(rules);
+      // Regeln aus Gruppen haben eigene Firefly-Regelgruppen („Nach Firefly übertragen“ in der Gruppe)
+      const all = toFireflyRules(rules.filter((r) => !r.groupId));
       const regeln = all.filter((r) => !r.hinweis);
       const skipped = all.length - regeln.length;
       if (!regeln.length) return window.alert('Keine Regel, die Firefly so übernehmen kann.');
