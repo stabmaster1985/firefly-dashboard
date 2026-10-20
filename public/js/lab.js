@@ -3,10 +3,11 @@
 // Export (Firefly-Regeln, CSV oder n8n) macht es auf Wunsch dauerhaft.
 
 import * as api from './api.js';
-import { money, esc, fmtDate, today, debounce, isoDate } from './util.js';
+import { money, esc, fmtDate, today, debounce, isoDate, storage, store } from './util.js';
 import { skeleton, card, stat, sum, mainCurrency, downloadCsv, txAttrs, bindTxDetails } from './common.js';
 import { detectRecurring } from './recurring.js';
 import { FIELDS, OPS, AUTO_TAGS, applyRules, suggestRules, describeRule, toFireflyRules, counterpartyOf, normParty, ruleMatches } from './rules.js';
+import { suggestTags, suggestCategoryStructure } from './structure.js';
 
 const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
 const RULE_GROUP = 'Firefly Dashboard (Labor)';
@@ -36,13 +37,14 @@ export async function lab(view, { params }) {
       <section class="card span-3" id="l-tags"></section>
       ${card('l-rules', 'Deine Regeln', { span: 'span-7', link: '<span class="lab-export"><button class="link-btn" data-export="firefly">Als Firefly-Regeln ↓</button> · <button class="link-btn" data-export="csv">Änderungen als CSV ↓</button><span id="l-n8n"></span></span>' })}
       ${card('l-suggest', 'Vorschläge', { span: 'span-5', meta: '<span id="l-suggest-meta"></span>' })}
+      ${card('l-struct', 'Tags & Kategorien-Struktur', { meta: '<span class="chips small" id="l-struct-tabs" role="group" aria-label="Art"></span>' })}
       ${card('l-compare', 'Kategorien vorher / nachher', { span: 'span-7', filter: true })}
       ${card('l-tagtable', 'Tags (Probe)', { span: 'span-5' })}
       ${card('l-tx', 'Buchungen', { filter: true, meta: '<span id="l-tx-chips"></span>' })}
     </div>`;
   const $ = (id) => view.querySelector(`#${id}`);
   ['l-count', 'l-changed', 'l-none', 'l-tags'].forEach((id) => ($(id).innerHTML = skeleton(2, 22)));
-  ['l-rules', 'l-suggest', 'l-compare', 'l-tagtable', 'l-tx'].forEach((id) => ($(id).innerHTML = skeleton(5)));
+  ['l-rules', 'l-suggest', 'l-struct', 'l-compare', 'l-tagtable', 'l-tx'].forEach((id) => ($(id).innerHTML = skeleton(5)));
 
   let txs;
   let stored;
@@ -66,6 +68,7 @@ export async function lab(view, { params }) {
   let rules = stored.rules || [];
   let autoTags = stored.autoTags || [];
   let txMode = 'changed';
+  let structTab = 'tags';
   let tagFilter = null;
   const code = mainCurrency(txs);
   const knownCategories = [...new Set(txs.map((t) => t.category_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
@@ -92,6 +95,7 @@ export async function lab(view, { params }) {
     renderAuto();
     renderRules(results);
     renderSuggestions();
+    renderStructure();
     renderCompare(results);
     renderTags(tagged);
     renderTx(results);
@@ -139,6 +143,35 @@ export async function lab(view, { params }) {
       }).join('')}</div>${list.length > 1 ? '<div class="more"><button class="btn" data-take-all>Alle übernehmen</button></div>' : ''}`
       : '<div class="empty">Keine weiteren Vorschläge – sieht aufgeräumt aus.</div>';
     $('l-suggest').suggestions = list;
+  }
+
+  // Struktur-Vorschläge: Tags (Themen, Reisen) und Kategorien (zusammenfassen, aufteilen)
+  const ignored = () => new Set(JSON.parse(storage('ffd-struct-ignore', '[]')));
+  const sameRule = (a, b) => JSON.stringify(a.when) === JSON.stringify(b.when) && a.setCategory === b.setCategory
+    && JSON.stringify(a.addTags) === JSON.stringify(b.addTags);
+  const STRUCT_ICON = { wort: '#', reise: '✈', name: '≈', ueberschneidung: '∩', klein: '↘', aufteilen: '⑂' };
+  function renderStructure() {
+    const ign = ignored();
+    const fresh = (s) => !ign.has(s.title) && !s.rules.every((r) => rules.some((x) => sameRule(x, r)));
+    const lists = { tags: suggestTags(txs, rules).filter(fresh), kategorien: suggestCategoryStructure(txs).filter(fresh) };
+    $('l-struct-tabs').innerHTML = [['tags', 'Tags'], ['kategorien', 'Kategorien']]
+      .map(([k, l]) => `<button class="chip" data-struct-tab="${k}" aria-pressed="${k === structTab}">${l} (${lists[k].length})</button>`).join('');
+    const list = lists[structTab];
+    $('l-struct').structure = list;
+    $('l-struct').innerHTML = list.length
+      ? `<div class="list">${list.map((s, i) => `<div class="row suggestion struct-row">
+          <div class="avatar kind-${s.kind}">${STRUCT_ICON[s.kind] || '•'}</div>
+          <div style="min-width:0"><div class="title">${esc(s.title)}</div><div class="subtitle wrap">${esc(s.reason)}</div>
+            <details class="struct-hits"><summary>${s.hits.length} Buchungen ansehen${s.rules.length > 1 ? ` · ${s.rules.length} Regeln` : ''}</summary>
+              <div class="table-wrap"><table><tbody>${s.hits.slice(0, 12).map((t) => `<tr style="cursor:default"><td class="date">${fmtDate(t.date)}</td>
+                <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(counterpartyOf(t))}${t.category_name ? ` · ${esc(t.category_name)}` : ''}</div></td>
+                <td class="num">${money(t.amount, t.currency_code)}</td></tr>`).join('')}</tbody></table></div>
+              ${s.hits.length > 12 ? `<div class="muted">… und ${s.hits.length - 12} weitere</div>` : ''}</details></div>
+          <div class="amount struct-btns"><button class="btn small" data-struct-take="${i}">Übernehmen</button><button class="link-btn" data-struct-ignore="${i}">Ignorieren</button></div>
+        </div>`).join('')}</div>
+        <div class="legend" style="margin-top:8px"><span>Alles lokal aus deinen Buchungen berechnet (Verwendungszweck, Empfänger, bisherige Kategorien) – ohne KI, nichts verlässt das Dashboard.
+          „Übernehmen“ legt Labor-Regeln an; erst „In Firefly anlegen“ bzw. „Änderungen an n8n übergeben“ ändert Firefly.</span></div>`
+      : `<div class="empty">${structTab === 'tags' ? 'Keine weiteren Tag-Vorschläge.' : 'Die Kategorien sehen aufgeräumt aus – nichts zum Zusammenfassen oder Aufteilen gefunden.'}</div>`;
   }
 
   function renderCompare(results) {
@@ -206,6 +239,25 @@ export async function lab(view, { params }) {
       autoTags = autoTags.includes(k) ? autoTags.filter((x) => x !== k) : [...autoTags, k];
       save();
       return render();
+    }
+    const tab = e.target.closest('[data-struct-tab]');
+    if (tab) {
+      structTab = tab.dataset.structTab;
+      return renderStructure();
+    }
+    const structTake = e.target.closest('[data-struct-take]');
+    if (structTake) {
+      const s = $('l-struct').structure[Number(structTake.dataset.structTake)];
+      // Zusammenfassen/Aufteilen vorne einreihen, damit es vor allgemeinen Regeln greift
+      rules = s.kind === 'wort' || s.kind === 'reise' ? [...rules, ...s.rules] : [...s.rules, ...rules];
+      save();
+      return render();
+    }
+    const structIgnore = e.target.closest('[data-struct-ignore]');
+    if (structIgnore) {
+      const s = $('l-struct').structure[Number(structIgnore.dataset.structIgnore)];
+      store('ffd-struct-ignore', JSON.stringify([...ignored(), s.title].slice(-300)));
+      return renderStructure();
     }
     const take = e.target.closest('[data-take]');
     if (take) {

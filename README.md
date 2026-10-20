@@ -65,6 +65,13 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   Firefly-Regeln in einer eigenen Regelgruppe angelegt und abgeglichen (geänderte Regeln
   aktualisiert, im Labor gelöschte entfernt) – auf Wunsch gleich auf alle vorhandenen Buchungen
   angewendet. Danach kategorisiert Firefly neue Buchungen beim Import selbst
+  - **Tags & Kategorien-Struktur** (rein lokal, ohne KI): schlägt Tags für Themen vor, die im
+    Verwendungszweck bei mehreren Empfängern auftauchen (z. B. „Kita“), erkennt Reisen (mehrere
+    sonst unbekannte Händler in wenigen Tagen → „Reise Riva 2026“) und schlägt vor, Kategorien
+    zusammenzufassen (ähnliche Namen wie „KFZ“/„Auto“, gemeinsame Empfänger, sehr kleine
+    Kategorien) oder aufzuteilen (z. B. „Shopping“ in Elektronik, Kleidung, Wohnen …). Jeder
+    Vorschlag zeigt die betroffenen Buchungen und wird per „Übernehmen“ zu Labor-Regeln;
+    Regeln können dafür auch ein Datum (zwischen) enthalten
 - **Prüfen** – Datenqualität auf einen Blick:
   - **Import-Status je Konto**: letzte Buchung und üblicher Abstand; „überfällig“, wenn ein Konto
     deutlich länger als sonst keine Buchung hat (CSV-Import vergessen?). Eine Automation mit

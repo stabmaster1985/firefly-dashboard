@@ -8,6 +8,7 @@ export const FIELDS = {
   amount: 'Betrag',
   account: 'Konto',
   category: 'Firefly-Kategorie',
+  date: 'Datum',
 };
 
 export const OPS = {
@@ -70,11 +71,20 @@ function fieldValue(t, field) {
   if (field === 'amount') return t.amount;
   if (field === 'account') return t.type === 'deposit' ? t.destination_name : t.source_name;
   if (field === 'category') return t.category_name || '';
+  if (field === 'date') return String(t.date).slice(0, 10);
   return '';
 }
 
 function test(cond, t) {
   const v = fieldValue(t, cond.field);
+  if (cond.field === 'date') {
+    // ISO-Daten lassen sich als Text vergleichen
+    if (cond.op === 'between') return v >= cond.value && v <= cond.value2;
+    if (cond.op === 'gt') return v > cond.value;
+    if (cond.op === 'lt') return v < cond.value;
+    if (cond.op === 'equals') return v === cond.value;
+    return false;
+  }
   if (cond.field === 'amount') {
     const a = Number(v);
     const x = Number(cond.value);
@@ -205,7 +215,8 @@ export function suggestRules(txs, existingRules = [], knownCategories = []) {
 /** Kurzbeschreibung einer Regel für die Liste. */
 export function describeRule(rule) {
   const cond = (rule.when || []).map((c) => {
-    const val = c.op === 'between' ? `${c.value} und ${c.value2}` : `„${c.value}“`;
+    const short = (v) => (String(v).length > 60 ? `${String(v).slice(0, 57)}…` : v);
+    const val = c.op === 'between' ? `${c.value} und ${c.value2}` : `„${short(c.value)}“`;
     return `${FIELDS[c.field] || c.field} ${OPS[c.op] || c.op} ${val}`;
   }).join(' und ');
   const act = [rule.setCategory ? `Kategorie „${rule.setCategory}“` : '', ...(rule.addTags || []).map((t) => `Tag „${t}“`)].filter(Boolean).join(', ');
@@ -223,6 +234,12 @@ export function toFireflyRules(rules) {
     amount: { gt: 'amount_more', lt: 'amount_less', equals: 'amount_exactly' },
     account: { contains: 'source_account_contains', equals: 'source_account_is', startsWith: 'source_account_starts' },
     category: { equals: 'category_is' },
+    date: { equals: 'date_on', gt: 'date_after', lt: 'date_before' },
+  };
+  const shift = (iso, days) => {
+    const d = new Date(`${iso}T12:00:00`);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
   };
   return rules.filter((r) => r.enabled !== false).map((r) => {
     const triggers = [];
@@ -230,6 +247,11 @@ export function toFireflyRules(rules) {
     for (const c of r.when || []) {
       if (c.field === 'amount' && c.op === 'between') {
         triggers.push({ type: 'amount_more', value: String(c.value) }, { type: 'amount_less', value: String(c.value2) });
+        continue;
+      }
+      if (c.field === 'date' && c.op === 'between') {
+        // Firefly: date_after/date_before ohne den Tag selbst
+        triggers.push({ type: 'date_after', value: shift(c.value, -1) }, { type: 'date_before', value: shift(c.value2, 1) });
         continue;
       }
       const type = TRIGGER[c.field]?.[c.op];

@@ -136,6 +136,22 @@ for (let m = new Date(firstDay); m <= today; m = new Date(m.getFullYear(), m.get
   if (rand() < 0.4) add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(10, 90), pick(['Apotheke', 'Zahnarzt Zuzahlung', 'Physiotherapie']), giro, ext('Praxis / Apotheke'), { category: 'Gesundheit' });
   if (mo === 6) add(day(14), 'withdrawal', 1240, 'Sommerurlaub Ostsee', kk, ext('Booking.com'), { category: 'Urlaub', tags: ['Urlaub'] });
   if (rand() < 0.3) add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(20, 60), 'Geschenk', kk, ext(pick(['Thalia', 'Blumen Meyer', 'Amazon'])), { category: 'Geschenke' });
+  // Kita: dasselbe Thema bei verschiedenen Empfängern (für Tag-Vorschläge)
+  add(day(3), 'withdrawal', 62, 'Essensgeld Kita Sonnenschein', giro, ext('Stadt Musterstadt'), { category: 'Kinder' });
+  if (mo % 3 === 0) add(day(15), 'withdrawal', 30, 'Beitrag Förderverein Kita Sonnenschein', giro, ext('Förderverein Sonnenschein e.V.'), { category: 'Spenden' });
+  if (mo === 4 || mo === 9) add(day(20), 'withdrawal', 18, 'Kita Ausflug Tierpark', giro, ext('Busreisen Meyer'), { category: 'Freizeit' });
+  // zwei Kategorien für dasselbe (für „zusammenfassen“)
+  if (mo === 3) add(day(12), 'withdrawal', 389, 'Inspektion', giro, ext('Autohaus Becker'), { category: 'KFZ' });
+  if (mo === 8) add(day(7), 'withdrawal', 141, 'Hauptuntersuchung', giro, ext('TÜV Süd'), { category: 'KFZ' });
+  if (mo % 2 === 0) add(day(22), 'withdrawal', between(8, 15), 'Autowäsche', giro, ext('Waschpark Nord'), { category: 'Auto' });
+}
+// Ein Kurzurlaub mit lauter fremden Händlern (für die Reise-Erkennung)
+{
+  const s = addDays(today, -60);
+  const trip = [[0, 'Hotel Lago Riva del Garda', 'Hotel Lago', 412, 'Urlaub'], [0, 'Pizzeria Da Mario Riva del Garda', 'Da Mario', 46.5, 'Restaurant'],
+    [1, 'Gelateria Riva del Garda', 'Gelateria Fiore', 9.8, 'Restaurant'], [1, 'Fähre Gardasee Riva', 'Navigazione Laghi', 38, 'Freizeit'],
+    [2, 'Supermercato Conad Riva', 'Conad', 54.2, 'Lebensmittel'], [3, 'Ristorante Al Porto Riva del Garda', 'Al Porto', 71, 'Restaurant']];
+  for (const [d, desc, party, amount, category] of trip) add(addDays(s, d), 'withdrawal', amount, desc, kk, ext(party), { category });
 }
 // Eine aktuelle große Ausgabe (für die Warnungen)
 add(addDays(today, -4), 'withdrawal', 649, 'Neue Waschmaschine', kk, ext('MediaMarkt'), { category: 'Shopping' });

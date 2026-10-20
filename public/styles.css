@@ -736,3 +736,12 @@ button.cal-day { cursor: pointer; }
 .cal-detail h3 { font-size: 14px; margin: 16px 0 8px; }
 .cal-detail:empty { display: none; }
 
+/* ---- Struktur-Vorschläge (Labor) ----------------------------------------- */
+.subtitle.wrap { white-space: normal; }
+.struct-row { align-items: start; }
+.struct-btns { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.struct-hits { margin-top: 6px; font-size: 13px; }
+.struct-hits summary { cursor: pointer; color: var(--accent); }
+.struct-hits table { margin-top: 6px; }
+.avatar.kind-reise, .avatar.kind-wort { background: var(--accent-soft); color: var(--accent); }
+
