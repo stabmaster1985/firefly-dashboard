@@ -108,6 +108,7 @@ export function txDetails(t) {
   const extraDates = [['Buchungsdatum', t.book_date], ['Wertstellung', t.process_date], ['Zinsdatum', t.interest_date],
     ['Zahlungsdatum', t.payment_date], ['Rechnungsdatum', t.invoice_date], ['Fällig', t.due_date]];
   const fields = [
+    ['Beschreibung', t.description && `<span class="pre">${esc(t.description)}</span>`],
     ['Datum', `${esc(fmtDate(t.date))}${time && time !== '00:00' ? ` ${time}` : ''}`],
     ['Art', esc(TX_TYPES[t.type] || t.type)],
     ['Betrag', `${signedAmount(t)}${t.foreign_amount && Number(t.foreign_amount) ? ` <span class="muted">(${money(Math.abs(Number(t.foreign_amount)), t.foreign_currency_code)})</span>` : ''}`],

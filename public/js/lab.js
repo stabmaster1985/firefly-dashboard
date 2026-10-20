@@ -133,18 +133,44 @@ export async function lab(view, { params }) {
     $('l-n8n').innerHTML = `${rulesAction ? ' · <button class="link-btn" data-export="ff-rules">In Firefly anlegen</button>' : ''}${categorizeAction ? ' · <button class="link-btn" data-export="n8n">Änderungen an n8n übergeben</button>' : ''}`;
   }
 
+  /**
+   * Aufklappbare Liste der betroffenen Buchungen eines Vorschlags; jede Zeile
+   * öffnet per Klick die vollen Details (Verwendungszweck, Notizen, Firefly-Links).
+   */
+  const HITS_MAX = 300;
+  function hitsBlock(prefix, hits, extra = '') {
+    const rows = [...hits].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, HITS_MAX);
+    return `<details class="struct-hits" data-hits="${prefix}"><summary>${hits.length} Buchung${hits.length === 1 ? '' : 'en'} ansehen${extra}</summary>
+      <div class="table-wrap scroll"><table><tbody>${rows.map((t, k) => `<tr ${txAttrs(`${prefix}:${k}`)}><td class="date">${fmtDate(t.date)}</td>
+        <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(counterpartyOf(t))}${t.category_name ? ` · ${esc(t.category_name)}` : ' · ohne Kategorie'}${(t.tags || []).map((x) => ` <span class="tag">${esc(x)}</span>`).join('')}</div>
+          ${t.notes ? `<div class="flow note">${esc(t.notes)}</div>` : ''}</td>
+        <td class="num">${money(t.amount, t.currency_code)}</td></tr>`).join('')}</tbody></table></div>
+      ${hits.length > HITS_MAX ? `<div class="muted">Die neuesten ${HITS_MAX} von ${hits.length}</div>` : ''}
+      <div class="muted">Zeile anklicken zeigt alle Details.</div></details>`;
+  }
+  /** Für bindTxDetails: Schlüssel „Vorschlag:Zeile“ → Buchung (gleiche Sortierung wie hitsBlock). */
+  const hitFrom = (list) => (key) => {
+    const [i, k] = key.split(':').map(Number);
+    const hits = list()?.[i]?.hits;
+    return hits && [...hits].sort((a, b) => String(b.date).localeCompare(String(a.date)))[k];
+  };
+
   function renderSuggestions() {
-    const list = suggestRules(txs, rules, knownCategories).slice(0, 25);
+    const list = suggestRules(txs, rules, knownCategories).slice(0, 25)
+      // Buchungen, die der Vorschlag ändern würde
+      .map((s) => ({ ...s, hits: txs.filter((t) => ruleMatches(s.rule, t) && (t.category_name || '') !== s.rule.setCategory) }));
     $('l-suggest-meta').textContent = list.length ? `${list.length} gefunden` : '';
     $('l-suggest').innerHTML = list.length
       ? `<div class="list">${list.map((s, i) => {
         const d = describeRule(s.rule);
         return `<div class="row suggestion"><div class="avatar kind-${s.kind}">${s.kind === 'haendler' ? 'H' : s.kind === 'ohne' ? '?' : '≠'}</div>
-          <div style="min-width:0"><div class="title">${esc(d.cond)} → ${esc(s.rule.setCategory)}</div><div class="subtitle">${esc(s.reason)}</div></div>
+          <div style="min-width:0"><div class="title">${esc(d.cond)} → ${esc(s.rule.setCategory)}</div><div class="subtitle">${esc(s.reason)}</div>
+            ${s.hits.length ? hitsBlock(i, s.hits) : ''}</div>
           <div class="amount"><button class="btn small" data-take="${i}">+ ${s.changes}</button></div></div>`;
       }).join('')}</div>${list.length > 1 ? '<div class="more"><button class="btn" data-take-all>Alle übernehmen</button></div>' : ''}`
       : '<div class="empty">Keine weiteren Vorschläge – sieht aufgeräumt aus.</div>';
     $('l-suggest').suggestions = list;
+    bindTxDetails($('l-suggest'), hitFrom(() => $('l-suggest').suggestions));
   }
 
   // Struktur-Vorschläge: Tags (Themen, Reisen) und Kategorien (zusammenfassen, aufteilen)
@@ -163,16 +189,13 @@ export async function lab(view, { params }) {
       ? `<div class="list">${list.map((s, i) => `<div class="row suggestion struct-row">
           <div class="avatar kind-${s.kind}">${STRUCT_ICON[s.kind] || '•'}</div>
           <div style="min-width:0"><div class="title">${esc(s.title)}</div><div class="subtitle wrap">${esc(s.reason)}</div>
-            <details class="struct-hits"><summary>${s.hits.length} Buchungen ansehen${s.rules.length > 1 ? ` · ${s.rules.length} Regeln` : ''}</summary>
-              <div class="table-wrap"><table><tbody>${s.hits.slice(0, 12).map((t) => `<tr style="cursor:default"><td class="date">${fmtDate(t.date)}</td>
-                <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(counterpartyOf(t))}${t.category_name ? ` · ${esc(t.category_name)}` : ''}</div></td>
-                <td class="num">${money(t.amount, t.currency_code)}</td></tr>`).join('')}</tbody></table></div>
-              ${s.hits.length > 12 ? `<div class="muted">… und ${s.hits.length - 12} weitere</div>` : ''}</details></div>
+            ${hitsBlock(i, s.hits, s.rules.length > 1 ? ` · ${s.rules.length} Regeln` : '')}</div>
           <div class="amount struct-btns"><button class="btn small" data-struct-take="${i}">Übernehmen</button><button class="link-btn" data-struct-ignore="${i}">Ignorieren</button></div>
         </div>`).join('')}</div>
         <div class="legend" style="margin-top:8px"><span>Alles lokal aus deinen Buchungen berechnet (Verwendungszweck, Empfänger, bisherige Kategorien) – ohne KI, nichts verlässt das Dashboard.
           „Übernehmen“ legt Labor-Regeln an; erst „In Firefly anlegen“ bzw. „Änderungen an n8n übergeben“ ändert Firefly.</span></div>`
       : `<div class="empty">${structTab === 'tags' ? 'Keine weiteren Tag-Vorschläge.' : 'Die Kategorien sehen aufgeräumt aus – nichts zum Zusammenfassen oder Aufteilen gefunden.'}</div>`;
+    bindTxDetails($('l-struct'), hitFrom(() => $('l-struct').structure));
   }
 
   function renderCompare(results) {
