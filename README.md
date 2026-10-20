@@ -115,6 +115,9 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
 - **Monatsmatrix** – Feld anklicken zeigt die Buchungen dieser Kategorie in diesem Monat;
   Kategorien lassen sich filtern (mehrere mit Komma, z. B. `lebens, restaurant`) und zusammen
   auswerten; Tabelle und Matrix als **CSV-Export** für Excel
+- **Hilfe überall** – ein **?** an jeder Karte und oben rechts für die ganze Seite erklärt jeweils:
+  wofür es da ist, was im Dashboard passiert und was (nicht) in Firefly passiert. Die Seite
+  `#/hilfe` sammelt alle Themen mit Suche
 - Hell-/Dunkelmodus, optimiert fürs Handy
 
 Der Vergleich mit der Vorperiode ist fair: Läuft der gewählte Zeitraum noch (z. B. „Dieser

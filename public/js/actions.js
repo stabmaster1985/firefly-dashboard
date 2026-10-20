@@ -279,7 +279,7 @@ async function versionCard(el, { force = false } = {}) {
     }
   }
   const outdated = v.status === 'update';
-  el.innerHTML = `<div class="card-head"><h2>Dashboard-Version</h2><span class="meta">${v.repo ? `<a href="https://github.com/${esc(v.repo)}/commits" target="_blank" rel="noopener">${esc(v.repo)} ↗</a>` : ''}</span></div>
+  el.innerHTML = `<div class="card-head"><h2>Dashboard-Version</h2><div class="card-tools"><span class="meta">${v.repo ? `<a href="https://github.com/${esc(v.repo)}/commits" target="_blank" rel="noopener">${esc(v.repo)} ↗</a>` : ''}</span><button class="help-btn" data-help="card:version" aria-label="Hilfe zu Dashboard-Version" title="Was ist das?">?</button></div></div>
     <p class="version-line">Läuft: ${stand}</p>
     <div>${state}</div>
     <div class="version-actions">

@@ -779,3 +779,26 @@ button.cal-day { cursor: pointer; }
 .transfer-plan select { height: 28px; border-radius: 8px; border: 1px solid var(--grid); background: var(--surface-1); color: var(--text-primary); font: inherit; font-size: 13px; }
 .warn-text { color: #9a6700; }
 
+
+/* ---- Hilfe ------------------------------------------------------------------ */
+.help-btn { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--grid); background: var(--surface-1); color: var(--text-muted);
+  font-size: 12px; font-weight: 700; line-height: 1; cursor: pointer; padding: 0; flex: none; }
+.help-btn:hover, .help-btn:focus-visible { color: var(--accent); border-color: var(--accent); }
+.help-dialog { border: 0; border-radius: 16px; padding: 0; max-width: min(620px, calc(100vw - 32px)); width: 100%; max-height: min(80vh, 720px);
+  background: var(--surface-1); color: var(--text-primary); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); }
+.help-dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+.help-inner { padding: 20px 24px; overflow-y: auto; max-height: min(80vh, 720px); box-sizing: border-box; }
+.help-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.help-head h2 { margin: 0; font-size: 18px; }
+.help-dialog h3, .help-page h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin: 16px 0 4px; }
+.help-dialog p, .help-page p { margin: 0; line-height: 1.5; }
+.help-dialog ul, .help-page ul { margin: 4px 0 0; padding-left: 18px; line-height: 1.5; }
+.help-related { margin-top: 6px; }
+.help-foot { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--grid); font-size: 14px; }
+.help-search { width: 100%; max-width: 520px; height: 38px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--grid); background: var(--surface-1); color: var(--text-primary); font: inherit; }
+.help-intro, .help-page { margin-bottom: 16px; }
+.help-intro p + p { margin-top: 8px; }
+.help-card { border-top: 1px solid var(--grid); padding: 8px 0; }
+.help-card:first-of-type { margin-top: 12px; }
+.help-card summary { cursor: pointer; font-weight: 600; }
+@media (max-width: 760px) { .help-inner { padding: 16px; } }

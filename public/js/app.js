@@ -10,27 +10,29 @@ import { yearReview } from './year.js';
 import { lab } from './lab.js';
 import { check } from './check.js';
 import { partyDetail } from './party.js';
+import { openHelp, helpPage } from './helpui.js';
 import { applyCardFilter } from './common.js';
 import { destroyCharts } from './charts.js';
 import { PERIODS, SALARY_PERIODS, periodById, customPeriodId, parseDate, isoDate, debounce, storage, store, esc, payday } from './util.js';
 
 const ROUTES = {
-  '': { view: views.overview, title: 'Übersicht', nav: 'overview' },
-  kategorien: { view: categories, title: 'Kategorien', nav: 'categories' },
-  tags: { view: tags, title: 'Tags', nav: 'tags' },
-  wiederkehrend: { view: recurring, title: 'Wiederkehrend', nav: 'recurring', noPeriod: true },
-  buchungen: { view: views.transactions, title: 'Buchungen', nav: 'transactions' },
-  konten: { view: views.accounts, title: 'Konten', nav: 'accounts' },
-  automationen: { view: actions, title: 'Automationen', nav: 'actions' },
-  jahr: { view: yearReview, title: 'Jahresrückblick', nav: 'year', noPeriod: true },
-  labor: { view: lab, title: 'Kategorien-Labor', nav: 'lab', noPeriod: true },
-  pruefen: { view: check, title: 'Prüfen', nav: 'check', noPeriod: true },
+  '': { view: views.overview, title: 'Übersicht', nav: 'overview', help: 'overview' },
+  kategorien: { view: categories, title: 'Kategorien', nav: 'categories', help: 'categories' },
+  tags: { view: tags, title: 'Tags', nav: 'tags', help: 'categories' },
+  wiederkehrend: { view: recurring, title: 'Wiederkehrend', nav: 'recurring', noPeriod: true, help: 'recurring' },
+  buchungen: { view: views.transactions, title: 'Buchungen', nav: 'transactions', help: 'transactions' },
+  konten: { view: views.accounts, title: 'Konten', nav: 'accounts', help: 'accounts' },
+  automationen: { view: actions, title: 'Automationen', nav: 'actions', help: 'actions' },
+  jahr: { view: yearReview, title: 'Jahresrückblick', nav: 'year', noPeriod: true, help: 'year' },
+  labor: { view: lab, title: 'Kategorien-Labor', nav: 'lab', noPeriod: true, help: 'lab' },
+  pruefen: { view: check, title: 'Prüfen', nav: 'check', noPeriod: true, help: 'check' },
+  hilfe: { view: helpPage, title: 'Hilfe', nav: 'help', noPeriod: true },
 };
 const DETAIL = {
-  kategorien: { view: categoryDetail, title: 'Kategorie', nav: 'categories' },
-  tags: { view: tagDetail, title: 'Tag', nav: 'tags' },
-  konten: { view: accountDetail, title: 'Konto', nav: 'accounts' },
-  empfaenger: { view: partyDetail, title: 'Empfänger', nav: 'transactions', noPeriod: true },
+  kategorien: { view: categoryDetail, title: 'Kategorie', nav: 'categories', help: 'detail' },
+  tags: { view: tagDetail, title: 'Tag', nav: 'tags', help: 'detail' },
+  konten: { view: accountDetail, title: 'Konto', nav: 'accounts', help: 'account' },
+  empfaenger: { view: partyDetail, title: 'Empfänger', nav: 'transactions', noPeriod: true, help: 'party' },
 };
 
 const viewEl = document.getElementById('view');
@@ -76,6 +78,9 @@ async function render() {
   document.querySelectorAll('.nav a').forEach((a) => a.classList.toggle('active', a.dataset.route === route.nav));
   document.querySelector('.period-wrap').hidden = Boolean(route.noPeriod);
   forecastBtn.hidden = Boolean(route.noPeriod);
+  const helpBtn = document.getElementById('help-btn');
+  helpBtn.hidden = !route.help;
+  if (route.help) helpBtn.dataset.help = `page:${route.help}`;
 
   if (connectionError) return showConnectionError(connectionError);
   const period = periodById(currentPeriod);
@@ -424,3 +429,12 @@ window.addEventListener('ffd-offline', () => (offlineBanner.hidden = false));
 window.addEventListener('online', () => (offlineBanner.hidden = true));
 
 connect();
+
+// ---- Hilfe: jeder Knopf mit data-help öffnet die passende Erklärung -------------
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-help]');
+  if (!btn) return;
+  e.preventDefault();
+  openHelp(btn.dataset.help);
+});
+

@@ -2,6 +2,7 @@
 
 import { money, esc, initials, fmtDate, fmtDateShort } from './util.js';
 import { enhanceTxEdit } from './txedit.js';
+import { CARDS } from './help.js';
 
 // ---------------------------------------------------------------------------
 // Bausteine
@@ -29,7 +30,7 @@ export async function fill(slot, loader, render, placeholder = skeleton()) {
 export const card = (id, title, { span = 'span-12', link = '', meta = '', filter = false } = {}) => `
   <section class="card ${span}">
     <div class="card-head"><h2>${esc(title)}</h2>
-      <div class="card-tools">${filter ? `<input class="card-filter" type="search" placeholder="Filtern …" aria-label="${esc(title)} filtern" data-target="${id}">` : ''}${link}${meta ? `<span class="meta">${meta}</span>` : ''}</div>
+      <div class="card-tools">${filter ? `<input class="card-filter" type="search" placeholder="Filtern …" aria-label="${esc(title)} filtern" data-target="${id}">` : ''}${link}${meta ? `<span class="meta">${meta}</span>` : ''}${CARDS[id] ? `<button class="help-btn" data-help="card:${id}" aria-label="Hilfe zu „${esc(title)}“" title="Was ist das?">?</button>` : ''}</div>
     </div>
     <div id="${id}"></div>
   </section>`;
