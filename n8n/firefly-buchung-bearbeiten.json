@@ -1,5 +1,5 @@
 {
-  "name": "Firefly: Buchung bearbeiten (Dashboard)",
+  "name": "Firefly: Änderungen aus dem Dashboard",
   "nodes": [
     {
       "parameters": {
@@ -14,7 +14,7 @@
       "typeVersion": 2,
       "position": [
         0,
-        200
+        300
       ],
       "webhookId": "firefly-buchung-bearbeiten"
     },
@@ -39,7 +39,7 @@
       "typeVersion": 3.4,
       "position": [
         220,
-        200
+        300
       ],
       "notes": "Adresse deiner Firefly-Instanz (ohne /api) eintragen"
     },
@@ -53,8 +53,8 @@
           },
           "conditions": [
             {
-              "id": "c1",
-              "leftValue": "={{ $('Webhook').item.json.body.test === true }}",
+              "id": "b3c",
+              "leftValue": "={{ $('Webhook').first().json.body.test === true }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -73,13 +73,13 @@
       "typeVersion": 2,
       "position": [
         440,
-        200
+        300
       ]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { ok: true, test: true, empfangen: $('Webhook').item.json.body } }}",
+        "responseBody": "={{ { ok: true, test: true, empfangen: $('Webhook').first().json.body } }}",
         "options": {}
       },
       "id": "b4",
@@ -88,26 +88,59 @@
       "typeVersion": 1.1,
       "position": [
         680,
-        80
+        120
       ]
     },
     {
       "parameters": {
-        "jsCode": "// Baut aus der Anfrage des Dashboards die Änderung für die Firefly-API\nconst b = $('Webhook').item.json.body || {};\nconst split = { transaction_journal_id: String(b.transaction_journal_id) };\nif (b.typ === 'kategorie_setzen') {\n  // category_name legt eine noch unbekannte Kategorie automatisch an\n  split.category_name = String(b.kategorie || '');\n} else if (b.typ === 'tags_setzen') {\n  split.tags = Array.isArray(b.tags) ? b.tags.map(String) : [];\n} else {\n  throw new Error('Unbekannter typ: ' + b.typ);\n}\nreturn [{ json: {\n  id: String(b.transaction_group_id),\n  payload: { apply_rules: false, fire_webhooks: true, transactions: [split] },\n} }];"
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "b5c",
+              "leftValue": "={{ $('Webhook').first().json.body.typ === 'regeln_anlegen' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
       "id": "b5",
+      "name": "Regeln?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Baut aus der Anfrage des Dashboards die Änderung(en) für die Firefly-API\nconst b = $('Webhook').first().json.body || {};\nconst put = (groupId, split) => ({ json: {\n  id: String(groupId),\n  payload: { apply_rules: false, fire_webhooks: true, transactions: [split] },\n} });\nif (b.typ === 'kategorie_setzen') {\n  // category_name legt eine noch unbekannte Kategorie automatisch an\n  return [put(b.transaction_group_id, { transaction_journal_id: String(b.transaction_journal_id), category_name: String(b.kategorie || '') })];\n}\nif (b.typ === 'tags_setzen') {\n  return [put(b.transaction_group_id, { transaction_journal_id: String(b.transaction_journal_id), tags: (b.tags || []).map(String) })];\n}\nif (b.typ === 'kategorien_uebernehmen') {\n  // Sammeländerung aus dem Kategorien-Labor\n  return (b.aenderungen || []).map((a) => put(a.transaction_group_id, {\n    transaction_journal_id: String(a.transaction_journal_id),\n    ...(a.kategorie ? { category_name: String(a.kategorie) } : {}),\n    ...(Array.isArray(a.tags) ? { tags: a.tags.map(String) } : {}),\n  }));\n}\nthrow new Error('Unbekannter typ: ' + b.typ);"
+      },
+      "id": "c1",
       "name": "Änderung bauen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        680,
-        300
+        920,
+        560
       ]
     },
     {
       "parameters": {
         "method": "PUT",
-        "url": "={{ $('Einstellungen').item.json.firefly_url }}/api/v1/transactions/{{ $json.id }}",
+        "url": "={{ $('Einstellungen').first().json.firefly_url }}/api/v1/transactions/{{ $json.id }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -124,29 +157,299 @@
         "jsonBody": "={{ JSON.stringify($json.payload) }}",
         "options": {}
       },
-      "id": "b6",
+      "id": "c2",
       "name": "In Firefly speichern",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        900,
-        300
+        1140,
+        560
       ],
-      "notes": "Header-Auth-Zugangsdaten: Name „Authorization“, Wert „Bearer <Firefly-Token>“"
+      "notes": "Header-Auth-Zugangsdaten: Name „Authorization“, Wert „Bearer <Firefly-Token>“ – in allen HTTP-Knoten dieselben"
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { ok: true, id: $json.data.id } }}",
+        "responseBody": "={{ { ok: true, anzahl: $input.all().length } }}",
         "options": {}
       },
-      "id": "b7",
+      "id": "c3",
       "name": "Antwort",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1120,
-        300
+        1360,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Einstellungen').first().json.firefly_url }}/api/v1/rule-groups?limit=200",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.api+json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "r1",
+      "name": "Regelgruppen holen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        920,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Regelgruppe des Labors suchen (Titel kommt vom Dashboard)\nconst title = $('Webhook').first().json.body.gruppe;\nconst found = ($input.first().json.data || []).find((g) => g.attributes.title === title);\nreturn [{ json: { id: found ? found.id : '' } }];"
+      },
+      "id": "r2",
+      "name": "Gruppe finden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "r3c",
+              "leftValue": "={{ !$json.id }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "r3",
+      "name": "Gruppe fehlt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Einstellungen').first().json.firefly_url }}/api/v1/rule-groups",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.api+json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ title: $('Webhook').first().json.body.gruppe, description: 'Regeln aus dem Kategorien-Labor des Firefly Dashboards', active: true }) }}",
+        "options": {}
+      },
+      "id": "r4",
+      "name": "Gruppe anlegen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nreturn [{ json: { id: String(j.data?.id ?? j.id) } }];"
+      },
+      "id": "r5",
+      "name": "Gruppen-ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Einstellungen').first().json.firefly_url }}/api/v1/rule-groups/{{ $json.id }}/rules?limit=500",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.api+json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "r6",
+      "name": "Regeln der Gruppe",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2020,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Labor-Regeln mit den Regeln der Gruppe abgleichen: anlegen, ändern, entfernen.\n// Zuordnung über die Markierung „id:<Labor-ID>“ in der Beschreibung.\nconst base = $('Einstellungen').first().json.firefly_url + '/api/v1';\nconst groupId = $('Gruppen-ID').first().json.id;\nconst wanted = $('Webhook').first().json.body.regeln || [];\nconst existing = $input.first().json.data || [];\nconst marker = (d) => (/id:(\\S+)/.exec(d || '') || [])[1];\nconst byLabId = new Map(existing.map((r) => [marker(r.attributes.description), r]));\nconst items = [];\nfor (const r of wanted) {\n  const body = {\n    title: r.title, description: r.description, rule_group_id: groupId, order: r.order,\n    trigger: r.trigger || 'store-journal', active: r.active !== false, strict: r.strict !== false,\n    stop_processing: Boolean(r.stop_processing), triggers: r.triggers, actions: r.actions,\n  };\n  const old = byLabId.get(r.labor_id);\n  items.push({ json: old\n    ? { method: 'PUT', url: base + '/rules/' + old.id, body, art: 'aktualisiert' }\n    : { method: 'POST', url: base + '/rules', body, art: 'angelegt' } });\n}\nconst keep = new Set(wanted.map((r) => r.labor_id));\nfor (const r of existing) {\n  const id = marker(r.attributes.description);\n  if (id && !keep.has(id)) items.push({ json: { method: 'DELETE', url: base + '/rules/' + r.id, body: null, art: 'entfernt' } });\n}\n// nie ohne Element enden, sonst antwortet der Webhook nicht\nif (!items.length) items.push({ json: { method: 'GET', url: base + '/rule-groups/' + groupId, body: null, art: 'nichts' } });\nreturn items;"
+      },
+      "id": "r7",
+      "name": "Abgleich",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "={{ $json.method }}",
+        "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.api+json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body || {}) }}",
+        "options": {}
+      },
+      "id": "r8",
+      "name": "Regel speichern",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2460,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const counts = { angelegt: 0, aktualisiert: 0, entfernt: 0 };\nfor (const it of $('Abgleich').all()) if (counts[it.json.art] !== undefined) counts[it.json.art] += 1;\nconst anwenden = $('Webhook').first().json.body.anwenden || null;\nreturn [{ json: { ok: true, ...counts, gruppe_id: $('Gruppen-ID').first().json.id, anwenden } }];"
+      },
+      "id": "r9",
+      "name": "Zusammenfassen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2680,
+        260
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "r10c",
+              "leftValue": "={{ !!$json.anwenden }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "r10",
+      "name": "Anwenden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2900,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Einstellungen').first().json.firefly_url }}/api/v1/rule-groups/{{ $json.gruppe_id }}/trigger?start={{ $json.anwenden.start }}&end={{ $json.anwenden.end }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.api+json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "r11",
+      "name": "Auf Buchungen anwenden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3120,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $('Zusammenfassen').first().json }}",
+        "options": {}
+      },
+      "id": "r12",
+      "name": "Antwort Regeln",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        3340,
+        260
       ]
     }
   ],
@@ -184,6 +487,24 @@
         ],
         [
           {
+            "node": "Regeln?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Regeln?": {
+      "main": [
+        [
+          {
+            "node": "Regelgruppen holen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Änderung bauen",
             "type": "main",
             "index": 0
@@ -207,6 +528,141 @@
         [
           {
             "node": "Antwort",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Regelgruppen holen": {
+      "main": [
+        [
+          {
+            "node": "Gruppe finden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gruppe finden": {
+      "main": [
+        [
+          {
+            "node": "Gruppe fehlt?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gruppe fehlt?": {
+      "main": [
+        [
+          {
+            "node": "Gruppe anlegen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gruppen-ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gruppe anlegen": {
+      "main": [
+        [
+          {
+            "node": "Gruppen-ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gruppen-ID": {
+      "main": [
+        [
+          {
+            "node": "Regeln der Gruppe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Regeln der Gruppe": {
+      "main": [
+        [
+          {
+            "node": "Abgleich",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Abgleich": {
+      "main": [
+        [
+          {
+            "node": "Regel speichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Regel speichern": {
+      "main": [
+        [
+          {
+            "node": "Zusammenfassen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Zusammenfassen": {
+      "main": [
+        [
+          {
+            "node": "Anwenden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anwenden?": {
+      "main": [
+        [
+          {
+            "node": "Auf Buchungen anwenden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Antwort Regeln",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auf Buchungen anwenden": {
+      "main": [
+        [
+          {
+            "node": "Antwort Regeln",
             "type": "main",
             "index": 0
           }

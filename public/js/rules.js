@@ -242,6 +242,7 @@ export function toFireflyRules(rules) {
     ];
     const { cond, act } = describeRule(r);
     return {
+      labor_id: r.id,
       title: `${cond} → ${act}`.slice(0, 250),
       trigger: 'store-journal',
       active: true,

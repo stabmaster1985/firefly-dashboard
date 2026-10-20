@@ -3,12 +3,14 @@
 // Export (Firefly-Regeln, CSV oder n8n) macht es auf Wunsch dauerhaft.
 
 import * as api from './api.js';
-import { money, esc, fmtDate, today, debounce } from './util.js';
+import { money, esc, fmtDate, today, debounce, isoDate } from './util.js';
 import { skeleton, card, stat, sum, mainCurrency, downloadCsv, txAttrs, bindTxDetails } from './common.js';
 import { detectRecurring } from './recurring.js';
 import { FIELDS, OPS, AUTO_TAGS, applyRules, suggestRules, describeRule, toFireflyRules, counterpartyOf, normParty, ruleMatches } from './rules.js';
 
 const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
+const RULE_GROUP = 'Firefly Dashboard (Labor)';
+const RULE_DESC = 'Aus dem Kategorien-Labor des Firefly Dashboards – Änderungen besser dort machen';
 const BASES = {
   ausgaben: { label: 'Ausgaben', type: 'withdrawal' },
   einnahmen: { label: 'Einnahmen', type: 'deposit' },
@@ -45,12 +47,15 @@ export async function lab(view, { params }) {
   let txs;
   let stored;
   let categorizeAction;
+  let rulesAction;
   try {
-    [txs, stored, categorizeAction] = await Promise.all([
+    [txs, stored, [categorizeAction, rulesAction]] = await Promise.all([
       api.getAll('transactions', { start: from, end: t0, type: base.type })
         .then((groups) => api.flattenTransactions(groups).filter((t) => t.type === base.type)),
       fetch('/local/rules').then((r) => r.json()),
-      fetch('/local/actions').then((r) => r.json()).then((l) => l.find((a) => a.trigger === 'categorize') || null).catch(() => null),
+      fetch('/local/actions').then((r) => r.json())
+        .then((l) => ['categorize', 'rules'].map((trigger) => l.find((a) => a.trigger === trigger) || null))
+        .catch(() => [null, null]),
     ]);
   } catch (err) {
     view.querySelector('.grid').innerHTML = `<section class="card span-12"><div class="empty">Konnte nicht geladen werden: ${esc(err.message)}</div></section>`;
@@ -119,7 +124,7 @@ export async function lab(view, { params }) {
         <datalist id="lab-cats">${knownCategories.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
       </form>
       <div class="legend" style="margin-top:8px"><span>Reihenfolge zählt: Die erste passende Regel bestimmt die Kategorie, Tags sammeln sich.</span></div>`;
-    $('l-n8n').innerHTML = categorizeAction ? ` · <button class="link-btn" data-export="n8n">An n8n übergeben</button>` : '';
+    $('l-n8n').innerHTML = `${rulesAction ? ' · <button class="link-btn" data-export="ff-rules">In Firefly anlegen</button>' : ''}${categorizeAction ? ' · <button class="link-btn" data-export="n8n">Änderungen an n8n übergeben</button>' : ''}`;
   }
 
   function renderSuggestions() {
@@ -289,19 +294,44 @@ export async function lab(view, { params }) {
         ['Datum', 'Beschreibung', 'Empfänger/Zahler', 'Betrag', 'Kategorie bisher', 'Kategorie neu', 'Tags'],
         ...results.map(({ t, r }) => [String(t.date).slice(0, 10), t.description, counterpartyOf(t), t.amount, t.category_name || '', r.category || '', r.tags.join(', ')]),
       ]);
+    } else if (kind === 'ff-rules' && rulesAction) {
+      const all = toFireflyRules(rules);
+      const regeln = all.filter((r) => !r.hinweis);
+      const skipped = all.length - regeln.length;
+      if (!regeln.length) return window.alert('Keine Regel, die Firefly so übernehmen kann.');
+      if (!window.confirm(`${regeln.length} Regel${regeln.length === 1 ? '' : 'n'} in Firefly anlegen bzw. aktualisieren (Regelgruppe „${RULE_GROUP}“)?`
+        + `${skipped ? `\n${skipped} Regel(n) mit Bedingungen, die Firefly nicht kennt, werden übersprungen.` : ''}`
+        + '\nRegeln, die du hier im Labor gelöscht hast, werden in dieser Gruppe ebenfalls entfernt.')) return;
+      const apply = window.confirm(`Die Regeln auch gleich auf die vorhandenen Buchungen seit ${fmtDate(from)} anwenden?\n\nOK = ja, Abbrechen = nur für künftige Buchungen.`);
+      btn.textContent = 'Sende …';
+      const payload = {
+        typ: 'regeln_anlegen',
+        gruppe: RULE_GROUP,
+        // Firefly führt alle passenden Regeln aus, die letzte Kategorie gewinnt – im Labor gewinnt
+        // die erste. Darum umgekehrte Reihenfolge.
+        regeln: regeln.map((r, i) => ({ ...r, order: regeln.length - i, description: `${RULE_DESC} · id:${r.labor_id}` })),
+        anwenden: apply ? { start: isoDate(from), end: isoDate(t0) } : null,
+      };
+      const res = await fetch(`/local/actions/${encodeURIComponent(rulesAction.id)}/run`, { method: 'POST', headers, body: JSON.stringify({ context: { ...payload, daten: payload } }) })
+        .then((x) => x.json()).catch(() => ({ ok: false }));
+      if (res.ok) api.forget();
+      btn.textContent = res.ok ? `In Firefly angelegt ✓${apply ? ' und angewendet' : ''}` : 'Fehler – siehe Automationen';
     } else if (kind === 'n8n' && categorizeAction) {
-      const changes = results.filter((x) => x.r.changed);
-      if (!window.confirm(`${changes.length} Kategorie-Änderungen an „${categorizeAction.name}“ übergeben? Der Workflow schreibt sie dann in Firefly.`)) return;
+      // Kategorie geändert oder neue Tags; Tags gehen als komplette neue Liste mit
+      const changes = results.filter((x) => x.r.changed || x.r.tags.some((tag) => !(x.t.tags || []).includes(tag)));
+      if (!window.confirm(`${changes.length} Änderungen an „${categorizeAction.name}“ übergeben? Der Workflow schreibt sie dann in Firefly.`)) return;
       btn.textContent = 'Sende …';
       const payload = {
         typ: 'kategorien_uebernehmen',
         aenderungen: changes.map(({ t, r }) => ({
           transaction_group_id: t.groupId, transaction_journal_id: t.transaction_journal_id, datum: String(t.date).slice(0, 10),
-          beschreibung: t.description, betrag: t.amount, kategorie_alt: t.category_name || null, kategorie: r.category, tags: r.tags,
+          beschreibung: t.description, betrag: t.amount, kategorie_alt: t.category_name || null, kategorie: r.category,
+          tags: [...new Set([...(t.tags || []), ...r.tags])], tags_neu: r.tags.filter((tag) => !(t.tags || []).includes(tag)),
         })),
       };
       const res = await fetch(`/local/actions/${encodeURIComponent(categorizeAction.id)}/run`, { method: 'POST', headers, body: JSON.stringify({ context: { ...payload, daten: payload } }) })
         .then((x) => x.json()).catch(() => ({ ok: false }));
+      if (res.ok) api.forget();
       btn.textContent = res.ok ? 'Übergeben ✓' : 'Fehler – siehe Automationen';
     }
   }

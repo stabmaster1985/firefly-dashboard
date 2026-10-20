@@ -61,7 +61,10 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   Kleinbetrag) und Regel-Vorschläge aus deinen Daten (uneinheitlich kategorisierte Empfänger,
   Buchungen ohne Kategorie, bekannte Händler; Zahlungsdienste wie PayPal nach Buchungstext).
   Vorher/Nachher je Kategorie, Auswertung nach Tags, Export als **Firefly-Regeln** (JSON),
-  CSV oder Übergabe an n8n
+  CSV oder Übergabe an n8n. Mit **In Firefly anlegen** werden die Regeln per n8n als echte
+  Firefly-Regeln in einer eigenen Regelgruppe angelegt und abgeglichen (geänderte Regeln
+  aktualisiert, im Labor gelöschte entfernt) – auf Wunsch gleich auf alle vorhandenen Buchungen
+  angewendet. Danach kategorisiert Firefly neue Buchungen beim Import selbst
 - **Prüfen** – Datenqualität auf einen Blick:
   - **Import-Status je Konto**: letzte Buchung und üblicher Abstand; „überfällig“, wenn ein Konto
     deutlich länger als sonst keine Buchung hat (CSV-Import vergessen?). Eine Automation mit
@@ -113,8 +116,13 @@ Monat“ am 19.), wird mit demselben Abschnitt davor verglichen (1.–19. des Vo
 |---|---|---|
 | Per Knopf | Klick auf „Ausführen“ | gewählter Zeitraum (`start`, `end`, `period`) |
 | Monatsabschluss (Gehalts-/Kalendermonat) | sobald ein Monat abgeschlossen ist | Einnahmen, Ausgaben, Saldo, Sparquote, Vormonat, Kategorien mit Veränderung, Ziele, größte Buchungen, Auffälliges und einen fertigen Text (`text`) |
+| Wochenrückblick | sonntags ab 18 Uhr (Serverzeit, ggf. `TZ=Europe/Berlin` setzen) für die Woche Mo–So | Ausgaben, Einnahmen, Vergleich mit dem Ø der letzten 8 Wochen, Kategorien, größte Ausgaben, Auffälliges, Buchungen ohne Kategorie, Stand der Ziele und einen fertigen mehrzeiligen Text (`text`) |
 | Warnungen | bei jeder neuen Warnung (einmalig) | `art` (grosse_buchung, preisaenderung, ausgeblieben), `titel`, `text`, `details` |
-| Kategorie übernehmen | Klick auf „Übernehmen“ bei einem Vorschlag | `transaction_group_id`, `transaction_journal_id`, `kategorie`, … – der Workflow setzt die Kategorie in Firefly (z. B. HTTP-Request `PUT /api/v1/transactions/{id}`) |
+| Kategorie übernehmen | Kategorie in den Buchungsdetails, „Übernehmen“ bei einem Vorschlag, Labor „Änderungen an n8n übergeben“ | `kategorie_setzen` bzw. `kategorien_uebernehmen` – siehe unten |
+| Tags setzen | Tag in den Buchungsdetails hinzufügen/entfernen | `tags_setzen` mit kompletter neuer Tag-Liste |
+| Firefly-Regeln anlegen | Labor „In Firefly anlegen“ | `regeln_anlegen`: Gruppe, Regeln im Firefly-Format, optional Zeitraum zum Anwenden |
+| Import starten | Knopf auf der Seite „Prüfen“ | `konten_ueberfaellig` |
+| Dashboard aktualisieren | Knopf „Jetzt aktualisieren“ unter Dashboard-Version | `von`, `auf` (Commits) |
 
 Body leer lassen = alle Daten als JSON; im Body-Text fügt `{{daten}}` sie ebenfalls ein. Mit
 „Jetzt senden“ bzw. „Testen“ lässt sich das Ergebnis vorab ansehen. Gehaltstag und die Schwelle
@@ -213,21 +221,27 @@ Der Webhook antwortet sofort mit 202, weil sich das Dashboard beim Neustart selb
 das Ergebnis steht in den n8n-Ausführungen, ein Fehler bricht den Workflow mit der Ausgabe ab
 (und löst einen eingestellten Error-Workflow aus).
 
-### Buchungen bearbeiten per n8n
+### Buchungen bearbeiten und Regeln anlegen per n8n
 
 Das Dashboard selbst schreibt nie in Firefly. Kategorie und Tags lassen sich trotzdem aus den
-Buchungsdetails ändern – über einen n8n-Workflow:
+Buchungsdetails ändern und Labor-Regeln in Firefly anlegen – über einen n8n-Workflow:
 
 1. In n8n `n8n/firefly-buchung-bearbeiten.json` importieren.
 2. Im Knoten **Einstellungen** die Firefly-Adresse eintragen (ohne `/api`).
 3. Im Knoten **In Firefly speichern** Header-Auth-Zugangsdaten anlegen: Name `Authorization`,
    Wert `Bearer <Firefly-Token>`.
 4. Workflow aktivieren und die **Production URL** kopieren.
-5. Im Dashboard unter **Automationen** zwei Automationen mit dieser URL anlegen: Auslöser
-   **Kategorie übernehmen** und Auslöser **Tags setzen** (Body leer lassen) – jeweils „Testen“.
+5. Im Dashboard unter **Automationen** drei Automationen mit dieser URL anlegen: Auslöser
+   **Kategorie übernehmen**, **Tags setzen** und **Firefly-Regeln anlegen** (Body jeweils leer
+   lassen) – jeweils „Testen“.
 
 Der Workflow bekommt `typ` (`kategorie_setzen` / `tags_setzen`), `transaction_group_id`,
-`transaction_journal_id` und `kategorie` bzw. die komplette neue Liste `tags`. Eine noch
+`transaction_journal_id` und `kategorie` bzw. die komplette neue Liste `tags`; aus dem Labor
+kommen Sammeländerungen (`kategorien_uebernehmen`) und Regeln (`regeln_anlegen`). Die Regeln
+landen in der Gruppe „Firefly Dashboard (Labor)“; zugeordnet werden sie über `id:…` in ihrer
+Beschreibung – Regeln, die du in dieser Gruppe von Hand anlegst, bleiben unberührt. Weil Firefly
+alle passenden Regeln ausführt (die letzte Kategorie gewinnt) und im Labor die erste Regel
+gewinnt, stehen sie in Firefly in umgekehrter Reihenfolge. Eine noch
 unbekannte Kategorie legt Firefly dabei an. Nach einer erfolgreichen Änderung verwirft das
 Dashboard seinen Zwischenspeicher, damit alle Seiten die neuen Daten laden.
 
