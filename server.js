@@ -39,8 +39,6 @@ if (!FIREFLY_URL || !FIREFLY_TOKEN) {
   process.exit(1);
 }
 
-// Automationen (Webhooks) – eigene, lokal gespeicherte Konfiguration
-const handleActions = createActions(DATA_DIR);
 
 // Nur diese Firefly-Endpunkte dürfen gelesen werden – in Firefly wird nie geschrieben.
 const ALLOWED = [
@@ -78,6 +76,10 @@ const firefly = createFirefly({
   historyTtl: CACHE_HISTORY_HOURS * 3600,
   concurrency: Math.max(1, FIREFLY_CONCURRENCY),
 });
+
+// Automationen (Webhooks) – eigene, lokal gespeicherte Konfiguration.
+// Ändert eine Automation Buchungen in Firefly, ist der Zwischenspeicher veraltet.
+const handleActions = createActions(DATA_DIR, { onDataChange: () => firefly.invalidate() });
 
 function send(res, status, body, headers = {}) {
   res.writeHead(status, {

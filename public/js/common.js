@@ -1,6 +1,7 @@
 // Gemeinsame Bausteine für alle Seiten.
 
 import { money, esc, initials, fmtDate, fmtDateShort } from './util.js';
+import { enhanceTxEdit } from './txedit.js';
 
 // ---------------------------------------------------------------------------
 // Bausteine
@@ -132,7 +133,7 @@ export function txDetails(t) {
     ? `<div class="tx-links"><a class="btn small" href="${esc(show)}" target="_blank" rel="noopener">In Firefly öffnen ↗</a>
        <a class="btn small" href="${esc(fireflyTxUrl(t, 'edit'))}" target="_blank" rel="noopener">In Firefly bearbeiten ↗</a></div>`
     : '';
-  return `<dl>${fields.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>${links}`;
+  return `<dl>${fields.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl><div class="tx-edit"></div>${links}`;
 }
 
 /**
@@ -153,10 +154,17 @@ export function bindTxDetails(host, getTx) {
     }
     const t = host.txGet(row.dataset.tx);
     if (!t) return;
-    const html = row.tagName === 'TR'
-      ? `<tr class="details"><td colspan="${row.cells.length}">${txDetails(t)}</td></tr>`
-      : `<div class="details">${txDetails(t)}</div>`;
-    row.insertAdjacentHTML('afterend', html);
+    row.insertAdjacentHTML('afterend', row.tagName === 'TR'
+      ? `<tr class="details"><td colspan="${row.cells.length}"></td></tr>`
+      : '<div class="details"></div>');
+    const box = row.tagName === 'TR' ? row.nextElementSibling.firstElementChild : row.nextElementSibling;
+    // nach einer Änderung per n8n neu zeichnen, mit Bestätigung
+    const draw = (note) => {
+      box.innerHTML = txDetails(t);
+      if (note) box.querySelector('.tx-edit').insertAdjacentHTML('beforebegin', `<p class="tx-edit-status good">${note}</p>`);
+      enhanceTxEdit(box.querySelector('.tx-edit'), t, () => draw('✓ In Firefly geändert – Listen zeigen es nach dem nächsten Laden.'));
+    };
+    draw();
     row.setAttribute('aria-expanded', 'true');
   };
   host.addEventListener('click', (e) => {

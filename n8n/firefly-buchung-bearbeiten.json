@@ -1,0 +1,221 @@
+{
+  "name": "Firefly: Buchung bearbeiten (Dashboard)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "firefly-buchung-bearbeiten",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "b1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ],
+      "webhookId": "firefly-buchung-bearbeiten"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e1",
+              "name": "firefly_url",
+              "value": "http://192.168.0.X:PORT",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "b2",
+      "name": "Einstellungen",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        200
+      ],
+      "notes": "Adresse deiner Firefly-Instanz (ohne /api) eintragen"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $('Webhook').item.json.body.test === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b3",
+      "name": "Nur Test?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        440,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, test: true, empfangen: $('Webhook').item.json.body } }}",
+        "options": {}
+      },
+      "id": "b4",
+      "name": "Antwort Test",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        680,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Baut aus der Anfrage des Dashboards die Änderung für die Firefly-API\nconst b = $('Webhook').item.json.body || {};\nconst split = { transaction_journal_id: String(b.transaction_journal_id) };\nif (b.typ === 'kategorie_setzen') {\n  // category_name legt eine noch unbekannte Kategorie automatisch an\n  split.category_name = String(b.kategorie || '');\n} else if (b.typ === 'tags_setzen') {\n  split.tags = Array.isArray(b.tags) ? b.tags.map(String) : [];\n} else {\n  throw new Error('Unbekannter typ: ' + b.typ);\n}\nreturn [{ json: {\n  id: String(b.transaction_group_id),\n  payload: { apply_rules: false, fire_webhooks: true, transactions: [split] },\n} }];"
+      },
+      "id": "b5",
+      "name": "Änderung bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $('Einstellungen').item.json.firefly_url }}/api/v1/transactions/{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.api+json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {}
+      },
+      "id": "b6",
+      "name": "In Firefly speichern",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        300
+      ],
+      "notes": "Header-Auth-Zugangsdaten: Name „Authorization“, Wert „Bearer <Firefly-Token>“"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, id: $json.data.id } }}",
+        "options": {}
+      },
+      "id": "b7",
+      "name": "Antwort",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Einstellungen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Einstellungen": {
+      "main": [
+        [
+          {
+            "node": "Nur Test?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nur Test?": {
+      "main": [
+        [
+          {
+            "node": "Antwort Test",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Änderung bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Änderung bauen": {
+      "main": [
+        [
+          {
+            "node": "In Firefly speichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "In Firefly speichern": {
+      "main": [
+        [
+          {
+            "node": "Antwort",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

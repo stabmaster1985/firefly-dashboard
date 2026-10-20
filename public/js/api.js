@@ -21,6 +21,11 @@ export function setFresh(value) {
   if (value) memo.clear();
 }
 
+/** Nach einer Änderung in Firefly: Browser-Zwischenspeicher verwerfen. */
+export function forget() {
+  memo.clear();
+}
+
 function query(params = {}) {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {

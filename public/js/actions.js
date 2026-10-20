@@ -17,7 +17,8 @@ const TRIGGERS = {
   'report-salary': { label: 'Monatsabschluss (Gehaltsmonat)', run: '▶ Letzten Gehaltsmonat jetzt senden', hint: 'Startet automatisch, sobald ein Gehaltsmonat abgeschlossen ist – mit Einnahmen, Ausgaben, Kategorien, Zielen, größten Buchungen und einem fertigen Text. Body leer lassen = alle Daten als JSON.' },
   'report-calendar': { label: 'Monatsabschluss (Kalendermonat)', run: '▶ Letzten Monat jetzt senden', hint: 'Wie oben, aber zum Monatswechsel am 1.' },
   alerts: { label: 'Warnungen', run: '▶ Testwarnung senden', hint: 'Startet bei jeder neuen Warnung: große Ausgabe, Abo mit neuem Betrag, ausgebliebene Zahlung. Jede Warnung wird nur einmal gesendet.' },
-  categorize: { label: 'Kategorie übernehmen', run: '▶ Testdaten senden', hint: 'Wird bei „Ohne Kategorie“ → Vorschläge per „Übernehmen“ gestartet. Der Workflow erhält Buchungs-ID und Kategorie und setzt sie in Firefly (z. B. mit dem Firefly-Knoten oder einem HTTP-Request an die Firefly-API).' },
+  categorize: { label: 'Kategorie übernehmen', run: '▶ Testdaten senden', hint: 'Startet, wenn du in den Details einer Buchung eine Kategorie setzt oder bei „Ohne Kategorie“ einen Vorschlag übernimmst. Der Workflow erhält Buchungs-ID und Kategorie (typ „kategorie_setzen“) und setzt sie in Firefly – fertiger Workflow: n8n/firefly-buchung-bearbeiten.json.' },
+  tags: { label: 'Tags setzen', run: '▶ Testdaten senden', hint: 'Startet, wenn du in den Details einer Buchung einen Tag hinzufügst oder entfernst. Der Workflow erhält Buchungs-ID und die komplette neue Tag-Liste (typ „tags_setzen“) – derselbe n8n-Workflow wie für Kategorien kann beides.' },
 };
 
 async function local(path, { method = 'GET', body } = {}) {

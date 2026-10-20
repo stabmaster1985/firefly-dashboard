@@ -302,6 +302,16 @@ tr.details dd, div.details dd { margin: 0; min-width: 0; overflow-wrap: anywhere
 div.details { grid-column: 1 / -1; background: var(--surface-2); border-radius: 10px; padding: 12px 14px; margin: 0 0 8px; font-size: 13px; color: var(--text-secondary); }
 .details .pre { white-space: pre-line; }
 .details .tx-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.tx-edit:not(:empty) { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--grid); display: grid; gap: 8px; }
+.tx-edit p { margin: 0; }
+.tx-edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+.tx-edit-row label { display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
+.tx-edit-row input { height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--grid); background: var(--surface-1); color: var(--text-primary); font: inherit; width: 220px; max-width: 100%; }
+.tx-edit-tags .tag { display: inline-flex; align-items: center; }
+.tx-edit-status { margin: 6px 0 0; font-size: 13px; color: var(--text-muted); }
+.tx-edit-status:empty { display: none; }
+.tx-edit-status.good { color: var(--positive); }
+.tx-edit-status.bad { color: var(--negative); }
 .details .tx-links .btn { text-decoration: none; }
 .row[data-tx] { cursor: pointer; }
 .row[data-tx]:hover .title { color: var(--accent); }

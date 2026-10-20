@@ -37,6 +37,9 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   auf: Datum, Art, Betrag, Von/An mit IBAN, Kategorie, Budget, Rechnung, Tags, Notizen, Referenzen,
   SEPA-Angaben und ID – dazu **In Firefly öffnen** und **In Firefly bearbeiten**. Konten und
   Kategorien darin sind verlinkt
+- **Kategorie und Tags direkt ändern** – in den Buchungsdetails Kategorie setzen sowie Tags
+  hinzufügen/entfernen; das Dashboard startet dafür einen n8n-Workflow (Vorlage
+  `n8n/firefly-buchung-bearbeiten.json`), der die Änderung über die Firefly-API speichert
 - **Kategorie-Detail** – Monatsverlauf mit Durchschnittslinie, Spitzenmonat, Anzahl und Ø pro
   Buchung, Top-Empfänger und alle Buchungen der Kategorie (nach Datum oder Betrag)
 - **Buchungen** – Liste mit Kategorie-Filter und Volltextsuche (inkl. Firefly-Suchoperatoren wie
@@ -187,6 +190,24 @@ Automationen im Dashboard – mit dem Header von oben) oder, wenn aktiviert, tä
 Der Webhook antwortet sofort mit 202, weil sich das Dashboard beim Neustart selbst beendet;
 das Ergebnis steht in den n8n-Ausführungen, ein Fehler bricht den Workflow mit der Ausgabe ab
 (und löst einen eingestellten Error-Workflow aus).
+
+### Buchungen bearbeiten per n8n
+
+Das Dashboard selbst schreibt nie in Firefly. Kategorie und Tags lassen sich trotzdem aus den
+Buchungsdetails ändern – über einen n8n-Workflow:
+
+1. In n8n `n8n/firefly-buchung-bearbeiten.json` importieren.
+2. Im Knoten **Einstellungen** die Firefly-Adresse eintragen (ohne `/api`).
+3. Im Knoten **In Firefly speichern** Header-Auth-Zugangsdaten anlegen: Name `Authorization`,
+   Wert `Bearer <Firefly-Token>`.
+4. Workflow aktivieren und die **Production URL** kopieren.
+5. Im Dashboard unter **Automationen** zwei Automationen mit dieser URL anlegen: Auslöser
+   **Kategorie übernehmen** und Auslöser **Tags setzen** (Body leer lassen) – jeweils „Testen“.
+
+Der Workflow bekommt `typ` (`kategorie_setzen` / `tags_setzen`), `transaction_group_id`,
+`transaction_journal_id` und `kategorie` bzw. die komplette neue Liste `tags`. Eine noch
+unbekannte Kategorie legt Firefly dabei an. Nach einer erfolgreichen Änderung verwirft das
+Dashboard seinen Zwischenspeicher, damit alle Seiten die neuen Daten laden.
 
 ## Demo ohne eigene Firefly-Instanz
 

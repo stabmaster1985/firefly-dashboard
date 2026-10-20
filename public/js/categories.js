@@ -4,6 +4,7 @@
 import * as api from './api.js';
 import { barChart, legend, seriesColor, cssVar } from './charts.js';
 import { money, percent, esc, fmtDate, fmtMonth, today, isoDate, addDays, storage, store, debounce, CALENDAR } from './util.js';
+import { actionFor, setCategory } from './txedit.js';
 import { skeleton, fill, card, stat, signedAmount, mainCurrency, sum, counterparty, downloadCsv, termsMatcher, multiSelect, txAttrs, bindTxDetails } from './common.js';
 import { shareStrip, weekdayChart, sizeChart } from './dist.js';
 import { loadGoals, saveGoal, goalStatus, goalBar } from './goals.js';
@@ -799,15 +800,7 @@ async function detail(view, { period, params, id, dimKey }) {
         btn.disabled = true;
         btn.textContent = 'Sende …';
         try {
-          const res = await fetch(`/local/actions/${encodeURIComponent(action.id)}/run`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' },
-            body: JSON.stringify({ context: {
-              typ: 'kategorie_setzen', transaction_group_id: x.t.groupId, transaction_journal_id: x.t.transaction_journal_id,
-              kategorie: x.category, kategorie_id: x.categoryId, beschreibung: x.t.description, empfaenger: counterparty(x.t),
-              betrag: x.t.amount, datum: String(x.t.date).slice(0, 10),
-            } }),
-          }).then((r) => r.json());
+          const res = await setCategory(action, x.t, x.category, x.categoryId);
           btn.textContent = res.ok ? 'Gesendet ✓' : `Fehler ${res.status || ''}`;
           btn.classList.toggle('done', Boolean(res.ok));
         } catch {
@@ -943,10 +936,7 @@ function loadReference() {
     .then((groups) => api.flattenTransactions(groups).filter((t) => t.category_name));
 }
 
-/** Automation mit Auslöser „Kategorie übernehmen“, falls eingerichtet. */
-function categorizeAction() {
-  return fetch('/local/actions').then((r) => r.json()).then((list) => list.find((a) => a.trigger === 'categorize') || null).catch(() => null);
-}
+const categorizeAction = () => actionFor('categorize');
 
 const normName = (s) => String(s || '').toLowerCase().replace(/[0-9]+/g, ' ').replace(/[^\p{L} ]+/gu, ' ').replace(/\s+/g, ' ').trim();
 
