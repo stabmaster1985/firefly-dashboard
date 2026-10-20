@@ -4,7 +4,7 @@
 
 import * as api from './api.js';
 import { money, esc, fmtDate, today, debounce } from './util.js';
-import { skeleton, card, stat, sum, mainCurrency, downloadCsv } from './common.js';
+import { skeleton, card, stat, sum, mainCurrency, downloadCsv, txAttrs, bindTxDetails } from './common.js';
 import { detectRecurring } from './recurring.js';
 import { FIELDS, OPS, AUTO_TAGS, applyRules, suggestRules, describeRule, toFireflyRules, counterpartyOf, normParty, ruleMatches } from './rules.js';
 
@@ -182,7 +182,7 @@ export async function lab(view, { params }) {
       : `${[['changed', 'Geänderte'], ['none', 'Ohne Kategorie'], ['all', 'Alle']]
         .map(([k, l]) => `<button class="link-btn" data-mode="${k}" aria-pressed="${k === txMode}">${l}</button>`).join(' · ')}`;
     $('l-tx').innerHTML = rows.length
-      ? `<div class="table-wrap scroll"><table><tbody>${rows.slice(0, 500).map(({ t, r }) => `<tr style="cursor:default">
+      ? `<div class="table-wrap scroll"><table><tbody>${rows.slice(0, 500).map(({ t, r }, i) => `<tr ${txAttrs(i)}>
           <td class="date">${fmtDate(t.date)}</td>
           <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(counterpartyOf(t))}</div></td>
           <td>${r.changed ? `<span class="muted strike">${esc(t.category_name || 'ohne')}</span> → <b>${esc(r.category || 'ohne')}</b>` : esc(r.category || '–')}
@@ -190,6 +190,7 @@ export async function lab(view, { params }) {
           <td class="num">${money(t.amount, t.currency_code)}</td></tr>`).join('')}</tbody></table></div>
         ${rows.length > 500 ? `<div class="legend" style="margin-top:8px"><span>Die ersten 500 von ${rows.length}</span></div>` : ''}`
       : `<div class="empty">${txMode === 'changed' && !tagFilter ? 'Noch keine Änderungen – lege Regeln an oder übernimm Vorschläge.' : 'Keine Buchungen.'}</div>`;
+    bindTxDetails($('l-tx'), (i) => rows[Number(i)]?.t);
   }
 
   // ---- Bedienung --------------------------------------------------------------

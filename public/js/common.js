@@ -1,6 +1,6 @@
 // Gemeinsame Bausteine für alle Seiten.
 
-import { money, esc, initials, fmtDateShort } from './util.js';
+import { money, esc, initials, fmtDate, fmtDateShort } from './util.js';
 
 // ---------------------------------------------------------------------------
 // Bausteine
@@ -82,10 +82,104 @@ export function signedAmount(t) {
   return `<span class="neutral">${money(t.amount, code)}</span>`;
 }
 
-export function txRow(t) {
+// ---------------------------------------------------------------------------
+// Buchungsdetails – überall gleich: Zeile mit data-tx anklicken klappt sie auf
+
+const TX_TYPES = { withdrawal: 'Ausgabe', deposit: 'Einnahme', transfer: 'Umbuchung', 'opening balance': 'Eröffnungssaldo', reconciliation: 'Abgleich' };
+const OWN_ACCOUNT = /^(Asset account|Loan|Debt|Mortgage)$/;
+
+/** Link zu einer Buchung in Firefly (show oder edit), leer ohne bekannte Firefly-Adresse. */
+export function fireflyTxUrl(t, mode = 'show') {
+  const ff = window.FFD_CONFIG?.fireflyUrl;
+  return ff && t.groupId ? `${ff}/transactions/${mode}/${encodeURIComponent(t.groupId)}` : '';
+}
+
+/** Detailliste einer Buchung (alle vorhandenen Felder) mit Links in Firefly. */
+export function txDetails(t) {
+  const account = (name, id, type, op) => {
+    if (!name) return null;
+    const href = id && OWN_ACCOUNT.test(type || '') ? `#/konten/${encodeURIComponent(id)}` : `#/buchungen?q=${encodeURIComponent(`${op}:"${name}"`)}`;
+    return `<a class="plain" href="${href}">${esc(name)}</a>`;
+  };
+  const iban = (v) => (v ? ` <span class="muted">${esc(v)}</span>` : '');
+  const time = /T(\d{2}:\d{2})/.exec(String(t.date))?.[1];
+  const extraDates = [['Buchungsdatum', t.book_date], ['Wertstellung', t.process_date], ['Zinsdatum', t.interest_date],
+    ['Zahlungsdatum', t.payment_date], ['Rechnungsdatum', t.invoice_date], ['Fällig', t.due_date]];
+  const fields = [
+    ['Datum', `${esc(fmtDate(t.date))}${time && time !== '00:00' ? ` ${time}` : ''}`],
+    ['Art', esc(TX_TYPES[t.type] || t.type)],
+    ['Betrag', `${signedAmount(t)}${t.foreign_amount && Number(t.foreign_amount) ? ` <span class="muted">(${money(Math.abs(Number(t.foreign_amount)), t.foreign_currency_code)})</span>` : ''}`],
+    ['Von', t.source_name && `${account(t.source_name, t.source_id, t.source_type, 'source_account_is')}${iban(t.source_iban)}`],
+    ['An', t.destination_name && `${account(t.destination_name, t.destination_id, t.destination_type, 'destination_account_is')}${iban(t.destination_iban)}`],
+    ['Kategorie', t.category_name
+      ? `<a class="plain" href="#/kategorien/${encodeURIComponent(t.category_id ?? '0')}">${esc(t.category_name)}</a>`
+      : t.type === 'withdrawal' ? '<a class="plain" href="#/kategorien/0">Ohne Kategorie</a>' : null],
+    ['Budget', t.budget_name && esc(t.budget_name)],
+    ['Rechnung', t.bill_name && esc(t.bill_name)],
+    ['Tags', (t.tags || []).length ? t.tags.map((tag) => `<span class="tag">${esc(tag)}</span>`).join('') : null],
+    ['Notizen', t.notes && `<span class="pre">${esc(t.notes)}</span>`],
+    ['Gruppe', t.groupTitle && esc(t.groupTitle)],
+    ...extraDates.map(([k, v]) => [k, v && esc(fmtDate(v))]),
+    ['Referenz', t.internal_reference && esc(t.internal_reference)],
+    ['Externe ID', t.external_id && esc(t.external_id)],
+    ['SEPA', [t.sepa_ct_id && `End-to-End ${t.sepa_ct_id}`, t.sepa_ep && `Zweck ${t.sepa_ep}`, t.sepa_ci && `Gläubiger-ID ${t.sepa_ci}`, t.sepa_db && `Mandat ${t.sepa_db}`]
+      .filter(Boolean).map(esc).join(' · ') || null],
+    ['Herkunft', t.original_source && esc(t.original_source)],
+    ['ID', esc(`Buchung ${t.groupId ?? '–'}${t.transaction_journal_id && t.transaction_journal_id !== t.groupId ? ` · Journal ${t.transaction_journal_id}` : ''}`)],
+  ].filter(([, v]) => v);
+  const show = fireflyTxUrl(t);
+  const links = show
+    ? `<div class="tx-links"><a class="btn small" href="${esc(show)}" target="_blank" rel="noopener">In Firefly öffnen ↗</a>
+       <a class="btn small" href="${esc(fireflyTxUrl(t, 'edit'))}" target="_blank" rel="noopener">In Firefly bearbeiten ↗</a></div>`
+    : '';
+  return `<dl>${fields.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>${links}`;
+}
+
+/**
+ * Macht Buchungszeilen in host aufklappbar: Zeilen tragen data-tx="<Schlüssel>",
+ * getTx(schlüssel) liefert die Buchung. Darf bei jedem Neuzeichnen erneut
+ * aufgerufen werden – es bleibt bei einem Listener, getTx wird ersetzt.
+ */
+export function bindTxDetails(host, getTx) {
+  if (!host) return;
+  const bound = Boolean(host.txGet);
+  host.txGet = getTx;
+  if (bound) return;
+  const toggle = (row) => {
+    const next = row.nextElementSibling;
+    if (next?.classList.contains('details')) {
+      next.remove();
+      return row.setAttribute('aria-expanded', 'false');
+    }
+    const t = host.txGet(row.dataset.tx);
+    if (!t) return;
+    const html = row.tagName === 'TR'
+      ? `<tr class="details"><td colspan="${row.cells.length}">${txDetails(t)}</td></tr>`
+      : `<div class="details">${txDetails(t)}</div>`;
+    row.insertAdjacentHTML('afterend', html);
+    row.setAttribute('aria-expanded', 'true');
+  };
+  host.addEventListener('click', (e) => {
+    const row = e.target.closest('[data-tx]');
+    if (!row || !host.contains(row) || e.target.closest('a, button, input, select, label')) return;
+    toggle(row);
+  });
+  host.addEventListener('keydown', (e) => {
+    const row = e.target.closest?.('[data-tx]');
+    if (row && e.target === row && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      toggle(row);
+    }
+  });
+}
+
+/** Attribute für eine aufklappbare Buchungszeile. */
+export const txAttrs = (key) => `data-tx="${esc(String(key))}" tabindex="0" aria-expanded="false"`;
+
+export function txRow(t, i) {
   const avatar = t.type === 'transfer' ? ICONS.transfer : esc(initials(counterparty(t)));
   const sub = [fmtDateShort(t.date), t.category_name || counterparty(t)].filter(Boolean).map(esc).join(' · ');
-  return `<div class="row">
+  return `<div class="row"${i === undefined ? '' : ` ${txAttrs(i)}`}>
     <div class="avatar">${avatar}</div>
     <div style="min-width:0"><div class="title">${esc(t.description)}</div><div class="subtitle">${sub}</div></div>
     <div class="amount">${signedAmount(t)}</div>

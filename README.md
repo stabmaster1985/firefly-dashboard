@@ -32,6 +32,11 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   **Matrixfeld** klappt direkt darunter die Buchungen dieses Monats auf – sortierbar, filterbar,
   mit Link in Firefly. Im gestapelten Diagramm zeigt ein Segment nur diese Kategorie, ein Klick
   neben die Segmente alle Kategorien des Monats
+- **Buchungsdetails überall** – jede Buchung in jeder Liste (Übersicht, Buchungen, Kategorien,
+  Monats-Drilldown, Kategorisierungshilfe, Kontoseite, Labor, Jahresrückblick) klappt per Klick
+  auf: Datum, Art, Betrag, Von/An mit IBAN, Kategorie, Budget, Rechnung, Tags, Notizen, Referenzen,
+  SEPA-Angaben und ID – dazu **In Firefly öffnen** und **In Firefly bearbeiten**. Konten und
+  Kategorien darin sind verlinkt
 - **Kategorie-Detail** – Monatsverlauf mit Durchschnittslinie, Spitzenmonat, Anzahl und Ø pro
   Buchung, Top-Empfänger und alle Buchungen der Kategorie (nach Datum oder Betrag)
 - **Buchungen** – Liste mit Kategorie-Filter und Volltextsuche (inkl. Firefly-Suchoperatoren wie

@@ -4,7 +4,7 @@
 import * as api from './api.js';
 import { barChart, legend, seriesColor, cssVar } from './charts.js';
 import { money, percent, esc, fmtDate, fmtMonth, today, isoDate, addDays, storage, store, debounce, CALENDAR } from './util.js';
-import { skeleton, fill, card, stat, signedAmount, mainCurrency, sum, counterparty, downloadCsv, termsMatcher, multiSelect } from './common.js';
+import { skeleton, fill, card, stat, signedAmount, mainCurrency, sum, counterparty, downloadCsv, termsMatcher, multiSelect, txAttrs, bindTxDetails } from './common.js';
 import { shareStrip, weekdayChart, sizeChart } from './dist.js';
 import { loadGoals, saveGoal, goalStatus, goalBar } from './goals.js';
 
@@ -301,7 +301,7 @@ async function showMonthPanel(panel, { dimKey, kind, rows, month, title, link })
     const rows = [...list].sort((a, b) => (order === 'date' ? String(b.date).localeCompare(String(a.date)) : b.amount - a.amount));
     panel.querySelector(`#${listId}`).innerHTML = rows.length
       ? `<div class="table-wrap scroll"><table><tbody>${rows
-        .map((t) => `<tr style="cursor:default">
+        .map((t, i) => `<tr ${txAttrs(i)}>
           <td class="date">${fmtDate(t.date, { day: '2-digit', month: '2-digit' })}</td>
           <td><div class="desc">${esc(t.description)}</div>
             <div class="flow">${esc(counterparty(t))}${t.category_name ? ` · ${esc(t.category_name)}` : ''}${(t.tags || []).map((tag) => ` <span class="tag">${esc(tag)}</span>`).join('')}</div>
@@ -311,6 +311,7 @@ async function showMonthPanel(panel, { dimKey, kind, rows, month, title, link })
         .join('')}</tbody></table></div>
         <div class="legend" style="margin-top:10px"><span>Summe: <b>&nbsp;${money(total, code)}</b>&nbsp;in ${list.length} Buchungen</span></div>`
       : '<div class="empty">Keine Buchungen in diesem Monat.</div>';
+    bindTxDetails(panel.querySelector(`#${listId}`), (i) => rows[Number(i)]);
   };
   render();
   panel.querySelector('.mp-sort').addEventListener('click', (e) => {
@@ -775,7 +776,7 @@ async function detail(view, { period, params, id, dimKey }) {
       if (!list.length) return (el.innerHTML = '<div class="empty">Alles kategorisiert. 🎉</div>');
       const ff = window.FFD_CONFIG?.fireflyUrl;
       el.innerHTML = `<div class="table-wrap scroll"><table><tbody>${suggestions
-        .map((x, i) => `<tr style="cursor:default">
+        .map((x, i) => `<tr ${txAttrs(i)}>
           <td class="date">${fmtDate(x.t.date)}</td>
           <td><div class="desc">${esc(x.t.description)}</div><div class="flow">${esc(counterparty(x.t))} · ${money(x.t.amount, x.t.currency_code)}</div></td>
           <td>${x.category
@@ -789,7 +790,8 @@ async function detail(view, { period, params, id, dimKey }) {
         <div class="legend" style="margin-top:12px"><span>${action
           ? `„Übernehmen“ startet die Automation „${esc(action.name)}“ – sie setzt die Kategorie in Firefly.`
           : 'Tipp: Mit einer Automation „Kategorie übernehmen“ (n8n) lassen sich Vorschläge per Klick in Firefly eintragen.'}
-          Für wiederkehrende Fälle lohnt sich eine Firefly-Regel (Empfänger → Kategorie).</span></div>`;
+          Für wiederkehrende Fälle lohnt sich eine Firefly-Regel (Empfänger → Kategorie). Zeile anklicken zeigt alle Details.</span></div>`;
+      bindTxDetails(el, (i) => suggestions[Number(i)]?.t);
       el.addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-apply]');
         if (!btn) return;
@@ -913,11 +915,12 @@ async function detail(view, { period, params, id, dimKey }) {
       el.innerHTML = rows.length
         ? `<div class="table-wrap scroll"><table><tbody>${rows
           .slice(0, 300)
-          .map((t) => `<tr style="cursor:default"><td class="date">${fmtDate(t.date)}</td>
+          .map((t, i) => `<tr ${txAttrs(i)}><td class="date">${fmtDate(t.date)}</td>
             <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(counterparty(t))}${dimKey === 'tag' && t.category_name ? ` · ${esc(t.category_name)}` : ''}</div></td>
             <td class="num">${signedAmount(t)}</td></tr>`)
           .join('')}</tbody></table></div>${rows.length > 300 ? `<div class="legend" style="margin-top:12px"><span>Die ersten 300 von ${rows.length} Buchungen</span></div>` : ''}`
         : '<div class="empty">Keine Buchungen im Zeitraum.</div>';
+      bindTxDetails(el, (i) => rows[Number(i)]);
     };
     render();
     view.querySelector('#d-sort').addEventListener('click', (e) => {

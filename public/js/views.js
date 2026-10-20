@@ -3,7 +3,7 @@
 import * as api from './api.js';
 import { barChart, lineChart, legend, seriesColor } from './charts.js';
 import { money, percent, esc, fmtDate, initials, isoDate, today, debounce, parseDate, addDays, CALENDAR } from './util.js';
-import { skeleton, fill, card, stat, signedAmount, txRow, mainCurrency, sum } from './common.js';
+import { skeleton, fill, card, stat, signedAmount, txRow, txAttrs, bindTxDetails, mainCurrency, sum } from './common.js';
 import { categoryTotals, compareRange, delta, forecastActive, forecastTotal, forecastRemainder } from './categories.js';
 import { loadRecurring, upcomingBetween } from './recurring.js';
 import { sankey } from './dist.js';
@@ -245,6 +245,7 @@ export async function overview(view, { period }) {
   fill($('recent'), () => api.get('transactions', { start, end, type: 'all', limit: 10 }), (el, res) => {
     const rows = api.flattenTransactions(res.data).slice(0, 10);
     el.innerHTML = rows.length ? `<div class="list two-col">${rows.map(txRow).join('')}</div>` : '<div class="empty">Keine Buchungen im Zeitraum.</div>';
+    bindTxDetails(el, (i) => rows[Number(i)]);
   });
 }
 
@@ -332,7 +333,7 @@ export async function transactions(view, { period, params }) {
       ${out ? `<span>Ausgaben <b>&nbsp;${money(out, code)}</b></span>` : ''}
       ${hasMore ? `<span>(Summen der ${state.rows.length} geladenen)</span>` : ''}`;
     body.innerHTML = state.rows
-      .map((t, i) => `<tr data-i="${i}">
+      .map((t, i) => `<tr ${txAttrs(i)}>
         <td class="date">${fmtDate(t.date)}</td>
         <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(t.source_name)} → ${esc(t.destination_name)}</div></td>
         <td class="hide-sm">${t.category_name ? `<span class="cat">${esc(t.category_name)}</span>` : ''}</td>
@@ -341,34 +342,7 @@ export async function transactions(view, { period, params }) {
     more.innerHTML = hasMore ? '<button class="btn" id="tx-load">Mehr laden</button>' : '';
   }
 
-  function details(t) {
-    const fields = [
-      ['Von', t.source_name],
-      ['An', t.destination_name],
-      ['Budget', t.budget_name],
-      ['Kategorie', t.category_name],
-      ['Rechnung', t.bill_name],
-      ['Fremdwährung', t.foreign_amount ? money(t.foreign_amount, t.foreign_currency_code) : null],
-      ['Notizen', t.notes],
-      ['Gruppe', t.groupTitle],
-    ].filter(([, v]) => v);
-    const tags = (t.tags || []).map((tag) => `<span class="tag">${esc(tag)}</span>`).join('');
-    const link = window.FFD_CONFIG?.fireflyUrl
-      ? `<a href="${esc(window.FFD_CONFIG.fireflyUrl)}/transactions/show/${encodeURIComponent(t.groupId)}" target="_blank" rel="noopener">In Firefly öffnen ↗</a>`
-      : '';
-    return `<tr class="details"><td colspan="4"><dl>
-      ${fields.map(([k, v]) => `<dt>${k}</dt><dd>${k === 'Fremdwährung' ? v : esc(v)}</dd>`).join('')}
-      ${tags ? `<dt>Tags</dt><dd>${tags}</dd>` : ''}
-      ${link ? `<dt></dt><dd>${link}</dd>` : ''}
-    </dl></td></tr>`;
-  }
-
-  body.addEventListener('click', (e) => {
-    const tr = e.target.closest('tr[data-i]');
-    if (!tr || e.target.closest('a')) return;
-    if (tr.nextElementSibling?.classList.contains('details')) return tr.nextElementSibling.remove();
-    tr.insertAdjacentHTML('afterend', details(state.rows[Number(tr.dataset.i)]));
-  });
+  bindTxDetails(body, (i) => state.rows[Number(i)]);
 
   more.addEventListener('click', (e) => {
     if (e.target.id !== 'tx-load') return;

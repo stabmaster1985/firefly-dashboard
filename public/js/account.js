@@ -4,7 +4,7 @@
 import * as api from './api.js';
 import { barChart, lineChart, legend, seriesColor } from './charts.js';
 import { money, esc, fmtDate, today, addDays, isoDate, parseDate, CALENDAR } from './util.js';
-import { skeleton, fill, card, stat, sum, counterparty } from './common.js';
+import { skeleton, fill, card, stat, sum, counterparty, txAttrs, bindTxDetails } from './common.js';
 import { shareStrip } from './dist.js';
 import { ROLE } from './views.js';
 
@@ -126,31 +126,18 @@ export async function accountDetail(view, { period, id }) {
     const rows = txs.filter(inPeriod).sort((x, y) => String(y.date).localeCompare(String(x.date)));
     $('a-count').textContent = `${rows.length} im Zeitraum`;
     if (!rows.length) return (el.innerHTML = '<div class="empty">Keine Buchungen im Zeitraum.</div>');
-    const ff = window.FFD_CONFIG?.fireflyUrl;
     el.innerHTML = `<div class="table-wrap scroll"><table>
       <thead><tr><th>Datum</th><th>Beschreibung</th><th class="hide-sm">Kategorie</th><th class="num">Betrag</th></tr></thead>
       <tbody>${rows
         .map((t, i) => {
           const v = signed(t);
-          return `<tr data-i="${i}">
+          return `<tr ${txAttrs(i)}>
             <td class="date">${fmtDate(t.date)}</td>
             <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(counterparty(t))}</div></td>
             <td class="hide-sm">${t.category_name ? `<a class="cat plain" href="#/kategorien/${encodeURIComponent(t.category_id ?? '0')}">${esc(t.category_name)}</a>` : ''}</td>
             <td class="num"><span class="${v > 0 ? 'pos' : t.type === 'transfer' ? 'neutral' : 'neg'}">${money(v, t.currency_code, { signed: v > 0 })}</span></td></tr>`;
         })
         .join('')}</tbody></table></div>`;
-    // Klick auf eine Zeile klappt Details auf
-    el.querySelector('tbody').addEventListener('click', (e) => {
-      const tr = e.target.closest('tr[data-i]');
-      if (!tr || e.target.closest('a')) return;
-      if (tr.nextElementSibling?.classList.contains('details')) return tr.nextElementSibling.remove();
-      const t = rows[Number(tr.dataset.i)];
-      const fields = [['Von', t.source_name], ['An', t.destination_name], ['Art', { withdrawal: 'Ausgabe', deposit: 'Einnahme', transfer: 'Umbuchung' }[t.type]],
-        ['Budget', t.budget_name], ['Notizen', t.notes]].filter(([, v]) => v);
-      const tags = (t.tags || []).map((tag) => `<span class="tag">${esc(tag)}</span>`).join('');
-      tr.insertAdjacentHTML('afterend', `<tr class="details"><td colspan="4"><dl>
-        ${fields.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}${tags ? `<dt>Tags</dt><dd>${tags}</dd>` : ''}
-        ${ff ? `<dt></dt><dd><a href="${esc(ff)}/transactions/show/${encodeURIComponent(t.groupId)}" target="_blank" rel="noopener">In Firefly öffnen ↗</a></dd>` : ''}</dl></td></tr>`);
-    });
+    bindTxDetails(el, (i) => rows[Number(i)]);
   }, skeleton(6));
 }

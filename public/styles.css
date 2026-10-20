@@ -296,9 +296,16 @@ td.date { white-space: nowrap; color: var(--text-secondary); font-variant-numeri
 td .desc { font-weight: 500; }
 td .flow { font-size: 13px; color: var(--text-muted); }
 tr.details td { background: var(--surface-2); cursor: default; font-size: 13px; color: var(--text-secondary); }
-tr.details dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; }
-tr.details dt { color: var(--text-muted); }
-tr.details dd { margin: 0; }
+tr.details dl, div.details dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; }
+tr.details dt, div.details dt { color: var(--text-muted); }
+tr.details dd, div.details dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+div.details { grid-column: 1 / -1; background: var(--surface-2); border-radius: 10px; padding: 12px 14px; margin: 0 0 8px; font-size: 13px; color: var(--text-secondary); }
+.details .pre { white-space: pre-line; }
+.details .tx-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.details .tx-links .btn { text-decoration: none; }
+.row[data-tx] { cursor: pointer; }
+.row[data-tx]:hover .title { color: var(--accent); }
+[data-tx]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-right: 4px; }
 .cat { font-size: 13px; color: var(--text-secondary); }
 

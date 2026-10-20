@@ -4,7 +4,7 @@
 import * as api from './api.js';
 import { barChart, legend, seriesColor } from './charts.js';
 import { money, percent, esc, fmtDate, today } from './util.js';
-import { skeleton, fill, card, stat, sum, mainCurrency, counterparty } from './common.js';
+import { skeleton, fill, card, stat, sum, mainCurrency, counterparty, txAttrs, bindTxDetails } from './common.js';
 import { categoryTotals, delta } from './categories.js';
 import { loadRecurring } from './recurring.js';
 import { shareStrip } from './dist.js';
@@ -136,10 +136,11 @@ export async function yearReview(view, { params }) {
     }
     const top = [...groups.values()].sort((a, b) => b.max - a.max).slice(0, 15);
     el.innerHTML = top.length
-      ? `<div class="table-wrap"><table><tbody>${top.map(({ t, n, sum: total }) => `<tr style="cursor:default"><td class="date">${n > 1 ? `${n}×` : fmtDate(t.date)}</td>
+      ? `<div class="table-wrap"><table><tbody>${top.map(({ t, n, sum: total }, i) => `<tr ${txAttrs(i)}><td class="date">${n > 1 ? `${n}×` : fmtDate(t.date)}</td>
           <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(counterparty(t))}${t.category_name ? ` · ${esc(t.category_name)}` : ''}${n > 1 ? ` · zusammen ${money(total, t.currency_code)}` : ''}</div></td>
           <td class="num"><b>${money(t.amount, t.currency_code)}</b></td></tr>`).join('')}</tbody></table></div>`
       : '<div class="empty">Keine Ausgaben.</div>';
+    bindTxDetails(el, (i) => top[Number(i)]?.t);
   }, skeleton(6));
 
   fill($('y-subs'), () => loadRecurring('expense'), (el, { items }) => {
