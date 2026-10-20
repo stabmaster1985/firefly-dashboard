@@ -30,6 +30,8 @@ export async function lab(view, { params }) {
     konto: params.get('konto') || '',
     kategorie: params.get('kategorie') || '',
     text: params.get('text') || '',
+    min: /^\d+([.,]\d+)?$/.test(params.get('min') || '') ? params.get('min').replace(',', '.') : '',
+    max: /^\d+([.,]\d+)?$/.test(params.get('max') || '') ? params.get('max').replace(',', '.') : '',
   };
   const scoped = Object.values(scope).some(Boolean);
 
@@ -97,6 +99,8 @@ export async function lab(view, { params }) {
     if (scope.konto && accountOf(t) !== scope.konto) return false;
     if (scope.kategorie && (t.category_name || 'Ohne Kategorie') !== scope.kategorie) return false;
     if (scope.text && !`${t.description} ${counterpartyOf(t)} ${t.notes || ''}`.toLowerCase().includes(scope.text.toLowerCase())) return false;
+    if (scope.min && Math.abs(t.amount) < Number(scope.min)) return false;
+    if (scope.max && Math.abs(t.amount) > Number(scope.max)) return false;
     return true;
   };
   // txs = was das Labor zeigt und auswertet; allTxs = alles (für Regeln ohne Fehltreffer, Abo-Erkennung)
@@ -150,6 +154,7 @@ export async function lab(view, { params }) {
     bar: $('l-pickbar'),
     txs,
     allTxs,
+    openGroup: params.get('gruppe'),
     basis: baseKey,
     knownCategories,
     knownTags,
@@ -377,7 +382,8 @@ export async function lab(view, { params }) {
       <span class="scope-dates"${preset === 'eigener' ? '' : ' hidden'}><input type="date" name="von" value="${esc(scope.von)}" aria-label="von"> – <input type="date" name="bis" value="${esc(scope.bis)}" aria-label="bis"></span>
       <label>Konto <select name="konto"><option value="">alle</option>${accounts.map((a) => `<option${a === scope.konto ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select></label>
       <label>Kategorie <select name="kategorie"><option value="">alle</option>${cats.map((c) => `<option${c === scope.kategorie ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
-      <label>Text <input type="search" name="text" value="${esc(scope.text)}" placeholder="Beschreibung, Empfänger …" size="16"></label>
+      <label>Text <input type="search" name="text" value="${esc(scope.text)}" placeholder="Beschreibung, Empfänger, Notiz …" size="16"></label>
+      <label>Betrag <input type="number" name="min" value="${esc(scope.min)}" min="0" step="0.01" placeholder="ab" aria-label="Betrag ab" class="amount-input"> – <input type="number" name="max" value="${esc(scope.max)}" min="0" step="0.01" placeholder="bis" aria-label="Betrag bis" class="amount-input"> €</label>
       ${scoped ? `<span class="scope-info"><b>${txs.length}</b> von ${allTxs.length} Buchungen · <button type="button" class="link-btn" data-scope-clear>Einschränkung aufheben</button></span>` : ''}`;
     const apply = () => {
       const f = new FormData(form);
@@ -389,7 +395,7 @@ export async function lab(view, { params }) {
       const bis = zeit === 'eigener' ? f.get('bis') : p?.[3];
       if (von) next.set('von', von);
       if (bis) next.set('bis', bis);
-      for (const k of ['konto', 'kategorie', 'text']) if (f.get(k)) next.set(k, String(f.get(k)).trim());
+      for (const k of ['konto', 'kategorie', 'text', 'min', 'max']) if (f.get(k)) next.set(k, String(f.get(k)).trim());
       location.hash = `#/labor${next.toString() ? `?${next}` : ''}`;
     };
     form.addEventListener('change', (e) => {
@@ -397,13 +403,17 @@ export async function lab(view, { params }) {
         form.querySelector('.scope-dates').hidden = false;
         return;
       }
-      if (e.target.name !== 'text') apply();
+      if (!['text', 'min', 'max'].includes(e.target.name)) apply();
     });
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       apply();
     });
-    form.querySelector('[name=text]').addEventListener('keydown', (e) => e.key === 'Enter' && (e.preventDefault(), apply()));
+    // Text und Betrag: übernehmen mit Enter oder beim Verlassen des Feldes
+    form.querySelectorAll('[name=text], [name=min], [name=max]').forEach((input) => {
+      input.addEventListener('keydown', (e) => e.key === 'Enter' && (e.preventDefault(), apply()));
+      input.addEventListener('change', apply);
+    });
     form.querySelector('[data-scope-clear]')?.addEventListener('click', () => {
       location.hash = `#/labor${baseKey === 'ausgaben' ? '' : `?basis=${baseKey}`}`;
     });

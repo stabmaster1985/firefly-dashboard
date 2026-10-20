@@ -44,7 +44,11 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
 - **Kategorie-Detail** – Monatsverlauf mit Durchschnittslinie, Spitzenmonat, Anzahl und Ø pro
   Buchung, Top-Empfänger und alle Buchungen der Kategorie (nach Datum oder Betrag)
 - **Buchungen** – Liste mit Kategorie-Filter und Volltextsuche (inkl. Firefly-Suchoperatoren wie
-  `category_is:"Lebensmittel"` oder `amount_more:100`), Filter nach Art, Details per Klick
+  `category_is:"Lebensmittel"`, `amount_more:100`, `description_contains:`, `notes_contains:`),
+  Filter nach Art, Details per Klick. Treffer lassen sich anhaken (auch alle auf einmal und über
+  mehrere Suchen hinweg) und gesammelt bearbeiten: **Kategorie setzen**, **Tag hinzufügen** (über
+  n8n) oder **Als Gruppe ins Labor** – das funktioniert auch für Buchungen, die älter als die
+  24 Monate des Labors sind (die Gruppe merkt sich, wo sie in Firefly liegen)
 - **Konten** – Kontostände und Verlauf als Liniendiagramm, **Vermögensverlauf** über 1–10 Jahre
   (Monatsendstände, Veränderung, Ø pro Monat, Höchststand), Verbindlichkeiten; Klick auf ein
   Konto öffnet die **Kontoseite** mit Saldo-Verlauf, Ein-/Ausgängen je Monat, Verteilung nach
@@ -86,7 +90,7 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
     („Dashboard: <Name>“, auch nach Umbenennen wiedergefunden), werden auf Wunsch auf alle
     vorhandenen Buchungen bzw. die letzten 24 Monate angewendet, und die einzelnen Buchungen
     werden direkt gesetzt. Erneutes Übertragen aktualisiert die Regeln statt sie zu verdoppeln
-  - **Einschränken** – Zeitraum, Konto, Kategorie und Suchtext grenzen alles im Labor ein
+  - **Einschränken** – Zeitraum, Konto, Kategorie, Suchtext und Betrag grenzen alles im Labor ein
     (Fortschritt, Vorschläge, Buchungen, „Ähnliche finden“, Übergabe an n8n); Regeln aus Gruppen
     werden trotzdem gegen alle Buchungen geprüft, damit sie außerhalb keine Fehltreffer erzeugen
   - **Fortschritt** – zeigt, was schon erledigt ist (in einer Gruppe, von einer Labor-Regel erfasst

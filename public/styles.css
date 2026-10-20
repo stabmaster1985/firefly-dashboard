@@ -845,4 +845,4 @@ button.cal-day { cursor: pointer; }
 .scope-dates { display: inline-flex; align-items: center; gap: 6px; }
 .scope-dates[hidden] { display: none; }
 .scope-info { margin-left: auto; color: var(--text-secondary); }
-
+.lab-scope .amount-input { width: 80px; }

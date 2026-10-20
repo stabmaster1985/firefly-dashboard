@@ -60,6 +60,11 @@ export function createGroupsPanel(ctx) {
       card.innerHTML = `<div class="empty">Gruppen konnten nicht geladen werden: ${esc(err.message)}</div>`;
       return;
     }
+    if (ctx.openGroup && !openId && data.groups.some((g) => g.id === ctx.openGroup)) {
+      openId = ctx.openGroup; // z. B. frisch aus der Suche auf „Buchungen“ angelegt
+      ctx.openGroup = null;
+      setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    }
     if (openId && !group()) openId = null; // z. B. auf einem anderen Gerät gelöscht
     render();
   }
@@ -148,7 +153,7 @@ export function createGroupsPanel(ctx) {
     const members = g.include.map((id) => byId.get(id)).filter(Boolean).sort((a, b) => String(b.date).localeCompare(String(a.date)));
     const missing = g.include.length - members.length;
     const excluded = g.exclude.map((id) => byId.get(id)).filter(Boolean);
-    const plan = members.length ? proposeRules(fullIndex(), g.include, { kind: g.kind, name: g.name, groupId: g.id }) : null;
+    const plan = g.include.length ? proposeRules(fullIndex(), g.include, { kind: g.kind, name: g.name, groupId: g.id }) : null;
     const names = g.kind === 'tag' ? ctx.knownTags : ctx.knownCategories;
     return `<div class="group-editor">
       <div class="group-head">
@@ -191,15 +196,24 @@ export function createGroupsPanel(ctx) {
   }
 
   /** Abschnitt „Nach Firefly übertragen“ mit Vorschau, was dort passiert. */
+  /** Mitglieder, die das Labor nicht kennt (älter als 24 Monate …): mit Verweis übertragbar, sonst nicht. */
+  const outsideOf = (g) => {
+    const out = g.include.filter((id) => !fullById.has(id));
+    return { withRef: out.filter((id) => g.refs?.[id]), lost: out.filter((id) => !g.refs?.[id]) };
+  };
+
   function transferHtml(g, plan) {
     const { rules: rulesAction, categorize } = ctx.actions;
     const last = g.transfer;
-    const missing = [!rulesAction && plan.permanent ? '„Firefly-Regeln anlegen“' : '', !categorize && plan.oneOff ? '„Kategorie übernehmen“' : ''].filter(Boolean);
+    const outside = outsideOf(g);
+    const missing = [!rulesAction && plan.permanent ? '„Firefly-Regeln anlegen“' : '', !categorize && (plan.oneOff || outside.withRef.length) ? '„Kategorie übernehmen“' : ''].filter(Boolean);
     return `<h3>Nach Firefly übertragen</h3>
       <ul class="transfer-plan small-text">
         ${plan.permanent ? `<li><b>${plan.permanent} Regel${plan.permanent === 1 ? '' : 'n'}</b> in der Firefly-Regelgruppe „${esc(fireflyGroupTitle(g))}“ anlegen bzw. aktualisieren – Firefly ${g.kind === 'tag' ? 'taggt' : 'kategorisiert'} damit künftig neue Buchungen beim Import selbst.</li>` : '<li>Keine dauerhafte Regel möglich – nur einzelne Buchungen.</li>'}
         ${plan.permanent ? `<li>Die Regeln anwenden auf: <select data-g-period>${Object.entries(PERIODS).map(([k, l]) => `<option value="${k}"${k === (last?.period || 'all') ? ' selected' : ''}>${l}</option>`).join('')}</select></li>` : ''}
         ${plan.oneOff ? `<li><b>${plan.oneOff} einzelne Buchung${plan.oneOff === 1 ? '' : 'en'}</b> direkt ${g.kind === 'tag' ? `mit Tag „${esc(g.name)}“ versehen` : `auf „${esc(g.name)}“ setzen`} (einmalig).</li>` : ''}
+        ${outside.withRef.length ? `<li><b>${outside.withRef.length} ältere Buchung${outside.withRef.length === 1 ? '' : 'en'}</b> (außerhalb der 24 Monate des Labors) ${outside.withRef.length === 1 ? 'wird' : 'werden'} aus Firefly nachgeladen und ebenfalls direkt gesetzt.</li>` : ''}
+        ${outside.lost.length ? `<li class="warn-text">${outside.lost.length} Buchung${outside.lost.length === 1 ? '' : 'en'} kennt das Labor nicht mehr (z. B. in Firefly gelöscht) – sie werden übersprungen.</li>` : ''}
       </ul>
       ${missing.length ? `<p class="small-text warn-text">Dafür fehlt in den <a href="#/automationen">Automationen</a> noch: ${missing.join(' und ')} (n8n-Vorlage firefly-buchung-bearbeiten.json).</p>` : ''}
       <div class="group-actions"><button class="btn primary" data-g-transfer ${missing.length ? 'disabled' : ''}>Nach Firefly übertragen</button>
@@ -346,6 +360,15 @@ export function createGroupsPanel(ctx) {
     const permanent = plan.rules.filter((r) => !r.oneOff).map(({ label, count, oneOff, ...rule }) => rule);
     const oneOffIds = plan.rules.filter((r) => r.oneOff).flatMap((r) => String(r.when[0].value).split(','));
     const oneOffTx = oneOffIds.map((id) => fullById.get(id)).filter(Boolean);
+    // ältere Buchungen (außerhalb der 24 Monate): über den gespeicherten Verweis aus Firefly holen
+    const older = outsideOf(g).withRef;
+    if (older.length) {
+      const wanted = new Set(older);
+      const groupIds = [...new Set(older.map((id) => g.refs[id]))];
+      const fetched = await Promise.all(groupIds.map((gid) => api.get(`transactions/${gid}`)
+        .then((r) => (r?.data ? api.flattenTransactions([r.data]) : [])).catch(() => [])));
+      oneOffTx.push(...fetched.flat().filter((t) => wanted.has(String(t.transaction_journal_id))));
+    }
     const lines = [
       permanent.length ? `• ${permanent.length} Regel(n) in Firefly-Regelgruppe „${fireflyGroupTitle(g)}“ anlegen/aktualisieren` : '',
       permanent.length ? `• anwenden auf: ${PERIODS[period]}` : '',

@@ -39,9 +39,10 @@ export const PAGES = {
   },
   transactions: {
     title: 'Buchungen',
-    what: 'Alle Buchungen im Zeitraum, mit Suche und Kategorie-Filter.',
-    app: 'Die Suche nutzt Fireflys Suchsprache, z. B. category_is:"Lebensmittel", amount_more:100, has_no_category:true. Klick auf eine Zeile zeigt alle Details.',
-    firefly: 'Nur lesen. In den Details gibt es „In Firefly öffnen/bearbeiten“ (öffnet Firefly in einem neuen Tab) und – falls eingerichtet – Kategorie/Tags direkt setzen. ' + VIA_N8N,
+    what: 'Alle Buchungen im Zeitraum – mit Suche über alles, was Firefly kennt (auch älter als 24 Monate), und Sammelaktionen.',
+    app: 'Die Suche nutzt Fireflys Suchsprache und lässt sich kombinieren, z. B. amount_more:100 description_contains:"Kita" notes_contains:"Rechnung" category_is:"Freizeit" has_no_category:true tag_is:"Urlaub". Gesucht wird im oben gewählten Zeitraum (für alles: eigenen Zeitraum über viele Jahre wählen). Klick auf eine Zeile zeigt alle Details. Häkchen (oder das Häkchen im Tabellenkopf für alle angezeigten) sammeln Buchungen – auch über mehrere Suchen hinweg.',
+    firefly: 'Suchen und Ansehen ändern nichts. In der Leiste unten: „Kategorie setzen“ und „Tag hinzufügen“ ändern die ausgewählten Buchungen in Firefly – über die Automation „Kategorie übernehmen“ (n8n). „Als Gruppe ins Labor“ ändert noch nichts in Firefly: Die Gruppe wird im Labor geöffnet und dort mit „Nach Firefly übertragen“ übertragen – auch Buchungen, die älter als 24 Monate sind.',
+    tips: ['Weitere Suchbefehle: amount_less:, amount_exactly:, destination_account_contains:, source_account_is:, has_no_tag:true.', 'Für eine dauerhafte Regel (künftige Buchungen) den Weg über „Als Gruppe ins Labor“ nehmen – „Kategorie setzen“ ändert nur die ausgewählten Buchungen.'],
     cards: [],
   },
   accounts: {

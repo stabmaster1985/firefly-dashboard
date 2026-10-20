@@ -8,6 +8,7 @@ import { categoryTotals, compareRange, delta, forecastActive, forecastTotal, for
 import { loadRecurring, upcomingBetween } from './recurring.js';
 import { sankey } from './dist.js';
 import { checkHints } from './check.js';
+import { actionFor, runAction } from './txedit.js';
 import { loadGoals, goalBar, goalStatus } from './goals.js';
 
 /** Summe aller Einnahmen bzw. Ausgaben je Währung (Map Währung → Betrag). */
@@ -287,12 +288,14 @@ export async function transactions(view, { period, params }) {
       <div class="legend" id="tx-summary" style="margin-bottom:12px"></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Datum</th><th>Beschreibung</th><th class="hide-sm">Kategorie</th><th class="num">Betrag</th></tr></thead>
+          <thead><tr><th class="pick-cell"><input type="checkbox" id="tx-pick-all" aria-label="Alle angezeigten auswählen" title="Alle angezeigten auswählen"></th><th>Datum</th><th>Beschreibung</th><th class="hide-sm">Kategorie</th><th class="num">Betrag</th></tr></thead>
           <tbody id="tx-body"></tbody>
         </table>
       </div>
       <div class="more" id="tx-more"></div>
-    </section>`;
+    </section>
+    <div class="pick-bar" id="tx-pickbar" hidden></div>
+    <div class="toast" id="tx-toast" role="status" hidden></div>`;
 
   const body = view.querySelector('#tx-body');
   const more = view.querySelector('#tx-more');
@@ -304,7 +307,7 @@ export async function transactions(view, { period, params }) {
     if (reset) {
       state.page = 1;
       state.rows = [];
-      body.innerHTML = `<tr><td colspan="4">${skeleton(6)}</td></tr>`;
+      body.innerHTML = `<tr><td colspan="5">${skeleton(6)}</td></tr>`;
     }
     more.innerHTML = '';
     try {
@@ -322,13 +325,13 @@ export async function transactions(view, { period, params }) {
       state.rows.push(...api.flattenTransactions(res.data));
       render(pag.current_page < pag.total_pages);
     } catch (err) {
-      if (my === token) body.innerHTML = `<tr><td colspan="4"><div class="empty">Fehler: ${esc(err.message)}</div></td></tr>`;
+      if (my === token) body.innerHTML = `<tr><td colspan="5"><div class="empty">Fehler: ${esc(err.message)}</div></td></tr>`;
     }
   }
 
   function render(hasMore) {
     if (!state.rows.length) {
-      body.innerHTML = '<tr><td colspan="4"><div class="empty">Keine Buchungen gefunden.</div></td></tr>';
+      body.innerHTML = '<tr><td colspan="5"><div class="empty">Keine Buchungen gefunden.</div></td></tr>';
       summaryEl.innerHTML = '';
       return;
     }
@@ -341,15 +344,146 @@ export async function transactions(view, { period, params }) {
       ${hasMore ? `<span>(Summen der ${state.rows.length} geladenen)</span>` : ''}`;
     body.innerHTML = state.rows
       .map((t, i) => `<tr ${txAttrs(i)}>
+        <td class="pick-cell"><input type="checkbox" data-txpick="${i}" ${picked.has(jid(t)) ? 'checked' : ''} aria-label="auswählen"></td>
         <td class="date">${fmtDate(t.date)}</td>
-        <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(t.source_name)} → ${esc(t.destination_name)}</div></td>
-        <td class="hide-sm">${t.category_name ? `<span class="cat">${esc(t.category_name)}</span>` : ''}</td>
+        <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(t.source_name)} → ${esc(t.destination_name)}</div>${t.notes ? `<div class="flow note">${esc(t.notes)}</div>` : ''}</td>
+        <td class="hide-sm">${t.category_name ? `<span class="cat">${esc(t.category_name)}</span>` : ''}${(t.tags || []).map((x) => ` <span class="tag">${esc(x)}</span>`).join('')}</td>
         <td class="num">${signedAmount(t)}</td></tr>`)
       .join('');
     more.innerHTML = hasMore ? '<button class="btn" id="tx-load">Mehr laden</button>' : '';
+    syncPickAll();
   }
 
   bindTxDetails(body, (i) => state.rows[Number(i)]);
+
+  // ---- Auswahl und Sammelaktionen (Kategorie, Tag, Gruppe) ----------------------
+  const jid = (t) => String(t.transaction_journal_id);
+  const picked = new Map(); // Journal-ID → Buchung (bleibt bei „Mehr laden“ erhalten)
+  const bar = view.querySelector('#tx-pickbar');
+  const pickAll = view.querySelector('#tx-pick-all');
+  let toastTimer;
+  const toast = (msg) => {
+    const el = view.querySelector('#tx-toast');
+    el.textContent = msg;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (el.hidden = true), 6000);
+  };
+  const lists = Promise.all([
+    api.getAll('categories').then((l) => l.map((c) => c.attributes.name)).catch(() => []),
+    api.getAll('tags').then((l) => l.map((x) => x.attributes.tag)).catch(() => []),
+  ]);
+  function syncPickAll() {
+    const shown = state.rows.length;
+    const on = state.rows.filter((t) => picked.has(jid(t))).length;
+    pickAll.checked = shown > 0 && on === shown;
+    pickAll.indeterminate = on > 0 && on < shown;
+  }
+  async function renderBar() {
+    syncPickAll();
+    if (!picked.size) {
+      bar.hidden = true;
+      return;
+    }
+    const sel = [...picked.values()];
+    const code = mainCurrency(sel);
+    const [cats, tagList] = await lists;
+    bar.hidden = false;
+    bar.innerHTML = `<span><b>${picked.size}</b> ausgewählt · ${money(sum(sel.filter((t) => t.currency_code === code), (t) => t.amount), code)}</span>
+      <form class="bar-form" data-bulk="cat"><input name="v" list="tx-bulk-cats" placeholder="Kategorie …" aria-label="Kategorie setzen" autocomplete="off"><button class="btn small">Setzen</button></form>
+      <form class="bar-form" data-bulk="tag"><input name="v" list="tx-bulk-tags" placeholder="Tag …" aria-label="Tag hinzufügen" autocomplete="off"><button class="btn small">Hinzufügen</button></form>
+      <button class="btn small primary" data-bulk-group>Als Gruppe ins Labor …</button>
+      <button class="link-btn" data-bulk-clear>Auswahl aufheben</button>
+      <datalist id="tx-bulk-cats">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
+      <datalist id="tx-bulk-tags">${tagList.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>`;
+  }
+  const clear = () => {
+    picked.clear();
+    body.querySelectorAll('[data-txpick]').forEach((x) => (x.checked = false));
+    renderBar();
+  };
+  body.addEventListener('change', (e) => {
+    const cb = e.target.closest('[data-txpick]');
+    if (!cb) return;
+    const t = state.rows[Number(cb.dataset.txpick)];
+    if (cb.checked) picked.set(jid(t), t);
+    else picked.delete(jid(t));
+    renderBar();
+  });
+  pickAll.addEventListener('change', () => {
+    state.rows.forEach((t) => (pickAll.checked ? picked.set(jid(t), t) : picked.delete(jid(t))));
+    body.querySelectorAll('[data-txpick]').forEach((x) => (x.checked = pickAll.checked));
+    renderBar();
+  });
+
+  /** Kategorie setzen bzw. Tag hinzufügen – über die Automation „Kategorie übernehmen“ (n8n). */
+  async function bulkSet(kind, value) {
+    const action = await actionFor('categorize');
+    if (!action) {
+      toast('Dafür fehlt die Automation „Kategorie übernehmen“ (n8n-Vorlage firefly-buchung-bearbeiten.json) – siehe Automationen.');
+      return;
+    }
+    const sel = [...picked.values()];
+    const what = kind === 'cat' ? `die Kategorie „${value}“ setzen` : `den Tag „${value}“ hinzufügen`;
+    if (!window.confirm(`Bei ${sel.length} Buchung${sel.length === 1 ? '' : 'en'} ${what}?\n\nDas ändert Daten in Firefly (über n8n).`)) return;
+    toast(`Sende ${sel.length} Änderung${sel.length === 1 ? '' : 'en'} an n8n …`);
+    const res = await runAction(action, {
+      typ: 'kategorien_uebernehmen',
+      aenderungen: sel.map((t) => ({
+        transaction_group_id: t.groupId, transaction_journal_id: t.transaction_journal_id, datum: String(t.date).slice(0, 10),
+        beschreibung: t.description, betrag: t.amount, kategorie_alt: t.category_name || null,
+        ...(kind === 'cat' ? { kategorie: value } : { kategorie: null, tags: [...new Set([...(t.tags || []), value])] }),
+      })),
+    }).catch((err) => ({ ok: false, response: err.message }));
+    if (!res.ok) {
+      toast(`Fehler: ${res.status ? `HTTP ${res.status}` : res.response || 'fehlgeschlagen'}`);
+      return;
+    }
+    // Anzeige gleich nachziehen
+    sel.forEach((t) => {
+      if (kind === 'cat') t.category_name = value;
+      else t.tags = [...new Set([...(t.tags || []), value])];
+    });
+    clear();
+    render(more.querySelector('#tx-load') !== null);
+    toast(`Erledigt: ${sel.length} Buchung${sel.length === 1 ? '' : 'en'} in Firefly geändert.`);
+  }
+
+  /** Auswahl als Gruppe ins Labor – mit Verweisen, damit auch ältere Buchungen übertragbar bleiben. */
+  async function bulkGroup() {
+    const sel = [...picked.values()];
+    const name = window.prompt('Name der Gruppe (Kategorie oder Tag – im Labor änderbar):', state.q.replace(/\w+_\w+:("[^"]*"|\S+)/g, '').trim().slice(0, 60));
+    if (name === null) return;
+    const basis = sel.every((t) => t.type === 'deposit') ? 'einnahmen' : 'ausgaben';
+    const res = await fetch('/local/groups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' },
+      body: JSON.stringify({
+        name: name.trim() || 'Neue Gruppe',
+        kind: 'category',
+        include: sel.map(jid),
+        refs: Object.fromEntries(sel.map((t) => [jid(t), String(t.groupId)])),
+        source: `Suche „${state.q || 'alle Buchungen'}“ · ${period.label}`,
+        basis,
+      }),
+    }).then((r) => r.json()).catch(() => null);
+    if (!res?.id) {
+      toast('Gruppe konnte nicht angelegt werden.');
+      return;
+    }
+    location.hash = `#/labor?${new URLSearchParams({ ...(basis === 'einnahmen' ? { basis } : {}), gruppe: res.id })}`;
+  }
+
+  bar.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const form = e.target.closest('[data-bulk]');
+    const value = form?.v.value.trim();
+    if (value) bulkSet(form.dataset.bulk, value);
+  });
+  bar.addEventListener('click', (e) => {
+    if (e.target.closest('[data-bulk-clear]')) clear();
+    else if (e.target.closest('[data-bulk-group]')) bulkGroup();
+  });
 
   more.addEventListener('click', (e) => {
     if (e.target.id !== 'tx-load') return;

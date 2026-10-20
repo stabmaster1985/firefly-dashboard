@@ -145,6 +145,8 @@ for (let m = new Date(firstDay); m <= today; m = new Date(m.getFullYear(), m.get
   if (mo === 8) add(day(7), 'withdrawal', 141, 'Hauptuntersuchung', giro, ext('TÜV Süd'), { category: 'KFZ' });
   if (mo % 2 === 0) add(day(22), 'withdrawal', between(8, 15), 'Autowäsche', giro, ext('Waschpark Nord'), { category: 'Auto' });
 }
+// Eine alte Buchung (vor 30 Monaten) – außerhalb der 24 Monate des Labors, nur über die Suche zu finden
+journals.push({ id: String(nextId++), date: new Date(today.getFullYear(), today.getMonth() - 30, 12), type: 'withdrawal', amount: 45, description: 'Sommerfest Kita Sonnenschein', source: ACCOUNTS[0], destination: { id: null, name: 'Förderverein Sonnenschein e.V.' }, category: null, budget: null, tags: [], notes: 'Spende Kuchenbasar' });
 // Ein Kurzurlaub mit lauter fremden Händlern (für die Reise-Erkennung)
 {
   const s = addDays(today, -60);
@@ -392,6 +394,12 @@ const routes = {
         case 'account_is': return (j) => j.source.name.toLowerCase() === v || j.destination.name.toLowerCase() === v;
         case 'destination_account_is': return (j) => j.destination.name.toLowerCase() === v;
         case 'source_account_is': return (j) => j.source.name.toLowerCase() === v;
+        case 'amount_more': return (j) => j.amount > Number(val);
+        case 'amount_less': return (j) => j.amount < Number(val);
+        case 'amount_exactly': return (j) => Math.abs(j.amount - Number(val)) < 0.005;
+        case 'description_contains': return (j) => j.description.toLowerCase().includes(v);
+        case 'notes_contains': return (j) => (j.notes || '').toLowerCase().includes(v);
+        case 'has_no_tag': return (j) => !j.tags.length;
         default: return (j) => [j.description, j.source.name, j.destination.name, j.category, j.budget, ...j.tags].join(' ').toLowerCase().includes(tok.replace(/"/g, '').toLowerCase());
       }
     });
@@ -536,6 +544,12 @@ http
           return paginate(journals.filter((j) => (j.source.id === acc.id || j.destination.id === acc.id) && inRange(j, start, end)), q, journalJson);
         }
         : (q) => ({ data: routes.accounts(new URLSearchParams('type=asset&limit=100')).data.find((a) => a.id === acc.id) });
+    }
+    // einzelne Transaktion (GET /transactions/{id})
+    const txRoute = key.match(/^transactions\/(\d+)$/);
+    if (txRoute) {
+      const j = journals.find((x) => x.id === txRoute[1]);
+      handler = () => (j ? { data: journalJson(j) } : null);
     }
     const tagRoute = key.match(/^tags\/([^/]+)(\/transactions)?$/);
     if (tagRoute && tagName(tagRoute[1])) {
