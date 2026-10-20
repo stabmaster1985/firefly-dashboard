@@ -37,6 +37,8 @@ export function createGroupsPanel(ctx) {
   let similar = [];
   let similarChecked = new Set();
   let showTrash = false;
+  let listFilter = 'alle';
+  let memberCache = null;
 
   const group = () => data.groups.find((g) => g.id === openId) || null;
   const replaceGroup = (g) => {
@@ -88,19 +90,47 @@ export function createGroupsPanel(ctx) {
     <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(counterpartyOf(t))}${t.category_name ? ` · ${esc(t.category_name)}` : ' · ohne Kategorie'}${(t.tags || []).map((x) => ` <span class="tag">${esc(x)}</span>`).join('')}</div>${extra}</td>
     <td class="num">${money(t.amount, t.currency_code)}${actions ? `<div class="row-actions">${actions}</div>` : ''}</td></tr>`;
 
+  /** Stand einer Gruppe: offen → übernommen (Labor) → in Firefly; „geändert“, wenn danach weiterbearbeitet. */
+  const changed = (g) => g.changedAt || g.updatedAt;
+  const stateOf = (g) => {
+    if (g.transfer?.ok) return changed(g) > g.transfer.at ? 'geaendert' : 'firefly';
+    if (g.status === 'uebernommen') return g.appliedAt && changed(g) > g.appliedAt ? 'veraltet' : 'uebernommen';
+    return 'offen';
+  };
+  const STATE = {
+    offen: ['offen', ''],
+    uebernommen: ['im Labor übernommen, nicht in Firefly', 'warn'],
+    veraltet: ['seit Übernahme geändert – Regeln aktualisieren', 'warn'],
+    firefly: ['in Firefly', 'good'],
+    geaendert: ['seit Übertragung geändert – erneut übertragen', 'warn'],
+  };
+  const FILTERS = [
+    ['alle', 'Alle', () => true],
+    ['offen', 'Offen', (s) => s === 'offen'],
+    ['labor', 'Nicht in Firefly', (s) => s === 'uebernommen' || s === 'veraltet'],
+    ['firefly', 'In Firefly', (s) => s === 'firefly'],
+    ['geaendert', 'Geändert seit Übertragung', (s) => s === 'geaendert'],
+  ];
+
   function renderList() {
-    const open = data.groups.filter((g) => g.status !== 'uebernommen');
-    const done = data.groups.filter((g) => g.status === 'uebernommen');
+    const ORDER = { geaendert: 0, veraltet: 1, offen: 2, uebernommen: 3, firefly: 4 };
+    const test = (FILTERS.find(([k]) => k === listFilter) || FILTERS[0])[2];
+    const shown = data.groups.filter((g) => test(stateOf(g))).sort((a, b) => ORDER[stateOf(a)] - ORDER[stateOf(b)] || String(changed(b)).localeCompare(String(changed(a))));
+    const chips = data.groups.length > 1 ? `<div class="chips small group-filter" role="group" aria-label="Gruppen filtern">${FILTERS.map(([k, l, f]) => {
+      const n = data.groups.filter((g) => f(stateOf(g))).length;
+      return k === 'alle' || n ? `<button class="chip" data-g-filter="${k}" aria-pressed="${k === listFilter}">${l} (${n})</button>` : '';
+    }).join('')}</div>` : '';
     const row = (g) => {
       const here = g.include.filter((id) => byId.has(id)).length;
+      const [label, cls] = STATE[stateOf(g)];
       return `<div class="row group-row${g.id === openId ? ' active' : ''}">
         <div class="avatar">${g.kind === 'tag' ? '#' : '▣'}</div>
-        <div style="min-width:0"><div class="title">${esc(g.name)} <span class="badge">${KIND[g.kind]}</span>${g.status === 'uebernommen' ? ' <span class="badge good">übernommen</span>' : ''}</div>
+        <div style="min-width:0"><div class="title">${esc(g.name)} <span class="badge">${KIND[g.kind]}</span> <span class="badge ${cls}">${label}</span>${g.transfer && !g.transfer.ok ? ' <span class="badge bad">letzte Übertragung fehlgeschlagen</span>' : ''}</div>
           <div class="subtitle">${g.include.length} Buchung${g.include.length === 1 ? '' : 'en'}${here < g.include.length ? ` (${here} in dieser Ansicht)` : ''}${g.exclude.length ? ` · ${g.exclude.length} ausgeschlossen` : ''} · zuletzt ${fmtDate(g.updatedAt)}</div></div>
         <div class="amount"><button class="btn small" data-g-open="${esc(g.id)}">${g.id === openId ? 'Schließen' : 'Bearbeiten'}</button></div></div>`;
     };
-    return `${data.groups.length
-      ? `<div class="list">${[...open, ...done].map(row).join('')}</div>`
+    return `${chips}${data.groups.length
+      ? shown.length ? `<div class="list">${shown.map(row).join('')}</div>` : '<div class="empty">Keine Gruppen mit diesem Stand.</div>'
       : `<div class="empty">Noch keine Gruppen. Hake in den Listen unten Buchungen an und wähle „Neue Gruppe“ – oder nutze bei einem Vorschlag „Als Gruppe bearbeiten“.</div>`}
       <div class="group-foot"><button class="link-btn" data-g-new>+ Leere Gruppe</button>${data.trash.length ? ` · <button class="link-btn" data-g-trash>Papierkorb (${data.trash.length})</button>` : ''}</div>
       ${showTrash && data.trash.length ? `<div class="list trash">${data.trash.map((g) => `<div class="row"><div class="avatar">🗑</div>
@@ -172,8 +202,10 @@ export function createGroupsPanel(ctx) {
 
   function render() {
     const g = group();
+    memberCache = null; // Gruppen haben sich geändert
     card.innerHTML = `${renderList()}${g ? renderEditor(g) : ''}`;
     renderBar();
+    ctx.onGroupsChange?.();
   }
 
   function renderBar() {
@@ -182,9 +214,11 @@ export function createGroupsPanel(ctx) {
       return;
     }
     bar.hidden = false;
-    const target = data.groups.filter((g) => g.status !== 'uebernommen' || g.id === openId);
+    const target = [...data.groups].sort((a, b) => a.name.localeCompare(b.name, 'de'));
     bar.innerHTML = `<span><b>${picked.size}</b> ausgewählt</span>
       <button class="btn small primary" data-pick-new>Neue Gruppe …</button>
+      <button class="btn small" data-pick-ok title="Kategorie passt so – als erledigt markieren">✓ Passt so</button>
+      <button class="link-btn" data-pick-unok>„Passt so“ aufheben</button>
       ${target.length ? `<select data-pick-to aria-label="Zu Gruppe hinzufügen"><option value="">Zu Gruppe hinzufügen …</option>${target.map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}</select>` : ''}
       <button class="link-btn" data-pick-clear>Auswahl aufheben</button>`;
   }
@@ -213,6 +247,10 @@ export function createGroupsPanel(ctx) {
       return render();
     }
     if (btn('[data-g-new]')) return create('Neue Gruppe', 'category', []);
+    if (btn('[data-g-filter]')) {
+      listFilter = btn('[data-g-filter]').dataset.gFilter;
+      return render();
+    }
     if (btn('[data-g-trash]')) {
       showTrash = !showTrash;
       return render();
@@ -363,7 +401,18 @@ export function createGroupsPanel(ctx) {
     ctx.view.querySelectorAll(`[data-pick="${CSS.escape(cb.dataset.pick)}"]`).forEach((x) => (x.checked = cb.checked));
     renderBar();
   });
+  const clearPicked = () => {
+    picked.clear();
+    ctx.view.querySelectorAll('[data-pick]').forEach((x) => (x.checked = false));
+    renderBar();
+  };
   bar.addEventListener('click', async (e) => {
+    const ok = e.target.closest('[data-pick-ok]');
+    if (ok || e.target.closest('[data-pick-unok]')) {
+      const ids = [...picked];
+      clearPicked();
+      return ctx.onReviewed?.(ids, Boolean(ok));
+    }
     if (e.target.closest('[data-pick-clear]')) {
       picked.clear();
       ctx.view.querySelectorAll('[data-pick]').forEach((x) => (x.checked = false));
@@ -394,6 +443,17 @@ export function createGroupsPanel(ctx) {
   return {
     /** Häkchen-Zelle für eine Buchungszeile in anderen Labor-Listen. */
     pickCell: (t) => `<td class="pick-cell"><input type="checkbox" data-pick="${esc(idOf(t))}" ${picked.has(idOf(t)) ? 'checked' : ''} aria-label="für eine Gruppe auswählen"></td>`,
+    /** Mehrere Buchungen auf einmal auswählen (z. B. „Alle angezeigten“). */
+    pickMany: (ids) => {
+      ids.forEach((id) => picked.add(String(id)));
+      ids.forEach((id) => ctx.view.querySelectorAll(`[data-pick="${CSS.escape(String(id))}"]`).forEach((x) => (x.checked = true)));
+      renderBar();
+    },
+    /** Journal-IDs aller Buchungen in irgendeiner Gruppe (für den Bearbeitungsstand). */
+    memberIds: () => {
+      memberCache ||= new Set(data.groups.flatMap((g) => g.include));
+      return memberCache;
+    },
     /** Gruppe aus einem Vorschlag starten. */
     createFrom: (name, kind, list, source) => create(name, kind, list.map(idOf), source),
     reload,

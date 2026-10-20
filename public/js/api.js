@@ -151,14 +151,23 @@ export function loadDismissed() {
         }
       }
     }
-    return { duplicates: new Set(data.duplicates || []), structure: new Set(data.structure || []) };
+    return { duplicates: new Set(data.duplicates || []), structure: new Set(data.structure || []), reviewed: new Set(data.reviewed || []) };
   })();
   return dismissedP;
 }
 
-/** Vorschlag ausblenden (Liste „duplicates“ oder „structure“). */
+/** Vorschlag ausblenden (Liste „duplicates“, „structure“ oder „reviewed“); key auch als Liste. */
 export async function dismiss(list, key) {
   const sets = await loadDismissed();
-  sets[list].add(key);
-  await postDismissed({ list, add: key }).catch(() => {});
+  const keys = Array.isArray(key) ? key : [key];
+  keys.forEach((k) => sets[list].add(k));
+  await postDismissed({ list, add: keys }).catch(() => {});
+}
+
+/** Wieder einblenden bzw. „passt so“ zurücknehmen. */
+export async function undismiss(list, key) {
+  const sets = await loadDismissed();
+  const keys = Array.isArray(key) ? key : [key];
+  keys.forEach((k) => sets[list].delete(k));
+  await postDismissed({ list, remove: keys }).catch(() => {});
 }

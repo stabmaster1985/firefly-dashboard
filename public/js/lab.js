@@ -36,6 +36,7 @@ export async function lab(view, { params }) {
       <section class="card span-3" id="l-changed"></section>
       <section class="card span-3" id="l-none"></section>
       <section class="card span-3" id="l-tags"></section>
+      ${card('l-progress', 'Fortschritt', { meta: '<span class="chips small" id="l-progress-tabs" role="group" aria-label="Aufteilung"></span>' })}
       ${card('l-groups', 'Gruppen', { meta: '<span class="muted">eigene Zusammenstellungen · bleiben gespeichert</span>' })}
       ${card('l-rules', 'Deine Regeln', { span: 'span-7', link: '<span class="lab-export"><button class="link-btn" data-export="firefly">Als Firefly-Regeln ↓</button> · <button class="link-btn" data-export="csv">Änderungen als CSV ↓</button><span id="l-n8n"></span></span>' })}
       ${card('l-suggest', 'Vorschläge', { span: 'span-5', meta: '<span id="l-suggest-meta"></span>' })}
@@ -48,7 +49,7 @@ export async function lab(view, { params }) {
     <div class="toast" id="l-toast" role="status" hidden></div>`;
   const $ = (id) => view.querySelector(`#${id}`);
   ['l-count', 'l-changed', 'l-none', 'l-tags'].forEach((id) => ($(id).innerHTML = skeleton(2, 22)));
-  ['l-groups', 'l-rules', 'l-suggest', 'l-struct', 'l-compare', 'l-tagtable', 'l-tx'].forEach((id) => ($(id).innerHTML = skeleton(5)));
+  ['l-progress', 'l-groups', 'l-rules', 'l-suggest', 'l-struct', 'l-compare', 'l-tagtable', 'l-tx'].forEach((id) => ($(id).innerHTML = skeleton(5)));
 
   let txs;
   let stored;
@@ -75,6 +76,8 @@ export async function lab(view, { params }) {
   let autoTags = stored.autoTags || [];
   let txMode = 'changed';
   let structTab = 'tags';
+  let progressBy = 'category';
+  let focus = null; // { by: 'category' | 'party', value } – Filter der Buchungsliste
   let tagFilter = null;
   const code = mainCurrency(txs);
   const knownCategories = [...new Set(txs.map((t) => t.category_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
@@ -130,6 +133,13 @@ export async function lab(view, { params }) {
     actions: { rules: rulesAction, categorize: categorizeAction },
     runAction: (action, payload) => fetch(`/local/actions/${encodeURIComponent(action.id)}/run`, { method: 'POST', headers, body: JSON.stringify({ context: { ...payload, daten: payload } }) })
       .then((x) => x.json()).catch((err) => ({ ok: false, response: err.message })),
+    onGroupsChange: () => {
+      if (!$('l-progress')) return;
+      const results = compute();
+      renderProgress(results);
+      renderTx(results);
+    },
+    onReviewed: (ids, ok) => markReviewed(ids, ok),
     getRules: () => rules,
     setRules: async (next) => {
       rules = next;
@@ -155,6 +165,7 @@ export async function lab(view, { params }) {
     $('l-tags').innerHTML = stat('Getaggt', String(tagged.length), `${new Set(tagged.flatMap((x) => x.r.tags)).size} verschiedene Tags`);
 
     renderAuto();
+    renderProgress(results);
     renderRules(results);
     renderSuggestions();
     renderStructure();
@@ -296,23 +307,91 @@ export async function lab(view, { params }) {
   }
 
   function renderTx(results) {
-    let rows = txMode === 'changed' ? results.filter((x) => x.r.changed) : txMode === 'none' ? results.filter((x) => !x.r.category) : results;
+    const st = (x) => statusOf(x.t, x.r);
+    let rows = txMode === 'changed' ? results.filter((x) => x.r.changed)
+      : txMode === 'none' ? results.filter((x) => !x.r.category)
+        : txMode === 'open' ? results.filter((x) => st(x) === 'offen')
+          : txMode === 'done' ? results.filter((x) => st(x) !== 'offen') : results;
     if (tagFilter) rows = results.filter((x) => x.r.tags.includes(tagFilter));
+    if (focus) rows = rows.filter((x) => focusKey(x.t, focus.by) === focus.value);
     rows = [...rows].sort((a, b) => String(b.t.date).localeCompare(String(a.t.date)));
+    const modes = [['open', 'Offen'], ['done', 'Erledigt'], ['changed', 'Geänderte'], ['none', 'Ohne Kategorie'], ['all', 'Alle']]
+      .map(([k, l]) => `<button class="link-btn" data-mode="${k}" aria-pressed="${k === txMode}">${l}</button>`).join(' · ');
     $('l-tx-chips').innerHTML = tagFilter
       ? `<span class="chip small" aria-pressed="true">#${esc(tagFilter)} <button class="chip-x" data-untag>✕</button></span>`
-      : `${[['changed', 'Geänderte'], ['none', 'Ohne Kategorie'], ['all', 'Alle']]
-        .map(([k, l]) => `<button class="link-btn" data-mode="${k}" aria-pressed="${k === txMode}">${l}</button>`).join(' · ')}`;
+      : `${focus ? `<span class="chip small" aria-pressed="true">${focus.by === 'party' ? 'Empfänger' : 'Kategorie'}: ${esc(focus.value)} <button class="chip-x" data-unfocus aria-label="Filter entfernen">✕</button></span> ` : ''}${modes}`;
     $('l-tx').innerHTML = rows.length
       ? `<div class="table-wrap scroll"><table><tbody>${rows.slice(0, 500).map(({ t, r }, i) => `<tr ${txAttrs(i)}>${groups.pickCell(t)}
           <td class="date">${fmtDate(t.date)}</td>
           <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(counterpartyOf(t))}</div></td>
           <td>${r.changed ? `<span class="muted strike">${esc(t.category_name || 'ohne')}</span> → <b>${esc(r.category || 'ohne')}</b>` : esc(r.category || '–')}
-            ${r.tags.length ? `<div>${r.tags.map((x) => `<span class="tag">${esc(x)}</span>`).join('')}</div>` : ''}</td>
+            ${r.tags.length ? `<div>${r.tags.map((x) => `<span class="tag">${esc(x)}</span>`).join('')}</div>` : ''}
+            <div class="status-line">${statusBadge(statusOf(t, r), idOf(t))}</div></td>
           <td class="num">${money(t.amount, t.currency_code)}</td></tr>`).join('')}</tbody></table></div>
-        ${rows.length > 500 ? `<div class="legend" style="margin-top:8px"><span>Die ersten 500 von ${rows.length}</span></div>` : ''}`
-      : `<div class="empty">${txMode === 'changed' && !tagFilter ? 'Noch keine Änderungen – lege Regeln an oder übernimm Vorschläge.' : 'Keine Buchungen.'}</div>`;
+        <div class="legend" style="margin-top:8px"><span>${rows.length > 500 ? `Die ersten 500 von ${rows.length} · ` : ''}<button class="link-btn" data-pick-all>Alle ${Math.min(rows.length, 500)} angezeigten auswählen</button> – z. B. für „✓ Passt so“ oder eine Gruppe</span></div>`
+      : `<div class="empty">${txMode === 'open' ? 'Nichts mehr offen. 🎉' : txMode === 'changed' && !tagFilter ? 'Noch keine Änderungen – lege Regeln an oder übernimm Vorschläge.' : 'Keine Buchungen.'}</div>`;
     bindTxDetails($('l-tx'), (i) => rows[Number(i)]?.t);
+  }
+
+  // ---- Bearbeitungsstand -----------------------------------------------------------
+  // erledigt = in einer Gruppe, von einer Labor-Regel erfasst oder als „passt so“ markiert
+  const idOf = (t) => String(t.transaction_journal_id);
+  const focusKey = (t, by) => (by === 'party' ? counterpartyOf(t) || '–' : t.category_name || 'Ohne Kategorie');
+  function statusOf(t, r) {
+    const id = idOf(t);
+    if (groups.memberIds().has(id)) return 'gruppe';
+    if (r.hits.length) return 'regel';
+    if (dismissed.reviewed.has(id)) return 'geprueft';
+    return 'offen';
+  }
+  const STATUS = { offen: 'offen', gruppe: 'in Gruppe', regel: 'Regel', geprueft: 'passt so' };
+  const statusBadge = (s, id) => `<span class="st st-${s}">${STATUS[s]}</span>${s === 'offen'
+    ? ` <button class="link-btn" data-ok-one="${esc(id)}" title="als erledigt markieren – Kategorie passt so">passt so</button>`
+    : s === 'geprueft' ? ` <button class="link-btn" data-unok-one="${esc(id)}">zurücknehmen</button>` : ''}`;
+
+  async function markReviewed(ids, ok) {
+    if (!ids.length) return;
+    await (ok ? api.dismiss('reviewed', ids) : api.undismiss('reviewed', ids));
+    const results = compute();
+    renderProgress(results);
+    renderTx(results);
+    toast(ok ? `${ids.length} Buchung${ids.length === 1 ? '' : 'en'} als „passt so“ markiert.` : `„Passt so“ bei ${ids.length} Buchung${ids.length === 1 ? '' : 'en'} zurückgenommen.`);
+  }
+
+  function renderProgress(results) {
+    const counts = { offen: 0, gruppe: 0, regel: 0, geprueft: 0 };
+    const byKey = new Map();
+    for (const x of results) {
+      const s = statusOf(x.t, x.r);
+      counts[s] += 1;
+      const key = focusKey(x.t, progressBy);
+      const g = byKey.get(key) || { name: key, total: 0, open: 0, sum: 0 };
+      g.total += 1;
+      if (s === 'offen') {
+        g.open += 1;
+        g.sum += x.t.amount;
+      }
+      byKey.set(key, g);
+    }
+    const total = results.length || 1;
+    const done = total - counts.offen;
+    const pct = Math.round((done / total) * 100);
+    $('l-progress-tabs').innerHTML = [['category', 'nach Kategorie'], ['party', 'nach Empfänger']]
+      .map(([k, l]) => `<button class="chip" data-progress-by="${k}" aria-pressed="${k === progressBy}">${l}</button>`).join('');
+    const rows = [...byKey.values()].filter((g) => g.open).sort((a, b) => b.open - a.open || b.sum - a.sum);
+    $('l-progress').innerHTML = `<div class="progress-head">
+        <div class="progress-num"><b>${done}</b> von ${results.length} erledigt <span class="muted">(${pct} %)</span></div>
+        <div class="progress-bar" role="img" aria-label="${pct} Prozent erledigt">
+          ${['gruppe', 'regel', 'geprueft'].map((s) => `<i class="st-bg-${s}" style="width:${(counts[s] / total) * 100}%"></i>`).join('')}
+        </div>
+        <div class="legend">${['gruppe', 'regel', 'geprueft', 'offen'].map((s) => `<span><i class="dot st-bg-${s}"></i>${STATUS[s]} <b>&nbsp;${counts[s]}</b></span>`).join('')}</div>
+      </div>
+      ${rows.length ? `<div class="table-wrap scroll progress-table"><table><thead><tr><th>${progressBy === 'party' ? 'Empfänger' : 'Kategorie (Firefly)'}</th><th class="num">offen</th><th class="num hide-sm">gesamt</th><th class="hide-sm">erledigt</th></tr></thead>
+        <tbody>${rows.slice(0, 200).map((g) => `<tr data-focus="${esc(g.name)}"${focus?.by === progressBy && focus.value === g.name ? ' class="active"' : ''}>
+          <td>${esc(g.name)}</td><td class="num"><b>${g.open}</b><div class="flow">${money(g.sum, code)}</div></td><td class="num hide-sm">${g.total}</td>
+          <td class="hide-sm"><div class="mini-bar"><i style="width:${Math.round(((g.total - g.open) / g.total) * 100)}%"></i></div></td></tr>`).join('')}</tbody></table></div>
+        <div class="legend" style="margin-top:8px"><span>Zeile anklicken zeigt unten genau diese offenen Buchungen. Erledigt ist eine Buchung, wenn sie in einer Gruppe steckt, eine Labor-Regel greift oder du sie als „passt so“ markierst (Häkchen → „Passt so“ oder direkt in der Zeile).</span></div>`
+        : '<div class="empty">Alles erledigt. 🎉</div>'}`;
   }
 
   /** Vorschlag → Gruppe(n): Name und Art aus dem Vorschlag, Buchungen = seine Treffer. */
@@ -394,6 +473,36 @@ export async function lab(view, { params }) {
       txMode = mode.dataset.mode;
       return renderTx(compute());
     }
+    const by = e.target.closest('[data-progress-by]');
+    if (by) {
+      progressBy = by.dataset.progressBy;
+      return renderProgress(compute());
+    }
+    const foc = e.target.closest('[data-focus]');
+    if (foc) {
+      focus = focus?.by === progressBy && focus.value === foc.dataset.focus ? null : { by: progressBy, value: foc.dataset.focus };
+      txMode = 'open';
+      tagFilter = null;
+      const results = compute();
+      renderProgress(results);
+      renderTx(results);
+      if (focus) $('l-tx').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    if (e.target.closest('[data-unfocus]')) {
+      focus = null;
+      const results = compute();
+      renderProgress(results);
+      return renderTx(results);
+    }
+    if (e.target.closest('[data-pick-all]')) {
+      groups.pickMany([...$('l-tx').querySelectorAll('[data-pick]')].map((x) => x.dataset.pick));
+      return;
+    }
+    const okOne = e.target.closest('[data-ok-one]');
+    if (okOne) return markReviewed([okOne.dataset.okOne], true);
+    const unokOne = e.target.closest('[data-unok-one]');
+    if (unokOne) return markReviewed([unokOne.dataset.unokOne], false);
     const tagBtn = e.target.closest('[data-tag]');
     if (tagBtn) {
       tagFilter = tagFilter === tagBtn.dataset.tag ? null : tagBtn.dataset.tag;

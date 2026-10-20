@@ -802,3 +802,25 @@ button.cal-day { cursor: pointer; }
 .help-card:first-of-type { margin-top: 12px; }
 .help-card summary { cursor: pointer; font-weight: 600; }
 @media (max-width: 760px) { .help-inner { padding: 16px; } }
+
+/* ---- Fortschritt (Labor) ---------------------------------------------------- */
+.progress-head { display: grid; gap: 8px; margin-bottom: 12px; }
+.progress-num { font-size: 15px; }
+.progress-bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--grid); }
+.progress-bar i { display: block; height: 100%; }
+.st-bg-gruppe { background: var(--accent); }
+.st-bg-regel { background: color-mix(in srgb, var(--accent) 55%, var(--surface-1)); }
+.st-bg-geprueft { background: var(--positive); }
+.st-bg-offen { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--grid); }
+.legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.progress-table { max-height: 360px; }
+.progress-table tr.active td { background: var(--accent-soft); }
+.mini-bar { width: 100px; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; box-shadow: inset 0 0 0 1px var(--grid); }
+.mini-bar i { display: block; height: 100%; background: var(--positive); }
+.status-line { margin-top: 4px; font-size: 12px; }
+.st { display: inline-block; font-size: 11px; padding: 0 7px; border-radius: 999px; line-height: 18px; }
+.st-offen { background: rgba(250, 178, 25, 0.18); color: #9a6700; }
+.st-gruppe { background: var(--accent-soft); color: var(--accent); }
+.st-regel { background: var(--surface-2); color: var(--text-secondary); box-shadow: inset 0 0 0 1px var(--grid); }
+.st-geprueft { background: rgba(0, 150, 0, 0.12); color: var(--positive); }
+.group-filter { margin-bottom: 10px; }

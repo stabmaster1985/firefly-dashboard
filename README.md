@@ -85,6 +85,11 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
     („Dashboard: <Name>“, auch nach Umbenennen wiedergefunden), werden auf Wunsch auf alle
     vorhandenen Buchungen bzw. die letzten 24 Monate angewendet, und die einzelnen Buchungen
     werden direkt gesetzt. Erneutes Übertragen aktualisiert die Regeln statt sie zu verdoppeln
+  - **Fortschritt** – zeigt, was schon erledigt ist (in einer Gruppe, von einer Labor-Regel erfasst
+    oder als **„passt so“** markiert) und was noch offen ist, aufgeteilt nach Kategorie oder
+    Empfänger; Klick filtert die Buchungsliste auf genau diese offenen Buchungen. „Passt so“ geht
+    einzeln in der Zeile oder gesammelt (Häkchen bzw. „Alle angezeigten auswählen“). Die
+    Gruppenliste filtert nach „Offen“, „Nicht in Firefly“ und „Geändert seit Übertragung"
 - **Prüfen** – Datenqualität auf einen Blick:
   - **Import-Status je Konto**: letzte Buchung und üblicher Abstand; „überfällig“, wenn ein Konto
     deutlich länger als sonst keine Buchung hat (CSV-Import vergessen?). Eine Automation mit
@@ -167,7 +172,7 @@ Alles, was du im Dashboard selbst anlegst, liegt in `DATA_DIR` (Docker: Volume
 |---|---|
 | `groups.json` | Gruppen aus dem Kategorien-Labor (inkl. Papierkorb) |
 | `rules.json` | Labor-Regeln und Auto-Tags |
-| `dismissed.json` | ausgeblendete Vorschläge („Ignorieren“, „Kein Duplikat“) |
+| `dismissed.json` | ausgeblendete Vorschläge („Ignorieren“, „Kein Duplikat“) und „passt so“ |
 | `actions.json` | Automationen |
 | `goals.json`, `settings.json`, `state.json` | Ziele, Gehaltstag/Schwelle, was schon verschickt wurde |
 

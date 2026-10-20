@@ -78,7 +78,7 @@ export const PAGES = {
     app: 'Alles ist zunächst nur eine Probe auf Basis der Buchungen der letzten 24 Monate. Regeln, Gruppen und ausgeblendete Vorschläge speichert der Dashboard-Server (bleiben über Geräte und Updates erhalten).',
     firefly: 'Nichts, solange du nur probierst. Firefly ändert sich erst bei: „In Firefly anlegen“ (Regeln), „Änderungen an n8n übergeben“ (Kategorien/Tags direkt an Buchungen) oder „Nach Firefly übertragen“ in einer Gruppe. ' + VIA_N8N,
     tips: ['Typischer Ablauf: Vorschläge ansehen → als Gruppe bearbeiten → Ähnliche finden → Nach Firefly übertragen.', 'Oben „Ausgaben/Einnahmen“ wechselt die Grundlage.', 'Auto-Tags (Abo, Online, …) sind nur eine Probe-Hilfe und gehen nur über „Änderungen an n8n übergeben“ nach Firefly.'],
-    cards: ['l-groups', 'l-rules', 'l-suggest', 'l-struct', 'l-compare', 'l-tagtable', 'l-tx'],
+    cards: ['l-progress', 'l-groups', 'l-rules', 'l-suggest', 'l-struct', 'l-compare', 'l-tagtable', 'l-tx'],
   },
   year: {
     title: 'Jahresrückblick',
@@ -147,12 +147,19 @@ export const CARDS = {
   'c-backup': { title: 'Datensicherung (Firefly)', what: 'Zeigt, wann Firefly zuletzt gesichert wurde, und startet eine Sicherung per Knopf.', app: 'Beim Öffnen fragt das Dashboard über die Automation „Firefly-Backup“ den Stand ab. „Jetzt sichern“ startet die Sicherung und zeigt das Ergebnis. Die Sicherungen selbst liegen auf dem Firefly-Host (Standard ~/firefly-backups), nicht im Dashboard.', firefly: 'Firefly wird nicht verändert. Der n8n-Workflow (Vorlage n8n/firefly-backup.json) verbindet sich per SSH mit dem Firefly-Host und sichert dort Datenbank (MariaDB/MySQL/Postgres, automatisch erkannt), Anhänge und APP_KEY; alte Sicherungen werden nach 14 Tagen gelöscht. Wiederherstellen: siehe LIESMICH.txt in jeder Sicherung.', tips: ['Gelb markiert, wenn die letzte Sicherung älter als 2 Tage ist.', 'Der APP_KEY ist wichtig: Firefly verschlüsselt Anhänge damit.', 'Bewahre zusätzlich eine Kopie außerhalb des Firefly-Hosts auf (z. B. NAS).'] },
   'c-dup': { title: 'Mögliche doppelte Buchungen', what: 'Paare mit gleicher Art, gleichem Betrag und gleichen Konten höchstens 3 Tage auseinander. „Sicher“ = gleiche Bank-Referenz, „wahrscheinlich“ = gleicher Text am selben Tag.', app: '„Kein Duplikat“ blendet ein Paar auf allen Geräten aus.', firefly: 'Nichts. Die überzählige Buchung löschst du selbst in Firefly („In Firefly öffnen“ in den Details).' },
   // Labor
+  'l-progress': {
+    title: 'Fortschritt',
+    what: 'Wie weit du mit dem Aufräumen bist – und was noch offen ist, aufgeteilt nach Kategorie oder Empfänger.',
+    app: 'Erledigt ist eine Buchung, wenn sie in einer Gruppe steckt („in Gruppe“), eine Labor-Regel auf sie greift („Regel“) oder du sie als „passt so“ markiert hast. Alles andere ist „offen“. Klick auf eine Zeile filtert die Buchungsliste unten auf genau diese offenen Buchungen. „Passt so“ wird auf dem Server gespeichert und gilt auf allen Geräten.',
+    firefly: 'Nichts – der Bearbeitungsstand gibt es nur im Dashboard.',
+    tips: ['Arbeite Kategorie für Kategorie: Zeile anklicken → unten passende Buchungen anhaken → Gruppe oder „Passt so“.', 'Mehrere Buchungen auf einmal: Häkchen setzen, dann „✓ Passt so“ in der Leiste unten.'],
+  },
   'l-groups': {
     title: 'Gruppen',
     what: 'Deine eigenen Zusammenstellungen von Buchungen, die eine Kategorie oder einen Tag bekommen sollen – über Tage und Geräte hinweg.',
     app: 'Häkchen in den Labor-Listen + „Neue Gruppe“ oder „Als Gruppe bearbeiten“ bei einem Vorschlag. Im Editor: Name/Art ändern, „entfernen“, „gehört nicht dazu“ (Gegenbeispiel), „Ähnliche finden“ (gleiche Empfänger, seltene gemeinsame Wörter, ähnliche Beträge). Gespeichert wird jeder Schritt sofort auf dem Server; gelöschte Gruppen liegen 30 Tage im Papierkorb.',
     firefly: '„Als Labor-Regeln übernehmen“ ändert nichts in Firefly. „Nach Firefly übertragen“ legt die Regeln der Gruppe in einer eigenen Firefly-Regelgruppe „Dashboard: <Name>“ an (künftige Buchungen werden automatisch kategorisiert), wendet sie auf Wunsch auf vorhandene Buchungen an und setzt einzelne Buchungen direkt. ' + VIA_N8N,
-    tips: ['„Sehr ähnlich“ ist schon angehakt – kurz prüfen, dann „Angehakte hinzufügen“.', 'Erneutes Übertragen aktualisiert die Regeln statt sie zu verdoppeln.'],
+    tips: ['„Sehr ähnlich“ ist schon angehakt – kurz prüfen, dann „Angehakte hinzufügen“.', 'Erneutes Übertragen aktualisiert die Regeln statt sie zu verdoppeln.', 'Der Filter über der Liste zeigt, was noch zu tun ist: „Offen“, „Nicht in Firefly“ (übernommen, aber noch nicht übertragen) und „Geändert seit Übertragung“ (nach dem Übertragen erweitert – erneut übertragen).'],
   },
   'l-rules': {
     title: 'Deine Regeln',
@@ -164,7 +171,7 @@ export const CARDS = {
   'l-struct': { title: 'Tags & Kategorien-Struktur', what: 'Größere Aufräum-Ideen: Tags für Themen im Verwendungszweck, Reisen, Kategorien zusammenfassen oder aufteilen.', app: '„Übernehmen“ legt Labor-Regeln an, „Als Gruppe bearbeiten“ macht eine Gruppe daraus (zum Verfeinern), „Ignorieren“ blendet den Vorschlag auf allen Geräten aus. Alles lokal, ohne KI.', firefly: 'Nichts – nur Probe im Labor.' },
   'l-compare': { title: 'Kategorien vorher / nachher', what: 'Wie sich die Summen je Kategorie mit deinen Regeln ändern würden.', app: '', firefly: 'Nichts – nur Probe.' },
   'l-tagtable': { title: 'Tags (Probe)', what: 'Welche Tags deine Regeln und Auto-Tags vergeben würden.', app: 'Klick auf einen Tag filtert die Buchungen unten.', firefly: 'Nichts – nur Probe.' },
-  'l-tx': { title: 'Buchungen', what: 'Die Buchungen mit dem Probe-Ergebnis (bisher → neu).', app: '„Geänderte / Ohne Kategorie / Alle“ filtert; Häkchen sammeln Buchungen für eine Gruppe.', firefly: 'Nichts – nur Probe.' },
+  'l-tx': { title: 'Buchungen', what: 'Die Buchungen mit dem Probe-Ergebnis (bisher → neu) und ihrem Bearbeitungsstand.', app: '„Offen / Erledigt / Geänderte / Ohne Kategorie / Alle“ filtert. Häkchen sammeln Buchungen für eine Gruppe oder für „Passt so“; „passt so“ in einer Zeile markiert nur diese.', firefly: 'Nichts – nur Probe.' },
   // Automationen
   version: { title: 'Dashboard-Version', what: 'Welche Version des Dashboards läuft und ob es auf GitHub eine neuere gibt (geprüft höchstens einmal pro Stunde).', app: '„Jetzt prüfen“ fragt sofort bei GitHub nach. „Jetzt aktualisieren“ startet die Automation mit Auslöser „Dashboard aktualisieren“ (n8n-Vorlage firefly-dashboard-update.json): Sie holt den neuen Stand, baut den Container neu und startet ihn – das Dashboard ist dabei kurz nicht erreichbar und lädt danach von selbst neu. Deine Daten (Gruppen, Regeln, Automationen …) bleiben erhalten.', firefly: 'Nichts – Firefly wird beim Update nicht angefasst.' },
   // Jahr
