@@ -14,6 +14,7 @@ import { createFirefly } from './lib/firefly.js';
 import { startWarmer } from './lib/warmer.js';
 import { createAutomation } from './lib/automation.js';
 import { createVersion } from './lib/version.js';
+import { createGroups } from './lib/groups.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
@@ -83,6 +84,9 @@ const firefly = createFirefly({
 // Automationen (Webhooks) – eigene, lokal gespeicherte Konfiguration.
 // Ändert eine Automation Buchungen in Firefly, ist der Zwischenspeicher veraltet.
 const handleActions = createActions(DATA_DIR, { onDataChange: () => firefly.invalidate() });
+
+// Gruppen aus dem Kategorien-Labor (längere Arbeit, über Geräte und Updates hinweg)
+const handleGroups = createGroups(DATA_DIR);
 
 // Laufende Version und Prüfung auf neue Commits (GitHub)
 const version = createVersion({ root: ROOT, repo: UPDATE_REPO, enabled: UPDATE_CHECK });
@@ -199,6 +203,7 @@ const server = http.createServer((req, res) => {
   if (url.pathname.startsWith('/api/')) return proxy(req, res, url);
   if (url.pathname === '/local/actions' || url.pathname.startsWith('/local/actions/')) return handleActions(req, res, url);
   if (['/local/settings', '/local/goals', '/local/alerts', '/local/rules', '/local/dismissed'].includes(url.pathname)) return handleAutomation(req, res, url);
+  if (url.pathname === '/local/groups' || url.pathname.startsWith('/local/groups/')) return handleGroups(req, res, url);
   if (url.pathname === '/local/version') {
     return version.get({ force: url.searchParams.get('refresh') === '1' }).then((v) =>
       send(res, 200, JSON.stringify(v), { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' }));

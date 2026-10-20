@@ -6,8 +6,9 @@ import * as api from './api.js';
 import { money, esc, fmtDate, today, debounce, isoDate } from './util.js';
 import { skeleton, card, stat, sum, mainCurrency, downloadCsv, txAttrs, bindTxDetails } from './common.js';
 import { detectRecurring } from './recurring.js';
-import { FIELDS, OPS, AUTO_TAGS, applyRules, suggestRules, describeRule, toFireflyRules, counterpartyOf, normParty, ruleMatches } from './rules.js';
+import { FIELDS, OPS, INTERNAL_FIELDS, INTERNAL_OPS, AUTO_TAGS, applyRules, suggestRules, describeRule, toFireflyRules, counterpartyOf, normParty, ruleMatches } from './rules.js';
 import { suggestTags, suggestCategoryStructure } from './structure.js';
+import { createGroupsPanel } from './labgroups.js';
 
 const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
 const RULE_GROUP = 'Firefly Dashboard (Labor)';
@@ -35,16 +36,19 @@ export async function lab(view, { params }) {
       <section class="card span-3" id="l-changed"></section>
       <section class="card span-3" id="l-none"></section>
       <section class="card span-3" id="l-tags"></section>
+      ${card('l-groups', 'Gruppen', { meta: '<span class="muted">eigene Zusammenstellungen · bleiben gespeichert</span>' })}
       ${card('l-rules', 'Deine Regeln', { span: 'span-7', link: '<span class="lab-export"><button class="link-btn" data-export="firefly">Als Firefly-Regeln ↓</button> · <button class="link-btn" data-export="csv">Änderungen als CSV ↓</button><span id="l-n8n"></span></span>' })}
       ${card('l-suggest', 'Vorschläge', { span: 'span-5', meta: '<span id="l-suggest-meta"></span>' })}
       ${card('l-struct', 'Tags & Kategorien-Struktur', { meta: '<span class="chips small" id="l-struct-tabs" role="group" aria-label="Art"></span>' })}
       ${card('l-compare', 'Kategorien vorher / nachher', { span: 'span-7', filter: true })}
       ${card('l-tagtable', 'Tags (Probe)', { span: 'span-5' })}
       ${card('l-tx', 'Buchungen', { filter: true, meta: '<span id="l-tx-chips"></span>' })}
-    </div>`;
+    </div>
+    <div class="pick-bar" id="l-pickbar" hidden></div>
+    <div class="toast" id="l-toast" role="status" hidden></div>`;
   const $ = (id) => view.querySelector(`#${id}`);
   ['l-count', 'l-changed', 'l-none', 'l-tags'].forEach((id) => ($(id).innerHTML = skeleton(2, 22)));
-  ['l-rules', 'l-suggest', 'l-struct', 'l-compare', 'l-tagtable', 'l-tx'].forEach((id) => ($(id).innerHTML = skeleton(5)));
+  ['l-groups', 'l-rules', 'l-suggest', 'l-struct', 'l-compare', 'l-tagtable', 'l-tx'].forEach((id) => ($(id).innerHTML = skeleton(5)));
 
   let txs;
   let stored;
@@ -77,7 +81,60 @@ export async function lab(view, { params }) {
   const recurringParties = new Set(detectRecurring(txs, base.type === 'deposit' ? 'income' : 'expense').items
     .filter((r) => r.active).map((r) => normParty(r.party || r.name)));
 
-  const save = debounce(() => fetch('/local/rules', { method: 'PUT', headers, body: JSON.stringify({ rules, autoTags }) }).catch(() => {}), 400);
+  let rev = stored.rev ?? 0;
+  let toastTimer;
+  const toast = (msg) => {
+    const el = $('l-toast');
+    if (!el) return;
+    el.textContent = msg;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (el.hidden = true), 5000);
+  };
+  /**
+   * Regeln speichern – mit Revision: Hat ein anderes Gerät inzwischen gespeichert,
+   * wird nichts überschrieben, sondern der neue Stand geladen.
+   */
+  async function saveNow() {
+    try {
+      const res = await fetch('/local/rules', { method: 'PUT', headers, body: JSON.stringify({ rules, autoTags, rev }) });
+      const data = await res.json();
+      if (res.status === 409) {
+        rules = data.rules || [];
+        autoTags = data.autoTags || [];
+        rev = data.rev ?? 0;
+        render();
+        toast('Die Regeln wurden inzwischen auf einem anderen Gerät geändert – neuer Stand geladen. Bitte die letzte Änderung wiederholen.');
+        return false;
+      }
+      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+      rev = data.rev ?? rev;
+      return true;
+    } catch (err) {
+      toast(`Regeln nicht gespeichert: ${err.message}`);
+      return false;
+    }
+  }
+  const save = debounce(saveNow, 400);
+
+  const knownTags = [...new Set([...txs.flatMap((t) => t.tags || []), ...rules.flatMap((r) => r.addTags || [])])].sort((a, b) => a.localeCompare(b, 'de'));
+  const groups = createGroupsPanel({
+    view,
+    card: $('l-groups'),
+    bar: $('l-pickbar'),
+    txs,
+    basis: baseKey,
+    knownCategories,
+    knownTags,
+    toast,
+    getRules: () => rules,
+    setRules: async (next) => {
+      rules = next;
+      const ok = await saveNow();
+      render();
+      return ok;
+    },
+  });
 
   /** Alle Buchungen mit den aktuellen Regeln durchrechnen. */
   const compute = () => txs.map((t) => ({ t, r: applyRules(t, rules, { autoTags, recurringParties }) }));
@@ -110,13 +167,13 @@ export async function lab(view, { params }) {
 
   function renderRules(results) {
     const count = (rule) => results.filter((x) => x.r.hits.includes(rule.id)).length;
-    const fieldOpts = Object.entries(FIELDS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
-    const opOpts = Object.entries(OPS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
+    const fieldOpts = Object.entries(FIELDS).filter(([k]) => !INTERNAL_FIELDS.includes(k)).map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
+    const opOpts = Object.entries(OPS).filter(([k]) => !INTERNAL_OPS.includes(k)).map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
     $('l-rules').innerHTML = `${rules.length ? `<div class="rule-list">${rules.map((rule, i) => {
       const d = describeRule(rule);
       return `<div class="rule${rule.enabled === false ? ' off' : ''}" data-i="${i}">
         <label class="rule-toggle" title="Regel an/aus"><input type="checkbox" data-toggle ${rule.enabled === false ? '' : 'checked'}></label>
-        <div class="rule-text"><div>Wenn ${esc(d.cond)}</div><div class="muted">→ ${esc(d.act)}</div></div>
+        <div class="rule-text"><div>Wenn ${esc(d.cond)}${rule.groupId ? ' <span class="badge">Gruppe</span>' : ''}</div><div class="muted">→ ${esc(d.act)}</div></div>
         <span class="badge">${count(rule)}×</span>
         <span class="rule-btns"><button class="icon-btn small" data-up title="nach oben" ${i ? '' : 'disabled'}>↑</button><button class="icon-btn small" data-del title="Regel löschen">✕</button></span>
       </div>`;
@@ -141,7 +198,7 @@ export async function lab(view, { params }) {
   function hitsBlock(prefix, hits, extra = '') {
     const rows = [...hits].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, HITS_MAX);
     return `<details class="struct-hits" data-hits="${prefix}"><summary>${hits.length} Buchung${hits.length === 1 ? '' : 'en'} ansehen${extra}</summary>
-      <div class="table-wrap scroll"><table><tbody>${rows.map((t, k) => `<tr ${txAttrs(`${prefix}:${k}`)}><td class="date">${fmtDate(t.date)}</td>
+      <div class="table-wrap scroll"><table><tbody>${rows.map((t, k) => `<tr ${txAttrs(`${prefix}:${k}`)}>${groups.pickCell(t)}<td class="date">${fmtDate(t.date)}</td>
         <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(counterpartyOf(t))}${t.category_name ? ` · ${esc(t.category_name)}` : ' · ohne Kategorie'}${(t.tags || []).map((x) => ` <span class="tag">${esc(x)}</span>`).join('')}</div>
           ${t.notes ? `<div class="flow note">${esc(t.notes)}</div>` : ''}</td>
         <td class="num">${money(t.amount, t.currency_code)}</td></tr>`).join('')}</tbody></table></div>
@@ -166,7 +223,7 @@ export async function lab(view, { params }) {
         return `<div class="row suggestion"><div class="avatar kind-${s.kind}">${s.kind === 'haendler' ? 'H' : s.kind === 'ohne' ? '?' : '≠'}</div>
           <div style="min-width:0"><div class="title">${esc(d.cond)} → ${esc(s.rule.setCategory)}</div><div class="subtitle">${esc(s.reason)}</div>
             ${s.hits.length ? hitsBlock(i, s.hits) : ''}</div>
-          <div class="amount"><button class="btn small" data-take="${i}">+ ${s.changes}</button></div></div>`;
+          <div class="amount struct-btns"><button class="btn small" data-take="${i}">+ ${s.changes}</button>${s.hits.length ? `<button class="link-btn" data-group-from="suggest:${i}">Als Gruppe</button>` : ''}</div></div>`;
       }).join('')}</div>${list.length > 1 ? '<div class="more"><button class="btn" data-take-all>Alle übernehmen</button></div>' : ''}`
       : '<div class="empty">Keine weiteren Vorschläge – sieht aufgeräumt aus.</div>';
     $('l-suggest').suggestions = list;
@@ -190,7 +247,7 @@ export async function lab(view, { params }) {
           <div class="avatar kind-${s.kind}">${STRUCT_ICON[s.kind] || '•'}</div>
           <div style="min-width:0"><div class="title">${esc(s.title)}</div><div class="subtitle wrap">${esc(s.reason)}</div>
             ${hitsBlock(i, s.hits, s.rules.length > 1 ? ` · ${s.rules.length} Regeln` : '')}</div>
-          <div class="amount struct-btns"><button class="btn small" data-struct-take="${i}">Übernehmen</button><button class="link-btn" data-struct-ignore="${i}">Ignorieren</button></div>
+          <div class="amount struct-btns"><button class="btn small" data-struct-take="${i}">Übernehmen</button><button class="link-btn" data-group-from="struct:${i}">Als Gruppe bearbeiten</button><button class="link-btn" data-struct-ignore="${i}">Ignorieren</button></div>
         </div>`).join('')}</div>
         <div class="legend" style="margin-top:8px"><span>Alles lokal aus deinen Buchungen berechnet (Verwendungszweck, Empfänger, bisherige Kategorien) – ohne KI, nichts verlässt das Dashboard.
           „Übernehmen“ legt Labor-Regeln an; erst „In Firefly anlegen“ bzw. „Änderungen an n8n übergeben“ ändert Firefly.</span></div>`
@@ -244,7 +301,7 @@ export async function lab(view, { params }) {
       : `${[['changed', 'Geänderte'], ['none', 'Ohne Kategorie'], ['all', 'Alle']]
         .map(([k, l]) => `<button class="link-btn" data-mode="${k}" aria-pressed="${k === txMode}">${l}</button>`).join(' · ')}`;
     $('l-tx').innerHTML = rows.length
-      ? `<div class="table-wrap scroll"><table><tbody>${rows.slice(0, 500).map(({ t, r }, i) => `<tr ${txAttrs(i)}>
+      ? `<div class="table-wrap scroll"><table><tbody>${rows.slice(0, 500).map(({ t, r }, i) => `<tr ${txAttrs(i)}>${groups.pickCell(t)}
           <td class="date">${fmtDate(t.date)}</td>
           <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(counterpartyOf(t))}</div></td>
           <td>${r.changed ? `<span class="muted strike">${esc(t.category_name || 'ohne')}</span> → <b>${esc(r.category || 'ohne')}</b>` : esc(r.category || '–')}
@@ -255,6 +312,22 @@ export async function lab(view, { params }) {
     bindTxDetails($('l-tx'), (i) => rows[Number(i)]?.t);
   }
 
+  /** Vorschlag → Gruppe(n): Name und Art aus dem Vorschlag, Buchungen = seine Treffer. */
+  async function startGroup(s, where) {
+    if (!s) return;
+    const rulesOf = where === 'suggest' ? [s.rule] : s.rules;
+    // „Aufteilen“ ergibt mehrere Zielkategorien → je eine Gruppe
+    const targets = new Map();
+    for (const r of rulesOf) {
+      const key = r.setCategory ? `category:${r.setCategory}` : `tag:${r.addTags?.[0] || ''}`;
+      if (!targets.has(key)) targets.set(key, { kind: r.setCategory ? 'category' : 'tag', name: r.setCategory || r.addTags?.[0] || 'Neue Gruppe', hits: [] });
+      targets.get(key).hits.push(...s.hits.filter((t) => ruleMatches(r, t)));
+    }
+    const source = where === 'suggest' ? `Vorschlag: ${describeRule(s.rule).cond} → ${s.rule.setCategory}` : `Vorschlag: ${s.title}`;
+    for (const t of targets.values()) await groups.createFrom(t.name, t.kind, [...new Set(t.hits)], source);
+    toast(targets.size > 1 ? `${targets.size} Gruppen angelegt – du bearbeitest „${[...targets.values()].pop().name}“.` : 'Gruppe angelegt – jetzt anpassen und Ähnliches finden.');
+  }
+
   // ---- Bedienung --------------------------------------------------------------
   view.addEventListener('click', (e) => {
     const auto = e.target.closest('[data-auto]');
@@ -263,6 +336,12 @@ export async function lab(view, { params }) {
       autoTags = autoTags.includes(k) ? autoTags.filter((x) => x !== k) : [...autoTags, k];
       save();
       return render();
+    }
+    const from = e.target.closest('[data-group-from]');
+    if (from) {
+      const [where, i] = from.dataset.groupFrom.split(':');
+      startGroup(where === 'suggest' ? $('l-suggest').suggestions[Number(i)] : $('l-struct').structure[Number(i)], where);
+      return;
     }
     const tab = e.target.closest('[data-struct-tab]');
     if (tab) {
@@ -377,7 +456,7 @@ export async function lab(view, { params }) {
       const skipped = all.length - regeln.length;
       if (!regeln.length) return window.alert('Keine Regel, die Firefly so übernehmen kann.');
       if (!window.confirm(`${regeln.length} Regel${regeln.length === 1 ? '' : 'n'} in Firefly anlegen bzw. aktualisieren (Regelgruppe „${RULE_GROUP}“)?`
-        + `${skipped ? `\n${skipped} Regel(n) mit Bedingungen, die Firefly nicht kennt, werden übersprungen.` : ''}`
+        + `${skipped ? `\n${skipped} Regel(n) mit Bedingungen, die Firefly nicht kennt (Regex oder einzelne Buchungen aus Gruppen), werden übersprungen – die setzt „Änderungen an n8n übergeben“.` : ''}`
         + '\nRegeln, die du hier im Labor gelöscht hast, werden in dieser Gruppe ebenfalls entfernt.')) return;
       const apply = window.confirm(`Die Regeln auch gleich auf die vorhandenen Buchungen seit ${fmtDate(from)} anwenden?\n\nOK = ja, Abbrechen = nur für künftige Buchungen.`);
       btn.textContent = 'Sende …';

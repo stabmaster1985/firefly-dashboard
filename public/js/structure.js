@@ -32,7 +32,7 @@ const STOP = new Set(`
 `.split(/\s+/).filter(Boolean));
 
 /** Wörter eines Verwendungszwecks ohne Zahlen, Füllwörter und Wörter des Empfängernamens. */
-function words(t) {
+export function words(t) {
   const party = new Set(normParty(counterpartyOf(t)).split(' '));
   return [...new Set(lower(`${t.description || ''} ${t.notes || ''}`)
     .replace(/[0-9]+/g, ' ')

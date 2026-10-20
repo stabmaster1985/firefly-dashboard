@@ -745,3 +745,33 @@ button.cal-day { cursor: pointer; }
 .struct-hits table { margin-top: 6px; }
 .avatar.kind-reise, .avatar.kind-wort { background: var(--accent-soft); color: var(--accent); }
 
+
+/* ---- Gruppen (Labor) ------------------------------------------------------ */
+.pick-cell { width: 28px; padding-right: 0; }
+.pick-cell input, td input[data-sim] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+.group-row.active { background: var(--accent-soft); border-radius: 10px; padding-left: 8px; padding-right: 8px; }
+.group-foot { margin-top: 10px; font-size: 13px; }
+.group-editor { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--grid); }
+.group-editor h3 { font-size: 14px; margin: 18px 0 8px; display: flex; align-items: center; gap: 10px; }
+.group-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.group-head label { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 13px; }
+.group-head input { height: 34px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--grid); background: var(--surface-1); color: var(--text-primary); font: inherit; width: 260px; max-width: 70vw; }
+.group-head .spacer { flex: 1; }
+.danger-link { color: var(--negative); }
+.group-table { max-height: 420px; }
+.group-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
+.small-text { font-size: 13px; margin: 4px 0; }
+.row-actions { font-size: 12px; font-weight: 400; margin-top: 4px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px 10px; white-space: nowrap; }
+@media (max-width: 760px) { .row-actions { flex-direction: column; align-items: flex-end; } }
+.flow.reason { color: var(--text-secondary); }
+.list.plan .avatar { font-size: 12px; }
+.list.trash { margin-top: 8px; opacity: 0.85; }
+.pick-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 20px; z-index: 50; display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  background: var(--surface-1); border: 1px solid var(--grid); border-radius: 14px; padding: 10px 16px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18); font-size: 14px; max-width: calc(100vw - 32px); }
+.pick-bar[hidden], .toast[hidden] { display: none; }
+.pick-bar select { height: 30px; border-radius: 8px; border: 1px solid var(--grid); background: var(--surface-1); color: var(--text-primary); font: inherit; font-size: 13px; }
+.toast { position: fixed; right: 20px; bottom: 20px; z-index: 60; background: var(--text-primary); color: var(--surface-1); padding: 10px 16px; border-radius: 10px; font-size: 14px; max-width: min(420px, calc(100vw - 32px)); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2); }
+@media (max-width: 760px) {
+  .pick-bar { bottom: 76px; }
+  .toast { bottom: 140px; right: 16px; }
+}

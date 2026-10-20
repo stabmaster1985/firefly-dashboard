@@ -9,7 +9,11 @@ export const FIELDS = {
   account: 'Konto',
   category: 'Firefly-Kategorie',
   date: 'Datum',
+  journal: 'Einzelne Buchungen',
 };
+/** Nur intern (Gruppen) – nicht im Formular für eigene Regeln anbieten. */
+export const INTERNAL_FIELDS = ['journal'];
+export const INTERNAL_OPS = ['in'];
 
 export const OPS = {
   contains: 'enthält',
@@ -19,6 +23,7 @@ export const OPS = {
   gt: 'größer als',
   lt: 'kleiner als',
   between: 'zwischen',
+  in: 'ist eine von',
 };
 
 export const AUTO_TAGS = {
@@ -59,11 +64,13 @@ const ONLINE = ['paypal', 'amazon', 'zalando', 'ebay', 'klarna', 'otto ', 'etsy'
 const lower = (s) => String(s ?? '').toLowerCase();
 /** Zahlungsdienste: dahinter stecken verschiedene Händler → nach Buchungstext gruppieren. */
 const INTERMEDIARIES = ['paypal', 'klarna', 'sumup', 'stripe', 'adyen', 'amazon payments', 'apple pay', 'google pay', 'sofort', 'giropay', 'mollie', 'unzer', 'payone', 'computop'];
-const isIntermediary = (party) => INTERMEDIARIES.some((w) => lower(party).includes(w));
+export const isIntermediary = (party) => INTERMEDIARIES.some((w) => lower(party).includes(w));
 /** Kennwort aus dem Buchungstext, z. B. „PayPal *DisneyPlus 123456“ → „disneyplus“. */
-const textKey = (t) => normParty(String(t.description).replace(/^(paypal|klarna|sumup)\s*\*?/i, '')).split(' ').filter((w) => w.length > 2).slice(0, 2).join(' ');
+export const textKey = (t) => normParty(String(t.description).replace(/^(paypal|klarna|sumup)\s*\*?/i, '')).split(' ').filter((w) => w.length > 2).slice(0, 2).join(' ');
 export const counterpartyOf = (t) => (t.type === 'deposit' ? t.source_name : t.destination_name) || '';
 export const normParty = (s) => lower(s).replace(/[0-9]+/g, ' ').replace(/[^\p{L}& ]+/gu, ' ').replace(/\s+/g, ' ').trim();
+/** Gruppierungsschlüssel: Empfänger, bei Zahlungsdiensten (PayPal …) der Buchungstext. */
+export const partyKey = (t) => (isIntermediary(counterpartyOf(t)) ? `text:${textKey(t)}` : normParty(counterpartyOf(t)));
 
 function fieldValue(t, field) {
   if (field === 'party') return counterpartyOf(t);
@@ -72,11 +79,13 @@ function fieldValue(t, field) {
   if (field === 'account') return t.type === 'deposit' ? t.destination_name : t.source_name;
   if (field === 'category') return t.category_name || '';
   if (field === 'date') return String(t.date).slice(0, 10);
+  if (field === 'journal') return String(t.transaction_journal_id);
   return '';
 }
 
 function test(cond, t) {
   const v = fieldValue(t, cond.field);
+  if (cond.field === 'journal') return cond.op === 'in' && String(cond.value).split(',').includes(v);
   if (cond.field === 'date') {
     // ISO-Daten lassen sich als Text vergleichen
     if (cond.op === 'between') return v >= cond.value && v <= cond.value2;
@@ -215,6 +224,10 @@ export function suggestRules(txs, existingRules = [], knownCategories = []) {
 /** Kurzbeschreibung einer Regel für die Liste. */
 export function describeRule(rule) {
   const cond = (rule.when || []).map((c) => {
+    if (c.field === 'journal') {
+      const n = String(c.value).split(',').filter(Boolean).length;
+      return `eine von ${n} ausgewählten Buchung${n === 1 ? '' : 'en'}`;
+    }
     const short = (v) => (String(v).length > 60 ? `${String(v).slice(0, 57)}…` : v);
     const val = c.op === 'between' ? `${c.value} und ${c.value2}` : `„${short(c.value)}“`;
     return `${FIELDS[c.field] || c.field} ${OPS[c.op] || c.op} ${val}`;
@@ -272,7 +285,7 @@ export function toFireflyRules(rules) {
       stop_processing: false,
       triggers,
       actions,
-      ...(unsupported ? { hinweis: 'Enthält eine Bedingung, die Firefly so nicht kennt (z. B. Regex) – bitte von Hand anpassen.' } : {}),
+      ...(unsupported ? { hinweis: 'Enthält eine Bedingung, die Firefly so nicht kennt (Regex oder einzelne Buchungen) – einmalig per n8n setzen oder von Hand anpassen.' } : {}),
     };
   });
 }

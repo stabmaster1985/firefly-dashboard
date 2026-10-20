@@ -72,6 +72,15 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
     Kategorien) oder aufzuteilen (z. B. „Shopping“ in Elektronik, Kleidung, Wohnen …). Jeder
     Vorschlag zeigt die betroffenen Buchungen und wird per „Übernehmen“ zu Labor-Regeln;
     Regeln können dafür auch ein Datum (zwischen) enthalten
+  - **Gruppen** – Buchungen selbst zusammenstellen (Häkchen in allen Labor-Listen oder „Als Gruppe
+    bearbeiten“ bei einem Vorschlag), Namen und Art (Kategorie/Tag) frei wählen und mit
+    **„Ähnliche finden“** schrittweise erweitern: gleiche Empfänger, seltene gemeinsame Wörter im
+    Verwendungszweck, ähnliche Beträge – jeweils mit Begründung, sehr ähnliche schon angehakt.
+    Was nicht passt, als „gehört nicht dazu“ markieren; das verbessert die nächste Suche. Zum
+    Schluss bildet das Labor daraus möglichst wenige Regeln, die keine Buchung außerhalb der
+    Gruppe treffen (dauerhaft, auch für künftige Buchungen); der Rest wird einmalig gesetzt.
+    Gruppen werden Schritt für Schritt auf dem Server gespeichert – über Tage, Geräte und
+    Updates hinweg; gelöschte liegen 30 Tage im Papierkorb
 - **Prüfen** – Datenqualität auf einen Blick:
   - **Import-Status je Konto**: letzte Buchung und üblicher Abstand; „überfällig“, wenn ein Konto
     deutlich länger als sonst keine Buchung hat (CSV-Import vergessen?). Eine Automation mit
@@ -140,6 +149,27 @@ Die Konfiguration speichert der Server in `DATA_DIR` (im Container `/data`): Aut
 Ziele, Einstellungen und was bereits verschickt wurde.
 Der Aufruf geht vom Dashboard-Server aus, nicht vom Browser – die n8n-Adresse muss also vom
 Server aus erreichbar sein (im selben Docker-Netz z. B. `http://n8n:5678/webhook/…`).
+
+### Deine Daten im Dashboard
+
+Alles, was du im Dashboard selbst anlegst, liegt in `DATA_DIR` (Docker: Volume
+`firefly-dashboard-data` → `/data`) und übersteht damit jedes Update:
+
+| Datei | Inhalt |
+|---|---|
+| `groups.json` | Gruppen aus dem Kategorien-Labor (inkl. Papierkorb) |
+| `rules.json` | Labor-Regeln und Auto-Tags |
+| `dismissed.json` | ausgeblendete Vorschläge („Ignorieren“, „Kein Duplikat“) |
+| `actions.json` | Automationen |
+| `goals.json`, `settings.json`, `state.json` | Ziele, Gehaltstag/Schwelle, was schon verschickt wurde |
+
+Geschrieben wird immer über eine temporäre Datei; `<datei>.bak` enthält den zuletzt
+geschriebenen Stand. Für Gruppen und Regeln legt der Server zusätzlich einen Schnappschuss pro
+Tag in `DATA_DIR/backups` an (14 Tage). Ist eine Datei unlesbar, wird sie nicht überschrieben:
+Der Server nutzt die Sicherung und bewahrt die kaputte Datei als `<datei>.broken-…` auf.
+Gleichzeitiges Arbeiten auf mehreren Geräten überschreibt nichts: Gruppen werden in einzelnen
+Schritten gespeichert, Regeln mit Versionsnummer (bei einem Konflikt lädt das Labor den neuen
+Stand). Gruppen merken sich Buchungen über ihre feste Firefly-ID.
 
 ## Wie es funktioniert
 
