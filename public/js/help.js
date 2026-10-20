@@ -70,7 +70,7 @@ export const PAGES = {
     what: 'Datenqualität: Hast du einen Import vergessen? Gibt es doppelte Buchungen?',
     app: 'Vergleicht die letzte Buchung je Konto mit dem üblichen Abstand und sucht Buchungspaare mit gleichem Betrag und gleichen Konten innerhalb von 3 Tagen.',
     firefly: 'Nur lesen. Doppelte löschst du in Firefly selbst („In Firefly öffnen“ in den Details). Der Import-Knopf startet deinen n8n-Import-Workflow – was der in Firefly tut, bestimmt der Workflow.',
-    cards: ['c-import', 'c-dup'],
+    cards: ['c-import', 'c-backup', 'c-dup'],
   },
   lab: {
     title: 'Kategorien-Labor',
@@ -144,6 +144,7 @@ export const CARDS = {
   'p-tx': { title: 'Buchungen', what: 'Alle Buchungen mit diesem Empfänger.', app: 'Klick zeigt Details.', firefly: READ_ONLY },
   // Prüfen
   'c-import': { title: 'Import-Status je Konto', what: 'Letzte Buchung je Konto und ob sie ungewöhnlich lange her ist („überfällig“ = länger als das Dreifache des üblichen Abstands, mind. 7, höchstens 60 Tage).', app: 'Der Knopf startet eine Automation mit Auslöser „Import starten“ (z. B. deinen Bank-CSV-Workflow).', firefly: 'Das Dashboard selbst ändert nichts. Was der Import-Workflow in Firefly anlegt, bestimmt der Workflow.' },
+  'c-backup': { title: 'Datensicherung (Firefly)', what: 'Zeigt, wann Firefly zuletzt gesichert wurde, und startet eine Sicherung per Knopf.', app: 'Beim Öffnen fragt das Dashboard über die Automation „Firefly-Backup“ den Stand ab. „Jetzt sichern“ startet die Sicherung und zeigt das Ergebnis. Die Sicherungen selbst liegen auf dem Firefly-Host (Standard ~/firefly-backups), nicht im Dashboard.', firefly: 'Firefly wird nicht verändert. Der n8n-Workflow (Vorlage n8n/firefly-backup.json) verbindet sich per SSH mit dem Firefly-Host und sichert dort Datenbank (MariaDB/MySQL/Postgres, automatisch erkannt), Anhänge und APP_KEY; alte Sicherungen werden nach 14 Tagen gelöscht. Wiederherstellen: siehe LIESMICH.txt in jeder Sicherung.', tips: ['Gelb markiert, wenn die letzte Sicherung älter als 2 Tage ist.', 'Der APP_KEY ist wichtig: Firefly verschlüsselt Anhänge damit.', 'Bewahre zusätzlich eine Kopie außerhalb des Firefly-Hosts auf (z. B. NAS).'] },
   'c-dup': { title: 'Mögliche doppelte Buchungen', what: 'Paare mit gleicher Art, gleichem Betrag und gleichen Konten höchstens 3 Tage auseinander. „Sicher“ = gleiche Bank-Referenz, „wahrscheinlich“ = gleicher Text am selben Tag.', app: '„Kein Duplikat“ blendet ein Paar auf allen Geräten aus.', firefly: 'Nichts. Die überzählige Buchung löschst du selbst in Firefly („In Firefly öffnen“ in den Details).' },
   // Labor
   'l-groups': {

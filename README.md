@@ -146,6 +146,7 @@ Monat“ am 19.), wird mit demselben Abschnitt davor verglichen (1.–19. des Vo
 | Firefly-Regeln anlegen | Labor „In Firefly anlegen“ | `regeln_anlegen`: Gruppe, Regeln im Firefly-Format, optional Zeitraum zum Anwenden |
 | Import starten | Knopf auf der Seite „Prüfen“ | `konten_ueberfaellig` |
 | Dashboard aktualisieren | Knopf „Jetzt aktualisieren“ unter Dashboard-Version | `von`, `auf` (Commits) |
+| Firefly-Backup | Knopf „Jetzt sichern“ / Stand auf der Seite „Prüfen“ | `typ`: `backup` oder `status` – Antwort mit letzter Sicherung, Größe, Anzahl |
 
 Body leer lassen = alle Daten als JSON; im Body-Text fügt `{{daten}}` sie ebenfalls ein. Mit
 „Jetzt senden“ bzw. „Testen“ lässt sich das Ergebnis vorab ansehen. Gehaltstag und die Schwelle
@@ -288,6 +289,25 @@ alle passenden Regeln ausführt (die letzte Kategorie gewinnt) und im Labor die 
 gewinnt, stehen sie in Firefly in umgekehrter Reihenfolge. Eine noch
 unbekannte Kategorie legt Firefly dabei an. Nach einer erfolgreichen Änderung verwirft das
 Dashboard seinen Zwischenspeicher, damit alle Seiten die neuen Daten laden.
+
+### Datensicherung von Firefly per n8n
+
+Die Firefly-API kann keine Datenbank-Sicherung auslösen (sie kennt nur CSV-Exporte, die sich
+nicht zurückspielen lassen). `n8n/firefly-backup.json` sichert deshalb direkt auf dem
+Docker-Host von Firefly per SSH:
+
+- **Datenbank** – MariaDB/MySQL (`mariadb-dump`) oder Postgres (`pg_dump`); Container und
+  Zugangsdaten werden automatisch erkannt (aus den Umgebungsvariablen des DB-Containers)
+- **Anhänge** (`storage/upload`) und **APP_KEY** – Firefly verschlüsselt Anhänge damit
+- Prüfung, dass der Dump wirklich Tabellen enthält; alte Sicherungen nach 14 Tagen löschen
+- je Sicherung ein Ordner `~/firefly-backups/firefly-<datum>` mit `LIESMICH.txt` zum Wiederherstellen
+
+Einrichten: Workflow importieren, im Knoten **Sicherung auf dem Firefly-Host** SSH-Zugangsdaten
+für den Firefly-Host anlegen (Benutzer mit Docker-Rechten), im Knoten **Einstellungen** bei Bedarf
+Ordner, Aufbewahrung oder Container-Namen setzen (leer = automatisch), aktivieren. Er läuft
+täglich um 3:17 Uhr. Im Dashboard eine Automation mit Auslöser **Firefly-Backup** und der
+Webhook-URL anlegen – dann zeigt die Seite **Prüfen** den Stand der letzten Sicherung und hat
+einen Knopf „Jetzt sichern“. Tipp: die Sicherungen zusätzlich auf ein anderes Gerät kopieren.
 
 ## Demo ohne eigene Firefly-Instanz
 

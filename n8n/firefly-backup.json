@@ -1,0 +1,310 @@
+{
+  "name": "Firefly: Datensicherung",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "k1",
+      "name": "Manuell starten",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 3,
+              "triggerAtMinute": 17
+            }
+          ]
+        }
+      },
+      "id": "k2",
+      "name": "Täglich 3:17 Uhr",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "firefly-backup",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "k3",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        400
+      ],
+      "webhookId": "firefly-backup"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "backup_dir",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "keep_days",
+              "value": "14",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "db_container",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "app_container",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "mode",
+              "value": "={{ $json.body && $json.body.typ === 'status' ? 'status' : 'backup' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "k4",
+      "name": "Einstellungen",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        200
+      ],
+      "notes": "backup_dir leer = ~/firefly-backups; Container leer = automatisch erkennen"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=BACKUP_DIR='{{ $json.backup_dir }}'\nKEEP_DAYS='{{ $json.keep_days }}'\nDB_CONTAINER='{{ $json.db_container }}'\nAPP_CONTAINER='{{ $json.app_container }}'\nMODE='{{ $json.mode }}'\n# Firefly-III-Sicherung (läuft per SSH auf dem Docker-Host von Firefly).\n# Einstellungen kommen als Variablen davor: BACKUP_DIR, KEEP_DAYS, DB_CONTAINER, APP_CONTAINER, MODE\nset -eu\nDIR=\"${BACKUP_DIR:-}\"; [ -n \"$DIR\" ] || DIR=\"$HOME/firefly-backups\"\nKEEP=\"${KEEP_DAYS:-14}\"\nMODE=\"${MODE:-backup}\"\n\nreport() {\n  LATEST=$(ls -1d \"$DIR\"/firefly-* 2>/dev/null | sort | tail -n 1 || true)\n  echo \"ORDNER=$DIR\"\n  echo \"ANZAHL=$(ls -1d \"$DIR\"/firefly-* 2>/dev/null | wc -l | tr -d ' ')\"\n  if [ -n \"$LATEST\" ]; then\n    echo \"LETZTE=$(basename \"$LATEST\")\"\n    echo \"GROESSE=$(du -sh \"$LATEST\" | cut -f1)\"\n    echo \"DATEIEN=$(ls -1 \"$LATEST\" | tr '\\n' ' ')\"\n  fi\n}\n\nif [ \"$MODE\" = \"status\" ]; then\n  report\n  echo \"ERGEBNIS=ok\"\n  exit 0\nfi\n\ncommand -v docker >/dev/null || { echo \"FEHLER: docker nicht gefunden\"; exit 1; }\n# Container automatisch finden (Spalte 2 = Image, letzte Spalte = Name)\nDB=\"${DB_CONTAINER:-}\"\n[ -n \"$DB\" ] || DB=$(docker ps | awk 'NR>1 && tolower($2) ~ /(mariadb|mysql|postgres)/ {print $NF; exit}')\n[ -n \"$DB\" ] || { echo \"FEHLER: Kein Datenbank-Container (mariadb/mysql/postgres) gefunden – DB_CONTAINER in den Einstellungen setzen.\"; exit 1; }\nAPP=\"${APP_CONTAINER:-}\"\n[ -n \"$APP\" ] || APP=$(docker ps | awk 'NR>1 && tolower($2) ~ /fireflyiii\\/core|firefly-iii/ {print $NF; exit}')\nDB_IMAGE=$(docker ps | awk -v n=\"$DB\" 'NR>1 && $NF == n {print tolower($2); exit}')\n\nmkdir -p \"$DIR\"\nchmod 700 \"$DIR\"\nOUT=\"$DIR/firefly-$(date +%Y-%m-%d_%H%M%S)\"\nmkdir -p \"$OUT\"\necho \"== Datenbank aus Container $DB ($DB_IMAGE)\"\ncase \"$DB_IMAGE\" in\n  *postgres*)\n    docker exec \"$DB\" sh -c 'exec pg_dump -U \"${POSTGRES_USER:-postgres}\" \"${POSTGRES_DB:-${POSTGRES_USER:-postgres}}\"' | gzip > \"$OUT/datenbank.sql.gz\" ;;\n  *)\n    docker exec \"$DB\" sh -c 'D=$(command -v mariadb-dump || command -v mysqldump)\n      U=\"${MYSQL_USER:-${MARIADB_USER:-root}}\"\n      P=\"${MYSQL_PASSWORD:-${MARIADB_PASSWORD:-${MYSQL_ROOT_PASSWORD:-${MARIADB_ROOT_PASSWORD:-}}}}\"\n      N=\"${MYSQL_DATABASE:-${MARIADB_DATABASE:-firefly}}\"\n      MYSQL_PWD=\"$P\" exec \"$D\" --single-transaction --quick --routines --no-tablespaces -u\"$U\" \"$N\"' | gzip > \"$OUT/datenbank.sql.gz\" ;;\nesac\n# Ohne pipefail prüfen, ob wirklich ein Dump entstanden ist\nif ! gzip -t \"$OUT/datenbank.sql.gz\" 2>/dev/null || ! gzip -dc \"$OUT/datenbank.sql.gz\" | grep -qi \"create table\"; then\n  echo \"FEHLER: Datenbank-Sicherung ist leer oder unvollständig.\"\n  rm -rf \"$OUT\"\n  exit 1\nfi\n\nif [ -n \"$APP\" ]; then\n  echo \"== Anhänge und APP_KEY aus Container $APP\"\n  if docker exec \"$APP\" test -d /var/www/html/storage/upload; then\n    docker exec \"$APP\" tar czf - -C /var/www/html/storage upload > \"$OUT/anhaenge.tar.gz\"\n  fi\n  # Firefly verschlüsselt Anhänge mit dem APP_KEY – ohne ihn sind sie nicht wiederherstellbar\n  docker exec \"$APP\" printenv APP_KEY > \"$OUT/app-key.txt\" 2>/dev/null || rm -f \"$OUT/app-key.txt\"\n  [ -f \"$OUT/app-key.txt\" ] && chmod 600 \"$OUT/app-key.txt\"\nelse\n  echo \"== Kein Firefly-Container gefunden – nur Datenbank gesichert (APP_CONTAINER setzen für Anhänge und APP_KEY).\"\nfi\n{\n  echo \"Firefly-III-Sicherung vom $(date '+%d.%m.%Y %H:%M')\"\n  echo \"Datenbank-Container: $DB ($DB_IMAGE)\"\n  echo \"Firefly-Container:   ${APP:-–}\"\n  echo \"Wiederherstellen (MariaDB): gzip -dc datenbank.sql.gz | docker exec -i <db-container> sh -c 'MYSQL_PWD=\\$MYSQL_PASSWORD mariadb -u\\$MYSQL_USER \\$MYSQL_DATABASE'\"\n  echo \"Wiederherstellen (Postgres): gzip -dc datenbank.sql.gz | docker exec -i <db-container> sh -c 'psql -U \\$POSTGRES_USER \\$POSTGRES_DB'\"\n  echo \"Anhänge: tar xzf anhaenge.tar.gz und den Ordner upload nach /var/www/html/storage/ im Firefly-Container kopieren; APP_KEY aus app-key.txt muss gleich bleiben.\"\n} > \"$OUT/LIESMICH.txt\"\nchmod -R go-rwx \"$OUT\"\n\n# alte Sicherungen aufräumen\nfind \"$DIR\" -maxdepth 1 -type d -name 'firefly-*' -mtime +\"$KEEP\" -exec rm -rf {} + 2>/dev/null || true\necho \"== Fertig\"\nreport\necho \"ERGEBNIS=ok\"\n",
+        "cwd": "/"
+      },
+      "id": "k5",
+      "name": "Sicherung auf dem Firefly-Host",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        480,
+        200
+      ],
+      "onError": "continueRegularOutput",
+      "notes": "SSH-Zugang zum Docker-Host von Firefly (Benutzer mit Docker-Rechten)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ausgabe des Skripts (Zeilen KEY=WERT) in ein übersichtliches Ergebnis umwandeln\nconst r = $input.first().json;\nconst out = String(r.stdout || '');\nconst val = (k) => (out.match(new RegExp('^' + k + '=(.*)$', 'm')) || [])[1] || null;\nconst ok = r.code === 0 && val('ERGEBNIS') === 'ok';\nconst fehler = ok ? null : ((out + '\\n' + (r.stderr || '')).match(/FEHLER: .*/) || [r.error?.message || r.stderr || 'unbekannter Fehler'])[0];\nreturn [{ json: {\n  ok,\n  modus: $('Einstellungen').first().json.mode,\n  ordner: val('ORDNER'),\n  anzahl: Number(val('ANZAHL') || 0),\n  letzte: val('LETZTE'),\n  groesse: val('GROESSE'),\n  dateien: (val('DATEIEN') || '').trim().split(' ').filter(Boolean),\n  fehler,\n  ausgabe: out.split('\\n').filter((l) => l.startsWith('==') || l.startsWith('FEHLER')).join('\\n'),\n} }];"
+      },
+      "id": "k6",
+      "name": "Ergebnis lesen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "k7",
+      "name": "Erfolgreich?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        960,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "k8",
+      "name": "Antwort",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "id": "k9",
+      "name": "Antwort Fehler",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Firefly-Sicherung fehlgeschlagen: {{ $json.fehler }}"
+      },
+      "id": "k10",
+      "name": "Fehler melden",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Manuell starten": {
+      "main": [
+        [
+          {
+            "node": "Einstellungen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Täglich 3:17 Uhr": {
+      "main": [
+        [
+          {
+            "node": "Einstellungen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Einstellungen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Einstellungen": {
+      "main": [
+        [
+          {
+            "node": "Sicherung auf dem Firefly-Host",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sicherung auf dem Firefly-Host": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ergebnis lesen": {
+      "main": [
+        [
+          {
+            "node": "Erfolgreich?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Erfolgreich?": {
+      "main": [
+        [
+          {
+            "node": "Antwort",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Antwort Fehler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Antwort Fehler": {
+      "main": [
+        [
+          {
+            "node": "Fehler melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

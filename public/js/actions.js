@@ -22,6 +22,7 @@ const TRIGGERS = {
   import: { label: 'Import starten', run: '▶ Import starten', hint: 'Erscheint als Knopf auf der Seite „Prüfen“ beim Import-Status, z. B. für deinen n8n-Workflow, der die Bank-CSV abholt und importiert. Mitgeschickt werden die Konten, die überfällig wirken.' },
   update: { label: 'Dashboard aktualisieren', run: '▶ Jetzt aktualisieren', hint: 'Erscheint oben unter „Dashboard-Version“, sobald es auf GitHub eine neuere Version gibt – z. B. für den n8n-Workflow n8n/firefly-dashboard-update.json. Achtung: auch „Testen“ startet das Update wirklich.' },
   rules: { label: 'Firefly-Regeln anlegen', run: '▶ Testdaten senden', hint: 'Startet im Kategorien-Labor über „In Firefly anlegen“. Der Workflow legt die Labor-Regeln als echte Firefly-Regeln in einer eigenen Regelgruppe an bzw. gleicht sie ab (typ „regeln_anlegen“) – fertiger Workflow: n8n/firefly-buchung-bearbeiten.json.' },
+  backup: { label: 'Firefly-Backup', run: '▶ Stand abfragen', hint: 'Sichert Fireflys Datenbank, Anhänge und APP_KEY auf dem Firefly-Host (n8n-Vorlage n8n/firefly-backup.json, per SSH). Knopf und Stand findest du auf der Seite „Prüfen“. „Testen“ fragt nur den Stand ab und startet keine Sicherung.' },
   tags: { label: 'Tags setzen', run: '▶ Testdaten senden', hint: 'Startet, wenn du in den Details einer Buchung einen Tag hinzufügst oder entfernst. Der Workflow erhält Buchungs-ID und die komplette neue Tag-Liste (typ „tags_setzen“) – derselbe n8n-Workflow wie für Kategorien kann beides.' },
 };
 

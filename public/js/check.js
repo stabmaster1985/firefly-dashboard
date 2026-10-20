@@ -117,10 +117,12 @@ export async function check(view) {
   view.innerHTML = `
     <div class="grid">
       ${card('c-import', 'Import-Status je Konto', { meta: '<span id="c-import-meta"></span>' })}
+      ${card('c-backup', 'Datensicherung (Firefly)', { meta: '<span id="c-backup-meta"></span>' })}
       ${card('c-dup', 'Mögliche doppelte Buchungen', { filter: true, meta: '<span id="c-dup-meta">letzte 24 Monate · Ausgaben & Einnahmen</span>' })}
     </div>`;
   const $ = (id) => view.querySelector(`#${id}`);
   const history = loadHistory();
+  backupCard($('c-backup'), $('c-backup-meta'));
 
   fill($('c-import'), () => Promise.all([history.then(importStatus), actionFor('import')]), (el, [status, action]) => {
     const overdue = status.filter((s) => s.overdue);
@@ -186,3 +188,60 @@ export async function check(view) {
     });
   }, skeleton(6));
 }
+
+// ---------------------------------------------------------------------------
+// Datensicherung: Stand und Knopf für die Automation „Firefly-Backup“
+
+/** „firefly-2026-10-20_031700“ → Date */
+const backupDate = (name) => {
+  const m = /(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})/.exec(name || '');
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])) : null;
+};
+
+async function backupCard(el, meta) {
+  const action = await actionFor('backup');
+  if (!el.isConnected) return;
+  if (!action) {
+    el.innerHTML = `<p class="small-text">Noch nicht eingerichtet. Mit dem n8n-Workflow <code>n8n/firefly-backup.json</code> sichert n8n per SSH Fireflys
+      Datenbank, die Anhänge und den APP_KEY auf dem Firefly-Host – täglich und per Knopf hier. Danach unter
+      <a href="#/automationen">Automationen</a> eine Automation mit Auslöser „Firefly-Backup“ und der Webhook-URL anlegen.</p>`;
+    meta.textContent = 'nicht eingerichtet';
+    return;
+  }
+  const show = (res, { running = false } = {}) => {
+    let data = null;
+    try {
+      data = JSON.parse(res?.response || 'null');
+    } catch {
+      data = null;
+    }
+    const when = backupDate(data?.letzte);
+    const ageDays = when ? Math.floor((Date.now() - when) / 86400000) : null;
+    const stale = ageDays === null || ageDays > 2;
+    meta.textContent = running ? 'läuft …' : !res?.ok ? 'Fehler' : when ? (ageDays === 0 ? 'heute gesichert' : `vor ${ageDays} Tag${ageDays === 1 ? '' : 'en'}`) : 'noch keine Sicherung';
+    const files = data?.dateien || [];
+    el.innerHTML = `${res && !res.ok ? `<p class="small-text warn-text">Fehler: ${esc(data?.fehler || res.response || `HTTP ${res.status}`)}</p>` : ''}
+      ${data?.ok ? `<div class="table-wrap"><table><tbody>
+        <tr style="cursor:default"><td class="date">Letzte Sicherung</td><td>${when ? `${fmtDate(when)} ${when.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} <span class="badge ${stale ? 'warn' : 'good'}">${ageDays === 0 ? 'heute' : `vor ${ageDays} Tag${ageDays === 1 ? '' : 'en'}`}</span>` : '<span class="badge warn">noch keine</span>'}</td></tr>
+        ${data.groesse ? `<tr style="cursor:default"><td class="date">Größe</td><td>${esc(data.groesse)}</td></tr>` : ''}
+        ${files.length ? `<tr style="cursor:default"><td class="date">Inhalt</td><td>${files.map((f) => `<span class="tag">${esc(f)}</span>`).join('')}${files.includes('app-key.txt') ? '' : ' <span class="badge warn">ohne APP_KEY/Anhänge</span>'}</td></tr>` : ''}
+        <tr style="cursor:default"><td class="date">Sicherungen</td><td>${data.anzahl} im Ordner <code>${esc(data.ordner || '')}</code></td></tr>
+      </tbody></table></div>` : ''}
+      <div class="import-run"><button class="btn primary" data-backup-run ${running ? 'disabled' : ''}>${running ? 'Sichert … (kann ein paar Minuten dauern)' : '▶ Jetzt sichern'}</button>
+        <button class="btn" data-backup-status ${running ? 'disabled' : ''}>Stand abfragen</button>
+        <span class="muted">Automation „${esc(action.name)}“ · Sicherungen liegen auf dem Firefly-Host, nicht im Dashboard.</span></div>`;
+  };
+  const run = (typ) => runAction(action, { typ }).catch((err) => ({ ok: false, response: err.message }));
+  el.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-backup-run]')) {
+      show(null, { running: true });
+      show(await run('backup'));
+    } else if (e.target.closest('[data-backup-status]')) {
+      show(null, { running: true });
+      show(await run('status'));
+    }
+  });
+  el.innerHTML = '<p class="muted small-text">Frage Stand ab …</p>';
+  show(await run('status'));
+}
+
