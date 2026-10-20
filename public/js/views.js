@@ -1,8 +1,8 @@
 // Übersicht, Buchungen und Konten.
 
 import * as api from './api.js';
-import { barChart, lineChart, legend, seriesColor } from './charts.js';
-import { money, percent, esc, fmtDate, initials, isoDate, today, debounce, parseDate, addDays, CALENDAR } from './util.js';
+import { barChart, lineChart, legend, seriesColor, cssVar } from './charts.js';
+import { money, percent, esc, fmtDate, fmtMonth, initials, isoDate, today, debounce, parseDate, addDays, CALENDAR, storage, store } from './util.js';
 import { skeleton, fill, card, stat, signedAmount, txRow, txAttrs, bindTxDetails, mainCurrency, sum } from './common.js';
 import { categoryTotals, compareRange, delta, forecastActive, forecastTotal, forecastRemainder } from './categories.js';
 import { loadRecurring, upcomingBetween } from './recurring.js';
@@ -435,6 +435,7 @@ export async function accounts(view, { period }) {
     <div class="grid">
       ${card('acc-chart', 'Kontostand-Verlauf', { meta: esc(period.label) })}
       <div class="span-12" id="acc-tiles"></div>
+      ${card('acc-worth', 'Vermögensverlauf', { meta: '<span class="chips small" id="acc-worth-range" role="group" aria-label="Zeitraum"></span>' })}
       <div class="span-12" id="acc-liab"></div>
     </div>`;
 
@@ -481,6 +482,8 @@ export async function accounts(view, { period }) {
     lineChart(el.querySelector('canvas'), { labels, series, currency: datasets[0].currency_code || 'EUR' });
   }, skeleton(1, 340));
 
+  netWorth(view.querySelector('#acc-worth'), order);
+
   fill(view.querySelector('#acc-liab'), () => api.getAll('accounts', { type: 'liabilities' }).catch(() => []), (el, list) => {
     const active = list.filter((a) => a.attributes.active !== false);
     if (!active.length) return (el.innerHTML = '');
@@ -493,6 +496,76 @@ export async function accounts(view, { period }) {
       })
       .join('')}</div>`;
   }, '');
+}
+
+// ---------------------------------------------------------------------------
+// Vermögensverlauf: Summe aller Konten über Jahre (Monatsendstände)
+
+const WORTH_RANGES = [['1', '1 Jahr'], ['2', '2 Jahre'], ['5', '5 Jahre'], ['10', '10 Jahre']];
+
+function netWorth(el, order) {
+  if (!el) return;
+  const rangeEl = el.closest('.card').querySelector('#acc-worth-range');
+  let years = storage('ffd-worth-range', '2');
+  const draw = () => {
+    rangeEl.innerHTML = WORTH_RANGES.map(([k, l]) => `<button class="chip" data-y="${k}" aria-pressed="${k === years}">${l}</button>`).join('');
+    const end = today();
+    const start = new Date(end.getFullYear() - Number(years), end.getMonth() + 1, 1);
+    fill(el, () => api.get('chart/account/overview', { start, end, period: '1M' }), (box, sets) => {
+      const datasets = (Array.isArray(sets) ? sets : []).filter((s) => s.entries);
+      if (!datasets.length) return (box.innerHTML = '<div class="empty">Keine Verlaufsdaten.</div>');
+      const entries = (s) => (Array.isArray(s.entries) ? s.entries.map((e) => [e.key ?? e.date, e.value]) : Object.entries(s.entries));
+      // je Monat der letzte Stand – egal ob Firefly Tages- oder Monatswerte liefert
+      const monthly = (s) => {
+        const m = new Map();
+        for (const [k, v] of entries(s)) m.set(String(k).slice(0, 7), Number(v));
+        return m;
+      };
+      const perAccount = datasets.map(monthly);
+      const keys = [...new Set(perAccount.flatMap((m) => [...m.keys()]))].sort();
+      const value = (m, k) => {
+        // fehlende Monate mit dem letzten bekannten Stand füllen
+        let v = 0;
+        for (const key of keys) {
+          if (m.has(key)) v = m.get(key);
+          if (key === k) return v;
+        }
+        return v;
+      };
+      const totals = keys.map((k) => sum(perAccount, (m) => value(m, k)));
+      // Monate ohne Bewegung am Anfang abschneiden (vor dem ersten Konto/der ersten Buchung)
+      const moved = totals.findIndex((v, i) => i + 1 < totals.length && v !== totals[i + 1]);
+      const firstIdx = Math.max(0, moved);
+      const ks = keys.slice(firstIdx);
+      const tot = totals.slice(firstIdx);
+      const code = datasets[0].currency_code || 'EUR';
+      const label = (k) => fmtMonth(new Date(Number(k.slice(0, 4)), Number(k.slice(5, 7)) - 1, 1));
+      const series = [
+        { label: 'Gesamt', data: tot, color: cssVar('--text-primary') },
+        ...datasets.map((s, i) => ({ label: s.label, data: ks.map((k) => value(perAccount[i], k)), color: seriesColor(order.has(s.label) ? order.get(s.label) : i) })),
+      ];
+      const change = tot.length ? tot[tot.length - 1] - tot[0] : 0;
+      const months = Math.max(1, tot.length - 1);
+      const max = Math.max(...tot);
+      box.innerHTML = `<div class="legend worth-stats">
+          <span>Heute <b>&nbsp;${money(tot[tot.length - 1] ?? 0, code)}</b></span>
+          <span>Veränderung <b class="${change >= 0 ? 'pos' : 'neg'}">&nbsp;${money(change, code, { signed: true })}</b>&nbsp;seit ${esc(label(ks[0] || ''))}</span>
+          <span>Ø pro Monat <b>&nbsp;${money(change / months, code, { signed: true })}</b></span>
+          <span>Höchststand <b>&nbsp;${money(max, code)}</b>&nbsp;(${esc(label(ks[tot.indexOf(max)] || ''))})</span>
+        </div>
+        ${legend(series)}<div class="chart-box tall" style="margin-top:12px"><canvas aria-label="Vermögen über die Zeit"></canvas></div>
+        <div class="legend" style="margin-top:8px"><span>Monatsendstände aller Konten, die Firefly in der Kontenübersicht zeigt; Verbindlichkeiten nicht abgezogen.</span></div>`;
+      lineChart(box.querySelector('canvas'), { labels: ks.map((k) => `${k}-01`), series, currency: code, format: fmtMonth });
+    }, skeleton(1, 340));
+  };
+  rangeEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-y]');
+    if (!btn) return;
+    years = btn.dataset.y;
+    store('ffd-worth-range', years);
+    draw();
+  });
+  draw();
 }
 
 // ---------------------------------------------------------------------------

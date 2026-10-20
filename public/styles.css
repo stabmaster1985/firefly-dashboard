@@ -278,6 +278,8 @@ button, input, select { font: inherit; color: inherit; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; align-items: center; }
 .toolbar .input { flex: 1 1 260px; min-width: 0; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chips.small .chip { height: 26px; padding: 0 10px; font-size: 12px; }
+.worth-stats { margin-bottom: 12px; }
 .chip { cursor: pointer; color: var(--text-secondary); font-weight: 500; font-size: 14px; }
 .chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
 
@@ -710,3 +712,27 @@ tbody tr.dup-head:first-child td { padding-top: 4px; }
   .month-panel .card-filter { flex: 1 1 100%; }
   td, th { padding-left: 6px; padding-right: 6px; }
 }
+
+/* ---- Ausgaben-Kalender (Jahresrückblick) -------------------------------- */
+.cal-wrap { overflow-x: auto; padding-bottom: 4px; }
+.cal { display: grid; grid-template-columns: 22px auto; grid-template-rows: auto auto; gap: 4px 6px; width: max-content; }
+.cal-months { grid-column: 2; display: grid; grid-template-columns: repeat(var(--weeks), 14px); column-gap: 3px; font-size: 11px; color: var(--text-muted); }
+.cal-months span { white-space: nowrap; }
+.cal-wd { grid-column: 1; display: grid; grid-template-rows: repeat(7, 14px); row-gap: 3px; font-size: 10px; color: var(--text-muted); line-height: 14px; }
+.cal-grid { grid-column: 2; display: grid; grid-template-rows: repeat(7, 14px); grid-auto-flow: column; grid-auto-columns: 14px; gap: 3px; }
+.cal-day { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 0; padding: 0; background: var(--surface-2); vertical-align: middle; }
+button.cal-day { cursor: pointer; }
+.cal-day.cal-out { background: transparent; }
+.cal-day.cal-future { background: var(--surface-2); opacity: 0.35; }
+.cal-day.l0 { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--grid); }
+.cal-day.l1 { background: color-mix(in srgb, var(--accent) 22%, var(--surface-1)); }
+.cal-day.l2 { background: color-mix(in srgb, var(--accent) 42%, var(--surface-1)); }
+.cal-day.l3 { background: color-mix(in srgb, var(--accent) 62%, var(--surface-1)); }
+.cal-day.l4 { background: color-mix(in srgb, var(--accent) 82%, var(--surface-1)); }
+.cal-day.l5 { background: var(--accent); }
+.cal-day.sel { outline: 2px solid var(--text-primary); outline-offset: 1px; }
+.cal-legend { margin-top: 12px; }
+.cal-legend .cal-day { margin: 0 1px; }
+.cal-detail h3 { font-size: 14px; margin: 16px 0 8px; }
+.cal-detail:empty { display: none; }
+

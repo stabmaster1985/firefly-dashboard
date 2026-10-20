@@ -892,9 +892,8 @@ async function detail(view, { period, params, id, dimKey }) {
     if (!items.length) return (el.innerHTML = '<div class="empty">Keine Buchungen im Zeitraum.</div>');
     const total = sum(items, (x) => x.value);
     const max = items[0].value;
-    const op = kind === 'income' ? 'source_account_is' : 'destination_account_is';
     el.innerHTML = `<div class="bars scroll">${items
-      .map((g) => `<div class="bar-row"><a class="name" href="#/buchungen?q=${encodeURIComponent(`${op}:"${g.name}"`)}" title="${esc(g.name)}">${esc(g.name)}</a>
+      .map((g) => `<div class="bar-row"><a class="name" href="#/empfaenger/${encodeURIComponent(g.name)}" title="${esc(g.name)}">${esc(g.name)}</a>
         <div class="track"><div class="fill" style="width:${(g.value / max) * 100}%"></div></div>
         <div class="val">${money(g.value, code)}<small>${g.count}× · ${percent(g.value / total)}</small></div></div>`)
       .join('')}</div>`;

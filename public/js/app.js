@@ -9,6 +9,7 @@ import { actions, versionBadge } from './actions.js';
 import { yearReview } from './year.js';
 import { lab } from './lab.js';
 import { check } from './check.js';
+import { partyDetail } from './party.js';
 import { applyCardFilter } from './common.js';
 import { destroyCharts } from './charts.js';
 import { PERIODS, SALARY_PERIODS, periodById, customPeriodId, parseDate, isoDate, debounce, storage, store, esc, payday } from './util.js';
@@ -29,6 +30,7 @@ const DETAIL = {
   kategorien: { view: categoryDetail, title: 'Kategorie', nav: 'categories' },
   tags: { view: tagDetail, title: 'Tag', nav: 'tags' },
   konten: { view: accountDetail, title: 'Konto', nav: 'accounts' },
+  empfaenger: { view: partyDetail, title: 'Empfänger', nav: 'transactions', noPeriod: true },
 };
 
 const viewEl = document.getElementById('view');
@@ -297,8 +299,8 @@ async function updateSearch() {
   const groups = [
     ['Kategorien', find(idx.categories, (c) => c.name).slice(0, 6).map((c) => [c.name, `#/kategorien/${encodeURIComponent(c.id)}`, 'Analyse'])],
     ['Tags', find(idx.tags, (t) => t.name).slice(0, 4).map((t) => [t.name, `#/tags/${encodeURIComponent(t.id)}`, 'Analyse'])],
-    ['Empfänger', find(idx.payees).slice(0, 5).map((n) => [n, q('destination_account_is', n), 'Buchungen'])],
-    ['Zahler', find(idx.payers).slice(0, 3).map((n) => [n, q('source_account_is', n), 'Buchungen'])],
+    ['Empfänger', find(idx.payees).slice(0, 5).map((n) => [n, `#/empfaenger/${encodeURIComponent(n)}`, 'Analyse'])],
+    ['Zahler', find(idx.payers).slice(0, 3).map((n) => [n, `#/empfaenger/${encodeURIComponent(n)}`, 'Analyse'])],
     ['Konten', find(idx.assets).slice(0, 3).map((n) => [n, q('account_is', n), 'Buchungen'])],
   ].filter(([, items]) => items.length);
   const fulltext = [`Alle Buchungen mit „${term}“`, `#/buchungen?q=${encodeURIComponent(term)}`, 'Volltext'];

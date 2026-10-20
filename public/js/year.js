@@ -3,7 +3,7 @@
 
 import * as api from './api.js';
 import { barChart, legend, seriesColor } from './charts.js';
-import { money, percent, esc, fmtDate, today } from './util.js';
+import { money, percent, esc, fmtDate, today, isoDate, addDays } from './util.js';
 import { skeleton, fill, card, stat, sum, mainCurrency, counterparty, txAttrs, bindTxDetails } from './common.js';
 import { categoryTotals, delta } from './categories.js';
 import { loadRecurring } from './recurring.js';
@@ -38,6 +38,7 @@ export async function yearReview(view, { params }) {
       <section class="card span-3" id="y-avg"></section>
       ${card('y-months', 'Monat für Monat', { span: 'span-8', meta: String(year) })}
       ${card('y-high', 'Highlights', { span: 'span-4' })}
+      ${card('y-cal', 'Ausgaben-Kalender', { meta: '<span id="y-cal-meta"></span>' })}
       ${card('y-share', 'Wohin das Geld ging', { meta: String(year) })}
       ${card('y-cats', `Kategorien ${year} vs. ${year - 1}`, { filter: true })}
       ${card('y-top', 'Größte Ausgaben', { span: 'span-7', filter: true })}
@@ -143,6 +144,8 @@ export async function yearReview(view, { params }) {
     bindTxDetails(el, (i) => top[Number(i)]?.t);
   }, skeleton(6));
 
+  fill($('y-cal'), () => txs, (el, items) => calendar(el, items, year, end), skeleton(3, 30));
+
   fill($('y-subs'), () => loadRecurring('expense'), (el, { items }) => {
     const active = items.filter((r) => r.active);
     if (!active.length) return (el.innerHTML = '<div class="empty">Keine regelmäßigen Zahlungen erkannt.</div>');
@@ -153,4 +156,89 @@ export async function yearReview(view, { params }) {
         <div style="min-width:0"><div class="title">${esc(r.name)}</div><div class="subtitle">${esc(r.rhythm.label)} · ${money(r.amount, r.code)}</div></div>
         <div class="amount">${money(r.perYear, r.code)}</div></div>`).join('')}</div>`;
   }, skeleton(5));
+}
+
+// ---------------------------------------------------------------------------
+// Ausgaben-Kalender: ein Feld pro Tag, je dunkler, desto mehr ausgegeben
+
+const WD = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+function calendar(el, items, year, end) {
+  const code = mainCurrency(items);
+  const byDay = new Map();
+  for (const t of items.filter((x) => x.currency_code === code)) {
+    const key = String(t.date).slice(0, 10);
+    const d = byDay.get(key) || { sum: 0, list: [] };
+    d.sum += t.amount;
+    d.list.push(t);
+    byDay.set(key, d);
+  }
+  // Stufen nach Quantilen der Tage mit Ausgaben – einzelne Großausgaben drücken so nicht alles ins Helle
+  const sums = [...byDay.values()].map((d) => d.sum).sort((a, b) => a - b);
+  const q = (p) => sums[Math.min(sums.length - 1, Math.floor(p * sums.length))] ?? 0;
+  const steps = [q(0.25), q(0.5), q(0.75), q(0.93)];
+  const level = (v) => (v <= 0 ? 0 : 1 + steps.filter((s) => v > s).length);
+
+  const first = new Date(year, 0, 1);
+  const last = new Date(year, 11, 31);
+  const gridStart = addDays(first, -((first.getDay() + 6) % 7)); // Montag davor
+  const cells = [];
+  const monthCols = [];
+  let freeDays = 0;
+  let days = 0;
+  const weekday = [0, 0, 0, 0, 0, 0, 0];
+  const weekdayN = [0, 0, 0, 0, 0, 0, 0];
+  for (let d = gridStart, i = 0; d <= last; d = addDays(d, 1), i++) {
+    const key = isoDate(d);
+    const inYear = d.getFullYear() === year;
+    const future = d > end;
+    if (inYear && d.getDate() === 1) monthCols.push([Math.floor(i / 7), fmtDate(d, { month: 'short' })]);
+    if (!inYear || future) {
+      cells.push(`<i class="cal-day cal-out${future && inYear ? ' cal-future' : ''}"></i>`);
+      continue;
+    }
+    const v = byDay.get(key)?.sum || 0;
+    days += 1;
+    if (!v) freeDays += 1;
+    const wd = (d.getDay() + 6) % 7;
+    weekday[wd] += v;
+    weekdayN[wd] += 1;
+    const tip = `${WD[wd]}, ${fmtDate(d)}: ${v ? `${money(v, code)} (${byDay.get(key).list.length} Buchung${byDay.get(key).list.length === 1 ? '' : 'en'})` : 'keine Ausgaben'}`;
+    cells.push(`<button type="button" class="cal-day l${level(v)}" data-day="${key}" data-tip="${esc(tip)}" aria-label="${esc(tip)}"></button>`);
+  }
+  const weeks = Math.ceil(cells.length / 7);
+  const top = [...byDay.entries()].sort((a, b) => b[1].sum - a[1].sum)[0];
+  const total = sum([...byDay.values()], (d) => d.sum);
+  const avgWd = (idx) => sum(idx, (i) => weekday[i]) / Math.max(1, sum(idx, (i) => weekdayN[i]));
+  el.closest('.card').querySelector('#y-cal-meta').textContent = `${days} Tage · ${freeDays} ohne Ausgaben`;
+  el.innerHTML = `<div class="cal-wrap"><div class="cal" style="--weeks:${weeks}">
+      <div class="cal-months">${monthCols.map(([col, label]) => `<span style="grid-column:${col + 1}">${esc(label)}</span>`).join('')}</div>
+      <div class="cal-wd">${WD.map((w, i) => `<span>${i % 2 ? '' : w}</span>`).join('')}</div>
+      <div class="cal-grid">${cells.join('')}</div>
+    </div></div>
+    <div class="legend cal-legend">
+      <span>weniger ${[0, 1, 2, 3, 4, 5].map((l) => `<i class="cal-day l${l}"></i>`).join('')} mehr</span>
+      <span>Ø pro Tag <b>&nbsp;${money(total / Math.max(1, days), code)}</b></span>
+      <span>Werktags Ø <b>&nbsp;${money(avgWd([0, 1, 2, 3, 4]), code)}</b></span>
+      <span>Wochenende Ø <b>&nbsp;${money(avgWd([5, 6]), code)}</b></span>
+      ${top ? `<span>Teuerster Tag <b>&nbsp;${fmtDate(top[0])}: ${money(top[1].sum, code)}</b></span>` : ''}
+    </div>
+    <div class="cal-detail" id="y-cal-day"></div>`;
+
+  const detail = el.querySelector('#y-cal-day');
+  let rows = [];
+  bindTxDetails(detail, (i) => rows[Number(i)]);
+  el.querySelector('.cal-grid').addEventListener('click', (e) => {
+    const cell = e.target.closest('[data-day]');
+    if (!cell) return;
+    el.querySelectorAll('.cal-day.sel').forEach((c) => c.classList.remove('sel'));
+    cell.classList.add('sel');
+    const day = byDay.get(cell.dataset.day);
+    rows = day ? [...day.list].sort((a, b) => b.amount - a.amount) : [];
+    detail.innerHTML = `<h3>${fmtDate(cell.dataset.day, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}${day ? ` · ${money(day.sum, code)}` : ''}</h3>${rows.length
+      ? `<div class="table-wrap"><table><tbody>${rows.map((t, i) => `<tr ${txAttrs(i)}>
+          <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(counterparty(t))}${t.category_name ? ` · ${esc(t.category_name)}` : ''}</div></td>
+          <td class="num">${money(t.amount, t.currency_code)}</td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="empty">Keine Ausgaben an diesem Tag.</div>'}`;
+  });
 }

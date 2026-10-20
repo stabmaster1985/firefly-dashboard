@@ -97,9 +97,10 @@ export function fireflyTxUrl(t, mode = 'show') {
 
 /** Detailliste einer Buchung (alle vorhandenen Felder) mit Links in Firefly. */
 export function txDetails(t) {
-  const account = (name, id, type, op) => {
+  const account = (name, id, type) => {
     if (!name) return null;
-    const href = id && OWN_ACCOUNT.test(type || '') ? `#/konten/${encodeURIComponent(id)}` : `#/buchungen?q=${encodeURIComponent(`${op}:"${name}"`)}`;
+    // eigene Konten → Kontoseite, sonst die Seite des Empfängers/Zahlers
+    const href = id && OWN_ACCOUNT.test(type || '') ? `#/konten/${encodeURIComponent(id)}` : `#/empfaenger/${encodeURIComponent(name)}`;
     return `<a class="plain" href="${href}">${esc(name)}</a>`;
   };
   const iban = (v) => (v ? ` <span class="muted">${esc(v)}</span>` : '');
@@ -110,8 +111,8 @@ export function txDetails(t) {
     ['Datum', `${esc(fmtDate(t.date))}${time && time !== '00:00' ? ` ${time}` : ''}`],
     ['Art', esc(TX_TYPES[t.type] || t.type)],
     ['Betrag', `${signedAmount(t)}${t.foreign_amount && Number(t.foreign_amount) ? ` <span class="muted">(${money(Math.abs(Number(t.foreign_amount)), t.foreign_currency_code)})</span>` : ''}`],
-    ['Von', t.source_name && `${account(t.source_name, t.source_id, t.source_type, 'source_account_is')}${iban(t.source_iban)}`],
-    ['An', t.destination_name && `${account(t.destination_name, t.destination_id, t.destination_type, 'destination_account_is')}${iban(t.destination_iban)}`],
+    ['Von', t.source_name && `${account(t.source_name, t.source_id, t.source_type)}${iban(t.source_iban)}`],
+    ['An', t.destination_name && `${account(t.destination_name, t.destination_id, t.destination_type)}${iban(t.destination_iban)}`],
     ['Kategorie', t.category_name
       ? `<a class="plain" href="#/kategorien/${encodeURIComponent(t.category_id ?? '0')}">${esc(t.category_name)}</a>`
       : t.type === 'withdrawal' ? '<a class="plain" href="#/kategorien/0">Ohne Kategorie</a>' : null],

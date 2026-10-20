@@ -44,7 +44,8 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   Buchung, Top-Empfänger und alle Buchungen der Kategorie (nach Datum oder Betrag)
 - **Buchungen** – Liste mit Kategorie-Filter und Volltextsuche (inkl. Firefly-Suchoperatoren wie
   `category_is:"Lebensmittel"` oder `amount_more:100`), Filter nach Art, Details per Klick
-- **Konten** – Kontostände und Verlauf als Liniendiagramm, Verbindlichkeiten; Klick auf ein
+- **Konten** – Kontostände und Verlauf als Liniendiagramm, **Vermögensverlauf** über 1–10 Jahre
+  (Monatsendstände, Veränderung, Ø pro Monat, Höchststand), Verbindlichkeiten; Klick auf ein
   Konto öffnet die **Kontoseite** mit Saldo-Verlauf, Ein-/Ausgängen je Monat, Verteilung nach
   Kategorie und allen Buchungen (Details per Klick)
 - **Ziele je Kategorie** – Monatsziel direkt im Dashboard festlegen (unabhängig von
@@ -69,7 +70,12 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
     eingestuft als sicher / wahrscheinlich / möglich; „Kein Duplikat“ blendet ein Paar aus
   - beides erscheint auch unter **Hinweise** in der Übersicht
 - **Jahresrückblick** – Sparquote, Monat für Monat, Highlights, Kategorien im Vergleich zum
-  Vorjahr, größte Ausgaben, Abo-Kosten pro Jahr
+  Vorjahr, größte Ausgaben, Abo-Kosten pro Jahr und ein **Ausgaben-Kalender** (ein Feld pro
+  Tag, je dunkler, desto mehr ausgegeben; Klick zeigt die Buchungen des Tages, dazu Ø pro Tag,
+  Werktag vs. Wochenende und der teuerste Tag)
+- **Empfänger-Seite** – alles zu einem Händler oder Zahler (z. B. „Amazon“): Ausgaben der letzten
+  12 Monate im Vergleich zu davor, Monatsverlauf, Summe pro Jahr, Kategorien und alle Buchungen.
+  Erreichbar über die Suche, „Top-Empfänger“ und die Buchungsdetails
 - **Als App aufs Handy** – installierbar (Startbildschirm), startet sofort und zeigt ohne
   Verbindung die zuletzt geladenen Daten
 - **Automationen** – eigene Knöpfe für Webhooks, z. B. **n8n-Workflows**: in der Oberfläche

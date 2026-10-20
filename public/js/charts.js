@@ -144,14 +144,14 @@ export function barChart(canvas, { labels, series, currency = 'EUR', stacked = f
 }
 
 /** Linien für Kontostände über die Zeit. */
-export function lineChart(canvas, { labels, series, currency = 'EUR' }) {
+export function lineChart(canvas, { labels, series, currency = 'EUR', format = fmtDateShort }) {
   const options = baseOptions(currency);
   options.elements = { point: { radius: 0, hoverRadius: 5, hitRadius: 12, hoverBorderWidth: 2 } };
-  options.plugins.tooltip.callbacks.title = (items) => fmtDateShort(labels[items[0].dataIndex]);
+  options.plugins.tooltip.callbacks.title = (items) => format(labels[items[0].dataIndex]);
   return create(canvas, {
     type: 'line',
     data: {
-      labels: labels.map(fmtDateShort),
+      labels: labels.map(format),
       datasets: series.map((s) => ({
         label: s.label,
         data: s.data,
