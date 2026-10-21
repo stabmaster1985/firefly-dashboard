@@ -11,6 +11,10 @@ import { shareStrip } from './dist.js';
 
 const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
 
+/**
+ * onChange(full): full = die Buchungen müssen neu durchgerechnet werden (KI-Ergebnisse,
+ * Entscheidungen, Ebene oder Bestand geändert); sonst reicht es, diese Karte neu zu zeichnen.
+ */
 export function createAiPanel({ el, txs, knownCategories, code, from, onChange }) {
   let aiData = { labels: {}, scheme: null, job: null, settings: {}, decisions: { categories: {}, tags: {} }, pool: null };
   let aiLayer = { on: false, min: 80 };
@@ -226,12 +230,17 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
   }
 
   let polling = null;
+  let lastSig = JSON.stringify([null, false]);
   async function refreshAi() {
     aiData = await fetch('/local/ai/status').then((r) => r.json()).catch(() => aiData);
     if (!el.isConnected) return clearInterval(polling);
     aiLayer = aiData.settings?.layer || aiLayer;
     pool = { categories: poolSet('categories'), tags: poolSet('tags') };
-    onChange();
+    // nur neu durchrechnen, wenn sich etwas geändert hat, das auf die Buchungen wirkt
+    const sig = JSON.stringify([aiData.pool, aiLayer.on && [aiLayer.min, aiData.decisions, aiData.labels]]);
+    const full = sig !== lastSig;
+    lastSig = sig;
+    onChange(full);
     const running = (aiData.job && !aiData.job.finished) || aiData.test?.running;
     if (running && !polling) polling = setInterval(refreshAi, 1500);
     if (!running && polling) {
@@ -291,7 +300,8 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
     if (!e.target.matches('[data-ai-layer], [data-ai-min]')) return;
     aiLayer = e.target.matches('[data-ai-layer]') ? { ...aiLayer, on: e.target.checked } : { ...aiLayer, min: Number(e.target.value) };
     fetch('/local/ai/settings', { method: 'PUT', headers, body: JSON.stringify({ layer: aiLayer }) }).catch(() => {});
-    onChange();
+    lastSig = JSON.stringify([aiData.pool, aiLayer.on && [aiLayer.min, aiData.decisions, aiData.labels]]);
+    onChange(true);
   });
   el.addEventListener('submit', async (e) => {
     e.preventDefault();

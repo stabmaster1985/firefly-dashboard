@@ -180,13 +180,17 @@ export async function lab(view, { params }) {
     },
   });
 
-  const ai = createAiPanel({ el: $('l-ai'), txs, knownCategories, code, from, onChange: () => view.isConnected && render() });
+  let lastResults = null;
+  // KI-Karte: nur bei geänderten KI-Ergebnissen alles neu rechnen, sonst nur die Karte zeichnen
+  const ai = createAiPanel({ el: $('l-ai'), txs, knownCategories, code, from,
+    onChange: (full) => view.isConnected && (full || !lastResults ? render() : ai.render(lastResults)) });
 
   /** Alle Buchungen mit den aktuellen Regeln (und ggf. der KI-Ebene) durchrechnen. */
   const compute = () => txs.map((t) => ({ t, r: applyRules(t, rules, { autoTags, recurringParties, ai: ai.aiFor }) }));
 
   function render() {
     const results = compute();
+    lastResults = results;
     const changed = results.filter((x) => x.r.changed);
     const tagged = results.filter((x) => x.r.tags.length);
     const noneBefore = results.filter((x) => !x.t.category_name).length;

@@ -6,9 +6,9 @@
 
 import * as api from './api.js';
 import { money, esc, fmtDate, addDays } from './util.js';
-import { card, counterparty } from './common.js';
+import { card, counterparty, fireflyTxUrl } from './common.js';
 import { actionFor, runAction } from './txedit.js';
-import { decodeCsv, readRows, matchRows, changeFor } from './csvmatch.js';
+import { decodeCsv, readRows, matchRows, changeFor, statusFor } from './csvmatch.js';
 
 const STATUS = {
   neu: ['Empfänger fehlt – wird ergänzt', 'good'],
@@ -82,13 +82,22 @@ export async function csvSync(view) {
     }));
     results = matchRows(unique, txs);
     picked.clear();
-    results.forEach((r, i) => r.status === 'neu' && picked.add(i));
+    // vorgewählt nur, was sicher zugeordnet ist (Betrag, Datum und Text gleich)
+    results.forEach((r, i) => r.status === 'neu' && r.sure && picked.add(i));
     filter = 'neu';
     info.innerHTML = `${notes.join('<br>')}<br>${unique.length} Zeilen · ${txs.length} Firefly-Buchungen im Zeitraum ${fmtDate(dates[0])} – ${fmtDate(dates.at(-1))}`;
     render();
   };
 
   const count = (s) => results.filter((r) => r.status === s).length;
+  /** Kurzansicht einer Firefly-Buchung: so steht sie heute dort. */
+  const fireflyBox = (t) => {
+    const url = fireflyTxUrl(t);
+    return `<div class="ff-box"><div><span class="sync-date">${fmtDate(t.date)}</span> ${esc(t.description || '–')}
+        ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener" class="ff-link" title="In Firefly öffnen">↗</a>` : ''}</div>
+      <div class="flow">Empfänger bisher: <b>${esc(counterparty(t) || '–')}</b> · Kategorie: ${esc(t.category_name || 'ohne')} · Nr. ${esc(t.transaction_journal_id)}</div>
+      ${t.notes ? `<div class="flow">Notiz: ${esc(String(t.notes).slice(0, 90))}</div>` : ''}</div>`;
+  };
   function render() {
     const el = $('s-result');
     if (!results.length) {
@@ -110,15 +119,19 @@ export async function csvSync(view) {
         ${count('abweichend') ? `<label class="check"><input type="checkbox" data-opt="overwrite" ${overwrite ? 'checked' : ''}> auch abweichende Empfänger überschreiben (${count('abweichend')})</label>` : ''}
         ${['neu', 'abweichend'].includes(filter) ? `<button class="link-btn" data-pick="all">alle angezeigten auswählen</button> · <button class="link-btn" data-pick="none">keine</button>` : ''}
       </div>
-      <div class="table-wrap scroll"><table><thead><tr><th></th><th>Datum</th><th>Name laut CSV</th><th class="hide-sm">in Firefly</th><th class="hide-sm">Text</th><th class="num">Betrag</th><th>Status</th></tr></thead><tbody>
-      ${rows.slice(0, MAX_ROWS).map((r) => `<tr style="cursor:default">
+      <div class="table-wrap scroll"><table class="sync-table"><thead><tr><th></th><th>Laut CSV</th><th>Firefly-Buchung, die geändert würde</th><th class="num">Betrag</th><th>Ergebnis</th></tr></thead><tbody>
+      ${rows.slice(0, MAX_ROWS).map((r) => `<tr style="cursor:default" class="${r.t && !r.sure && r.status !== 'erledigt' ? 'check-me' : ''}">
         <td>${r.t && ['neu', 'abweichend'].includes(r.status) ? `<input type="checkbox" data-row="${r.i}" ${picked.has(r.i) ? 'checked' : ''} aria-label="übertragen">` : ''}</td>
-        <td class="date">${fmtDate(r.row.date)}</td>
-        <td><b>${esc(r.row.name || '–')}</b>${r.row.iban ? `<div class="flow">${esc(r.row.iban)}</div>` : ''}</td>
-        <td class="hide-sm">${r.t ? esc(counterparty(r.t)) : '<span class="muted">–</span>'}</td>
-        <td class="hide-sm"><div class="flow">${esc(r.row.text)}${r.row.purpose ? ` · ${esc(r.row.purpose.slice(0, 70))}` : ''}</div></td>
+        <td><div class="sync-date">${fmtDate(r.row.date)}</div><b>${esc(r.row.name || '–')}</b>${r.row.iban ? `<div class="flow">${esc(r.row.iban)}</div>` : ''}
+          <div class="flow">${esc(r.row.text)}${r.row.purpose ? ` · ${esc(r.row.purpose.slice(0, 90))}` : ''}</div><div class="flow">${esc(r.row.file)}:${r.row.line}</div></td>
+        <td>${r.t ? `${fireflyBox(r.t)}<div class="sync-how ${r.sure ? 'sure' : 'unsure'}">${r.sure ? '✓' : '⚠'} ${esc(r.how || '')}</div>`
+          : r.candidates?.length ? `<div class="sync-cands"><div class="muted">${r.status === 'mehrdeutig' ? 'Welche dieser Buchungen ist es?' : 'Mögliche Buchungen mit gleichem Betrag (bis 7 Tage daneben):'}</div>
+              ${r.candidates.map((c, k) => `<div class="sync-cand">${fireflyBox(c.t)}${c.used ? '<div class="flow">schon einer anderen CSV-Zeile zugeordnet</div>'
+                : `<button class="btn small" data-choose="${r.i}:${k}">diese nehmen</button>`}</div>`).join('')}</div>`
+            : '<span class="muted">keine Buchung mit gleichem Betrag in der Nähe – vermutlich nie importiert oder in Firefly geändert</span>'}</td>
         <td class="num">${money(r.row.amount)}</td>
-        <td><span class="badge ${STATUS[r.status][1]}" title="${esc(r.reason)}">${STATUS[r.status][0]}</span><div class="flow">${esc(r.row.file)}:${r.row.line}</div></td></tr>`).join('')}
+        <td><span class="badge ${STATUS[r.status][1]}" title="${esc(r.reason)}">${STATUS[r.status][0]}</span>
+          ${['neu', 'abweichend', 'erledigt'].includes(r.status) && r.row.name ? `<div class="flow">Empfänger ${r.status === 'erledigt' ? 'ist jetzt' : 'wird'}: <b>${esc(r.row.name)}</b></div>` : ''}</td></tr>`).join('')}
       </tbody></table></div>
       ${rows.length > MAX_ROWS ? `<div class="legend" style="margin-top:8px"><span>Die ersten ${MAX_ROWS} von ${rows.length} (Auswahl gilt für alle)</span></div>` : ''}
       <div class="sync-run">
@@ -184,6 +197,17 @@ export async function csvSync(view) {
         else picked.delete(i);
       });
       if (p.dataset.pick === 'all' && filter === 'abweichend') overwrite = true;
+      return render();
+    }
+    const choose = e.target.closest('[data-choose]');
+    if (choose) {
+      // von Hand zugeordnet: Kandidat übernehmen, für andere Zeilen sperren
+      const [i, k] = choose.dataset.choose.split(':').map(Number);
+      const r = results[i];
+      const t = r.candidates[k].t;
+      Object.assign(r, { t, how: 'von dir ausgewählt', sure: true, candidates: null }, statusFor(r.row, t));
+      results.forEach((x) => x.candidates?.forEach((c) => c.t === t && (c.used = true)));
+      if (r.status === 'neu') picked.add(i);
       return render();
     }
     if (e.target.id === 's-run') transfer(e.target);

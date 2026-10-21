@@ -129,12 +129,23 @@ export const hasNoParty = (t) => {
   return !p || /^\(.*\)$/.test(p) || !/\p{L}/u.test(cleanText(p));
 };
 
+/** Status einer Zeile, wenn sie dieser Firefly-Buchung zugeordnet ist. */
+export function statusFor(row, t) {
+  if (t.type === 'transfer') return { status: 'umbuchung', reason: 'Umbuchung zwischen eigenen Konten – bleibt, wie sie ist' };
+  if (!row.name) return { status: 'ohne-name', reason: 'in der CSV steht kein Name' };
+  if (hasNoParty(t)) return { status: 'neu', reason: 'Firefly kennt keinen Empfänger' };
+  if (norm(counterpartyOf(t)) === norm(row.name)) return { status: 'vorhanden', reason: 'steht schon so in Firefly' };
+  return { status: 'abweichend', reason: `Firefly: „${counterpartyOf(t)}“` };
+}
+
 /**
  * CSV-Zeilen den Firefly-Buchungen zuordnen. Jede Buchung höchstens einmal.
  * Reihenfolge: gleicher Betrag + Datum (Valuta, sonst Buchungstag) + gleicher
  * Text; dann Betrag + Datum; dann ±3 Tage nur mit gleichem Text.
- * Ergebnis je Zeile: { row, t, status, reason }
+ * Ergebnis je Zeile: { row, t, status, reason, how, sure, candidates }
  *   status: neu | abweichend | vorhanden | ohne-name | umbuchung | mehrdeutig | nicht-gefunden
+ *   how: worüber zugeordnet wurde; sure: Betrag, Datum und Text stimmen überein
+ *   candidates: bei „mehrdeutig“/„nicht gefunden“ mögliche Buchungen zum Auswählen
  */
 export function matchRows(rows, txs) {
   const byAmount = new Map();
@@ -158,44 +169,52 @@ export function matchRows(rows, txs) {
     const own = String((t.type === 'deposit' ? t.destination_iban : t.source_iban) || '').replace(/\s+/g, '');
     return !own || own === row.own;
   };
-  const results = [];
   // Zeilen mit eindeutigem Text zuerst – dann bleiben für gleichartige Zeilen die passenden übrig
   const order = rows.map((row, i) => ({ row, i })).sort((a, b) => Number(Boolean(b.row.purpose)) - Number(Boolean(a.row.purpose)));
   const out = new Array(rows.length);
+  const fits = (row, t) => ownOk(row, t) && (t.type === 'transfer' || sign(t) === Math.sign(row.amount));
+  const near = (row, days) => (byAmount.get(cents(row.amount)) || []).filter((t) => fits(row, t) && Math.abs(dayNum(t.date) - dayNum(row.date)) <= days)
+    .sort((x, y) => Math.abs(dayNum(x.date) - dayNum(row.date)) - Math.abs(dayNum(y.date) - dayNum(row.date)));
   for (const { row, i } of order) {
-    const pool = (byAmount.get(cents(row.amount)) || []).filter((t) => !used.has(idOf(t)) && ownOk(row, t)
-      && (t.type === 'transfer' || sign(t) === Math.sign(row.amount)));
+    const pool = (byAmount.get(cents(row.amount)) || []).filter((t) => !used.has(idOf(t)) && fits(row, t));
     const d = dayNum(row.date);
     const b = dayNum(row.book);
     const onDay = pool.filter((t) => [d, b].includes(dayNum(t.date)) || (t.book_date && [d, b].includes(dayNum(t.book_date))));
     let found = onDay.filter((t) => sameText(row, t));
-    if (!found.length) found = onDay.length === 1 ? onDay : [];
+    let how = 'Betrag, Datum und Verwendungszweck gleich';
+    if (!found.length && onDay.length === 1) {
+      found = onDay;
+      how = 'Betrag und Datum gleich, Text weicht ab – bitte prüfen';
+    }
     if (!found.length && onDay.length > 1) {
-      out[i] = { row, t: null, status: 'mehrdeutig', reason: `${onDay.length} Buchungen mit gleichem Betrag und Datum` };
+      out[i] = { row, t: null, status: 'mehrdeutig', reason: `${onDay.length} Buchungen mit gleichem Betrag und Datum – bitte wählen`, candidates: onDay };
       continue;
     }
-    if (!found.length) found = pool.filter((t) => Math.abs(dayNum(t.date) - d) <= 3 && sameText(row, t));
+    if (!found.length) {
+      found = pool.filter((t) => Math.abs(dayNum(t.date) - d) <= 3 && sameText(row, t));
+      how = 'Betrag und Verwendungszweck gleich, Datum bis 3 Tage verschoben';
+    }
     if (found.length > 1) {
       // gleiche Buchungen (z. B. zweimal 2,50 € beim Bäcker): in Reihenfolge zuordnen
       const identical = found.every((t) => norm(t.notes) === norm(found[0].notes) && norm(t.description) === norm(found[0].description));
       if (!identical) {
-        out[i] = { row, t: null, status: 'mehrdeutig', reason: `${found.length} passende Buchungen` };
+        out[i] = { row, t: null, status: 'mehrdeutig', reason: `${found.length} passende Buchungen – bitte wählen`, candidates: found };
         continue;
       }
       found = [found.sort((x, y) => Number(x.transaction_journal_id) - Number(y.transaction_journal_id))[0]];
+      how += ' (gleichartige Buchungen der Reihe nach)';
     }
     const t = found[0];
     if (!t) {
-      out[i] = { row, t: null, status: 'nicht-gefunden', reason: 'keine Buchung mit diesem Betrag und Datum' };
+      // Vorschläge zum Auswählen: gleicher Betrag bis 7 Tage daneben
+      out[i] = { row, t: null, status: 'nicht-gefunden', reason: 'keine Buchung mit diesem Betrag und Datum', candidates: near(row, 7).slice(0, 5) };
       continue;
     }
     used.add(idOf(t));
-    if (t.type === 'transfer') out[i] = { row, t, status: 'umbuchung', reason: 'Umbuchung zwischen eigenen Konten – bleibt, wie sie ist' };
-    else if (!row.name) out[i] = { row, t, status: 'ohne-name', reason: 'in der CSV steht kein Name' };
-    else if (hasNoParty(t)) out[i] = { row, t, status: 'neu', reason: 'Firefly kennt keinen Empfänger' };
-    else if (norm(counterpartyOf(t)) === norm(row.name)) out[i] = { row, t, status: 'vorhanden', reason: 'steht schon so in Firefly' };
-    else out[i] = { row, t, status: 'abweichend', reason: `Firefly: „${counterpartyOf(t)}“` };
+    out[i] = { row, t, how, sure: !how.includes('bitte prüfen'), ...statusFor(row, t) };
   }
+  // Kandidaten, die inzwischen anderen Zeilen zugeordnet sind, kennzeichnen
+  for (const r of out) if (r.candidates) r.candidates = r.candidates.map((t) => ({ t, used: used.has(idOf(t)) }));
   return out;
 }
 

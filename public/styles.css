@@ -962,3 +962,13 @@ button.cal-day { cursor: pointer; }
 .csv-teaser > div { flex: 1 1 320px; min-width: 0; }
 .csv-teaser p { margin: 6px 0 0; font-size: 14px; line-height: 1.5; }
 .csv-teaser h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.sync-table td { vertical-align: top; }
+.sync-date { font-variant-numeric: tabular-nums; color: var(--text-secondary); font-size: 13px; }
+.ff-box { padding: 6px 8px; border-radius: 8px; background: var(--surface-2); font-size: 13px; }
+.ff-link { margin-left: 4px; text-decoration: none; }
+.sync-how { margin-top: 4px; font-size: 12px; }
+.sync-how.sure { color: var(--positive); }
+.sync-how.unsure { color: #9a6700; }
+.sync-cands { display: grid; gap: 6px; }
+.sync-cand { display: grid; gap: 4px; justify-items: start; }
+.sync-table tr.check-me td { background: color-mix(in srgb, var(--status-warning) 8%, transparent); }
