@@ -982,3 +982,5 @@ button.cal-day { cursor: pointer; }
 .sync-month-rows table { width: 100%; }
 .sync-month-rows .badge { margin-top: 4px; }
 .sync-months .mini-bar i { background: var(--status-warning); }
+.sync-set { display: inline-flex; gap: 6px; align-items: center; }
+.sync-set select { font: inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary); }

@@ -5,7 +5,7 @@
 // (n8n-Workflow, typ „gegenkonto_setzen“). Kategorien bleiben unverändert.
 
 import * as api from './api.js';
-import { money, esc, fmtDate, addDays } from './util.js';
+import { money, esc, fmtDate, addDays, storage, store } from './util.js';
 import { card, counterparty, fireflyTxUrl, downloadCsv } from './common.js';
 import { actionFor, runAction } from './txedit.js';
 import { decodeCsv, readRows, matchRows, changeFor, statusFor, fingerprints, hasNoParty } from './csvmatch.js';
@@ -28,6 +28,8 @@ const CHUNK_START = 20;
 const CHUNK_MIN = 3;
 const CHUNK_MAX = 60;
 const TARGET_MS = 60_000;
+const SIZES = ['auto', '10', '25', '50', '100', '200'];
+const PARALLEL = ['1', '2', '3', '4'];
 const MAX_ROWS = 600;
 
 export async function csvSync(view) {
@@ -42,6 +44,9 @@ export async function csvSync(view) {
   let filter = 'neu';
   let overwrite = false;
   let withIban = true;
+  // Paketgröße und parallele Pakete – je Browser gemerkt
+  let chunkSetting = SIZES.includes(storage('ffd-sync-size', 'auto')) ? storage('ffd-sync-size', 'auto') : 'auto';
+  let parallel = PARALLEL.includes(storage('ffd-sync-parallel', '1')) ? Number(storage('ffd-sync-parallel', '1')) : 1;
   const picked = new Set(); // Zeilen-Indizes für die Übertragung
   const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
   // Gedächtnis: schon übertragene CSV-Zeilen (Fingerabdruck → Buchung), liegt auf dem Server
@@ -183,7 +188,9 @@ export async function csvSync(view) {
       ${rows.length > MAX_ROWS ? `<div class="legend" style="margin-top:8px"><span>Die ersten ${MAX_ROWS} von ${rows.length} (Auswahl gilt für alle)</span></div>` : ''}
       <div class="sync-run">
         ${action ? `<button class="btn primary" id="s-run"></button>
-          <span class="muted">über „${esc(action.name)}“ – in kleinen Paketen, jedes wird danach in Firefly geprüft</span>`
+          <label class="sync-set">Paketgröße <select data-opt="size">${SIZES.map((v) => `<option value="${v}"${v === chunkSetting ? ' selected' : ''}>${v === 'auto' ? 'automatisch (~1 Min. je Paket)' : `${v} Buchungen`}</option>`).join('')}</select></label>
+          <label class="sync-set">gleichzeitig <select data-opt="parallel">${PARALLEL.map((v) => `<option value="${v}"${Number(v) === parallel ? ' selected' : ''}>${v} Paket${v === '1' ? '' : 'e'}</option>`).join('')}</select></label>
+          <span class="muted">über „${esc(action.name)}“ – jedes Paket wird danach in Firefly geprüft. Mehrere Pakete gleichzeitig sind meist am schnellsten; ein Paket sollte unter 5 Minuten bleiben.</span>`
         : '<span class="muted">Zum Übertragen eine Automation mit Auslöser „Kategorie übernehmen“ anlegen (Workflow n8n/firefly-buchung-bearbeiten.json, Version mit „gegenkonto_setzen“).</span>'}
         <div class="run-out" id="s-out"></div>
       </div>`;
@@ -255,59 +262,66 @@ export async function csvSync(view) {
     stopRequested = false;
     const out = $('s-out');
     const queue = [...list];
-    let size = CHUNK_START;
+    const fixed = chunkSetting !== 'auto';
+    let size = fixed ? Number(chunkSetting) : CHUNK_START;
     let done = 0;
     let failedInARow = 0;
+    let aborted = null;
+    let running = 0;
     const started = Date.now();
     const finish = (r) => {
       r.status = 'erledigt';
       picked.delete(results.indexOf(r));
     };
     const progress = (msg) => {
+      if (aborted) return;
       const left = queue.length;
       const per = done ? (Date.now() - started) / done : 0;
       out.innerHTML = `<div class="progress"><span style="width:${Math.round((done / list.length) * 100)}%"></span></div>
-        <span class="muted">${msg} · ${done} von ${list.length} erledigt${per && left ? ` · noch ca. ${Math.max(1, Math.round((per * left) / 60000))} Min.` : ''} · Paketgröße ${size}</span>
+        <span class="muted">${msg} · ${done} von ${list.length} erledigt${per && left ? ` · noch ca. ${Math.max(1, Math.round((per * (left + running)) / 60000))} Min.` : ''} · Paketgröße ${size}${parallel > 1 ? ` · ${parallel} gleichzeitig` : ''}</span>
         <button class="link-btn" data-stop>Anhalten</button>`;
     };
-    while (queue.length && !stopRequested) {
-      const part = queue.splice(0, size);
-      progress(`Übertrage ${part.length} Buchungen …`);
-      const payload = { typ: 'gegenkonto_setzen', aenderungen: part.map((r) => changeFor(r, { iban: withIban })) };
-      const t0 = Date.now();
-      const res = await runAction(action, { ...payload, daten: payload }).catch((err) => ({ ok: false, response: err.message }));
-      const took = Date.now() - t0;
-      let ok = part;
-      if (!res.ok) {
-        // abgebrochen oder Fehler: n8n hat evtl. trotzdem einen Teil gespeichert → in Firefly nachsehen
-        progress(`Antwort fehlte (${esc(String(res.response || res.status || '').slice(0, 80))}) – prüfe in Firefly, was angekommen ist …`);
-        await new Promise((r) => setTimeout(r, 5000));
-        const checks = [];
-        for (const r of part) checks.push(await isSynced(r));
-        ok = part.filter((_, k) => checks[k]);
-        const missing = part.filter((_, k) => !checks[k]);
-        queue.unshift(...missing); // Rest noch einmal, mit kleineren Paketen
-        size = Math.max(CHUNK_MIN, Math.floor(size / 2));
-        failedInARow = ok.length ? 0 : failedInARow + 1;
-        if (failedInARow >= 3) {
-          ok.forEach(finish);
-          done += ok.length;
-          out.innerHTML = `<span class="badge bad">Abgebrochen</span> <span class="muted">Dreimal hintereinander kam nichts in Firefly an (${esc(String(res.response || res.status || '').slice(0, 160))}). ${done} sind übertragen; die übrigen bleiben ausgewählt – Automation unter „Automationen“ prüfen und erneut starten.</span>`;
-          break;
+    // mehrere „Arbeiter“ holen sich abwechselnd Pakete aus derselben Warteschlange
+    const worker = async () => {
+      while (queue.length && !stopRequested && !aborted) {
+        const part = queue.splice(0, size);
+        running += part.length;
+        progress(`Übertrage ${part.length} Buchungen …`);
+        const payload = { typ: 'gegenkonto_setzen', aenderungen: part.map((r) => changeFor(r, { iban: withIban })) };
+        const t0 = Date.now();
+        const res = await runAction(action, { ...payload, daten: payload }).catch((err) => ({ ok: false, response: err.message }));
+        const took = Date.now() - t0;
+        let ok = part;
+        if (!res.ok) {
+          // abgebrochen oder Fehler: n8n hat evtl. trotzdem einen Teil gespeichert → in Firefly nachsehen
+          progress(`Antwort fehlte (${esc(String(res.response || res.status || '').slice(0, 80))}) – prüfe in Firefly, was angekommen ist …`);
+          await new Promise((r) => setTimeout(r, 5000));
+          const checks = await Promise.all(part.map(isSynced));
+          ok = part.filter((_, k) => checks[k]);
+          queue.unshift(...part.filter((_, k) => !checks[k])); // Rest noch einmal, mit kleineren Paketen
+          size = Math.max(CHUNK_MIN, Math.floor(size / 2));
+          failedInARow = ok.length ? 0 : failedInARow + 1;
+          if (failedInARow >= 3 * parallel) {
+            aborted = String(res.response || res.status || '').slice(0, 160);
+          }
+        } else {
+          failedInARow = 0;
+          // automatisch: Paketgröße an die Laufzeit anpassen (Ziel ~1 Minute je Paket)
+          if (!fixed) size = Math.max(CHUNK_MIN, Math.min(CHUNK_MAX, Math.round(TARGET_MS / Math.max(took / part.length, 200))));
         }
-      } else {
-        failedInARow = 0;
-        // Paketgröße an die Laufzeit anpassen (Ziel ~1 Minute je Paket)
-        const perItem = took / part.length;
-        size = Math.max(CHUNK_MIN, Math.min(CHUNK_MAX, Math.round(TARGET_MS / Math.max(perItem, 200))));
+        running -= part.length;
+        ok.forEach(finish);
+        done += ok.length;
+        if (ok.length) {
+          // merken – bei erneutem Einlesen überspringen
+          await memoryCall('POST', { items: ok.map((r) => ({ fp: r.fp, j: r.t.transaction_journal_id, name: r.row.name })) });
+          renderMemory();
+        }
       }
-      ok.forEach(finish);
-      done += ok.length;
-      if (ok.length) {
-        // merken – bei erneutem Einlesen überspringen
-        await memoryCall('POST', { items: ok.map((r) => ({ fp: r.fp, j: r.t.transaction_journal_id, name: r.row.name })) });
-        renderMemory();
-      }
+    };
+    await Promise.all(Array.from({ length: Math.min(parallel, Math.ceil(list.length / size)) }, worker));
+    if (aborted) {
+      out.innerHTML = `<span class="badge bad">Abgebrochen</span> <span class="muted">Mehrmals hintereinander kam nichts in Firefly an (${esc(aborted)}). ${done} sind übertragen; die übrigen bleiben ausgewählt – Automation unter „Automationen“ prüfen, ggf. kleinere Pakete oder weniger gleichzeitig wählen und erneut starten.</span>`;
     }
     api.forget();
     if (openScan && !openScan.loading) scanOpen(); // „noch nicht umgestellt“ aktualisieren
@@ -373,6 +387,16 @@ export async function csvSync(view) {
       return updateSelection(); // Tabelle nicht neu aufbauen
     }
     if (e.target.id === 's-all') return pickVisible(e.target.checked);
+    if (e.target.dataset.opt === 'size') {
+      chunkSetting = e.target.value;
+      store('ffd-sync-size', chunkSetting);
+      return;
+    }
+    if (e.target.dataset.opt === 'parallel') {
+      parallel = Number(e.target.value);
+      store('ffd-sync-parallel', String(parallel));
+      return;
+    }
     if (e.target.dataset.opt === 'iban') {
       withIban = e.target.checked;
       return;

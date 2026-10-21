@@ -390,7 +390,10 @@ wählen (gern alle auf einmal, überlappende Zeilen zählen nur einmal):
   Automation „Kategorie übernehmen“ (Start mit 20, danach so bemessen, dass ein Paket rund eine
   Minute dauert – n8n antwortet erst am Ende, nach 5 Minuten bricht die Verbindung ab). Kommt
   keine Antwort, sieht das Dashboard in Firefly nach, was trotzdem gespeichert wurde, und schickt
-  nur den Rest erneut, mit kleineren Paketen. „Anhalten“ stoppt nach dem laufenden Paket
+  nur den Rest erneut, mit kleineren Paketen. **Paketgröße** (automatisch oder 10–200) und
+  **gleichzeitig** (1–4 Pakete parallel) sind neben dem Knopf einstellbar und werden im Browser
+  gemerkt – mehrere Pakete parallel bringen meist am meisten, weil n8n die Buchungen eines
+  Pakets nacheinander speichert. „Anhalten“ stoppt nach den laufenden Paketen
   (`typ: gegenkonto_setzen`, je Änderung `name`, ggf. `iban`/`bic`,
   `art`). Der Workflow `n8n/firefly-buchung-bearbeiten.json` setzt Name/IBAN des Gegenkontos;
   Firefly ordnet das Konto zu oder legt es an. **Kategorien, Tags, Notizen und Beschreibung

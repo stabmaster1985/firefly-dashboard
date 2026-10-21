@@ -667,6 +667,15 @@ http
             res.writeHead(504, { 'Content-Type': 'application/json' });
             return res.end(JSON.stringify({ message: 'Gateway Timeout' }));
           }
+          // MOCK_N8N_MS: so lange braucht „n8n“ je Buchung (wie eine Firefly-Anfrage je Buchung)
+          const wait = Number(process.env.MOCK_N8N_MS || 0) * list.length;
+          if (wait) {
+            setTimeout(() => {
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ ok: true, anzahl: list.length }));
+            }, wait);
+            return;
+          }
         }
         const fail = url.pathname.endsWith('/fehler');
         res.writeHead(fail ? 500 : 200, { 'Content-Type': 'application/json' });
