@@ -73,6 +73,14 @@ export const PAGES = {
     firefly: 'Nur lesen. Doppelte löschst du in Firefly selbst („In Firefly öffnen“ in den Details). Der Import-Knopf startet deinen n8n-Import-Workflow – was der in Firefly tut, bestimmt der Workflow.',
     cards: ['c-import', 'c-backup', 'c-dup'],
   },
+  csvsync: {
+    title: 'CSV-Abgleich',
+    what: 'Fehlende Empfänger aus den Original-CSV-Dateien der Bank nachtragen – z. B. wenn „Name Zahlungsbeteiligter“ beim Import nicht als Gegenkonto zugeordnet war und in Firefly nur „(no name)“ bzw. „Kartenzahlung“ steht.',
+    app: 'Die Dateien werden nur im Browser gelesen (UTF-8 oder Windows-1252, Trennzeichen ; oder ,). Spalten erkennt das Dashboard an der Kopfzeile (VR-Banken, Sparkassen u. a.). Jede Zeile wird der vorhandenen Buchung zugeordnet: gleicher Betrag, gleiches Datum (Valuta oder Buchungstag) und gleicher Verwendungszweck; gleichartige Zeilen (zweimal 2,50 € beim Bäcker) der Reihe nach. Überlappende Dateien schaden nicht. Vorgewählt sind nur Buchungen ohne echten Empfänger; abweichende Empfänger nur, wenn du es ausdrücklich ankreuzt.',
+    firefly: 'Erst „Empfänger nach Firefly übertragen“ ändert etwas: der n8n-Workflow (Auslöser „Kategorie übernehmen“, typ „gegenkonto_setzen“) setzt je Buchung Name und auf Wunsch IBAN/BIC des Gegenkontos – Firefly ordnet das Konto zu oder legt es an. Kategorien, Tags, Notizen und Beschreibung bleiben unverändert. ' + VIA_N8N,
+    tips: ['Ruhig alle CSV-Dateien auf einmal wählen – gleiche Zeilen aus überlappenden Dateien zählen nur einmal.', '„nicht gefunden“: meist Buchungen, die nie importiert oder in Firefly geändert/gelöscht wurden.', 'Danach im Labor: Regel-Vorschläge nach Empfänger und die KI-Analyse werden deutlich besser.', 'Für künftige Importe im Data Importer „Name Zahlungsbeteiligter“ als Gegenkonto-Name und „IBAN Zahlungsbeteiligter“ als Gegenkonto-IBAN zuordnen.'],
+    cards: ['s-files', 's-result'],
+  },
   lab: {
     title: 'Kategorien-Labor',
     what: 'Die Werkstatt zum Aufräumen: Kategorien und Tags probeweise neu ordnen, Regeln bauen, Gruppen zusammenstellen – und erst am Ende nach Firefly übertragen.',

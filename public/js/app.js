@@ -9,6 +9,7 @@ import { actions, versionBadge } from './actions.js';
 import { yearReview } from './year.js';
 import { lab } from './lab.js';
 import { check } from './check.js';
+import { csvSync } from './csvsync.js';
 import { partyDetail } from './party.js';
 import { openHelp, helpPage } from './helpui.js';
 import { applyCardFilter } from './common.js';
@@ -26,6 +27,7 @@ const ROUTES = {
   jahr: { view: yearReview, title: 'Jahresrückblick', nav: 'year', noPeriod: true, help: 'year' },
   labor: { view: lab, title: 'Kategorien-Labor', nav: 'lab', noPeriod: true, help: 'lab' },
   pruefen: { view: check, title: 'Prüfen', nav: 'check', noPeriod: true, help: 'check' },
+  abgleich: { view: csvSync, title: 'CSV-Abgleich', nav: 'check', noPeriod: true, help: 'csvsync' },
   hilfe: { view: helpPage, title: 'Hilfe', nav: 'help', noPeriod: true },
 };
 const DETAIL = {

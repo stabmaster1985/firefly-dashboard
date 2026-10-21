@@ -116,7 +116,7 @@ export async function checkHints() {
 export async function check(view) {
   view.innerHTML = `
     <div class="grid">
-      ${card('c-import', 'Import-Status je Konto', { meta: '<span id="c-import-meta"></span>' })}
+      ${card('c-import', 'Import-Status je Konto', { meta: '<span id="c-import-meta"></span>', link: '<a class="link-btn" href="#/abgleich">CSV abgleichen →</a>' })}
       ${card('c-backup', 'Datensicherung (Firefly)', { meta: '<span id="c-backup-meta"></span>' })}
       ${card('c-dup', 'Mögliche doppelte Buchungen', { filter: true, meta: '<span id="c-dup-meta">letzte 24 Monate · Ausgaben & Einnahmen</span>' })}
     </div>`;

@@ -110,6 +110,8 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
     Auslöser **Import starten** (z. B. dein n8n-Workflow für die Bank-CSV) erscheint dort als Knopf
   - **Mögliche doppelte Buchungen**: gleiche Art, Betrag und Konten höchstens 3 Tage auseinander,
     eingestuft als sicher / wahrscheinlich / möglich; „Kein Duplikat“ blendet ein Paar aus
+  - **CSV-Abgleich**: fehlende Empfänger (z. B. „(no name)“ bei Kartenzahlungen) aus den
+    Original-CSV-Dateien der Bank nachtragen – mit Vorschau, Kategorien bleiben unverändert
   - beides erscheint auch unter **Hinweise** in der Übersicht
 - **Jahresrückblick** – Sparquote, Monat für Monat, Highlights, Kategorien im Vergleich zum
   Vorjahr, größte Ausgaben, Abo-Kosten pro Jahr und ein **Ausgaben-Kalender** (ein Feld pro
@@ -367,6 +369,35 @@ alle passenden Regeln ausführt (die letzte Kategorie gewinnt) und im Labor die 
 gewinnt, stehen sie in Firefly in umgekehrter Reihenfolge. Eine noch
 unbekannte Kategorie legt Firefly dabei an. Nach einer erfolgreichen Änderung verwirft das
 Dashboard seinen Zwischenspeicher, damit alle Seiten die neuen Daten laden.
+
+### Fehlende Empfänger aus der Bank-CSV nachtragen (CSV-Abgleich)
+
+War beim CSV-Import die Spalte mit dem Namen des Zahlungsbeteiligten keinem Gegenkonto
+zugeordnet, steht in Firefly als Empfänger nur „(no name)“ o. ä. – Händler lassen sich dann
+kaum auswerten. Unter **Prüfen → CSV abgleichen** (`#/abgleich`) die Original-CSV-Dateien
+wählen (gern alle auf einmal, überlappende Zeilen zählen nur einmal):
+
+- Die Dateien werden **nur im Browser** gelesen (UTF-8 oder Windows-1252, `;` oder `,`), Spalten
+  an der Kopfzeile erkannt (VR-Banken: „Name Zahlungsbeteiligter“, „IBAN Zahlungsbeteiligter“,
+  „Buchungstext“, „Verwendungszweck“ …; Sparkassen u. a. ähnlich).
+- Jede Zeile wird der vorhandenen Firefly-Buchung zugeordnet: gleicher Betrag, gleiches Datum
+  (Valuta oder Buchungstag), gleicher Verwendungszweck/Buchungstext; gleichartige Zeilen der
+  Reihe nach, Umbuchungen bleiben unberührt.
+- Die Vorschau zeigt je Zeile, was passiert: **Empfänger fehlt – wird ergänzt** (vorgewählt),
+  **anderer Empfänger in Firefly** (nur wenn ausdrücklich angekreuzt), schon richtig,
+  mehrdeutig, nicht gefunden.
+- **Empfänger nach Firefly übertragen** schickt die Auswahl in Paketen zu 100 an die
+  Automation „Kategorie übernehmen“ (`typ: gegenkonto_setzen`, je Änderung `name`, ggf. `iban`/`bic`,
+  `art`). Der Workflow `n8n/firefly-buchung-bearbeiten.json` setzt Name/IBAN des Gegenkontos;
+  Firefly ordnet das Konto zu oder legt es an. **Kategorien, Tags, Notizen und Beschreibung
+  bleiben unverändert.** Wer den Workflow schon importiert hat: neu importieren (bzw. den
+  Code-Knoten „Änderung bauen“ übernehmen).
+
+Für künftige Importe im Data Importer „Name Zahlungsbeteiligter“ als **Name des Gegenkontos**
+(`opposing-name`) und „IBAN Zahlungsbeteiligter“ als **IBAN des Gegenkontos** (`opposing-iban`)
+zuordnen. Achtung: Mit geänderter Zuordnung erkennt die „klassische“ Dublettenprüfung schon
+importierte Zeilen nicht mehr – alte Dateien also nicht erneut importieren, und die erste neue
+Datei erst ab dem Tag nach dem letzten Import beginnen lassen.
 
 ### Datensicherung von Firefly per n8n
 
