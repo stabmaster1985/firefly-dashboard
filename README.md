@@ -412,9 +412,10 @@ wählen (gern alle auf einmal, überlappende Zeilen zählen nur einmal):
   bleiben unverändert.** Wer den Workflow schon importiert hat: neu importieren (bzw. den
   Code-Knoten „Änderung bauen“ übernehmen).
 - **Noch nicht umgestellt** (eigene Karte, auch ohne CSV): liest Ausgaben und Einnahmen frisch
-  aus Firefly (24 Monate, 5 Jahre oder alles) und zeigt alle ohne echten Empfänger – je Monat mit
-  Anzahl, Summe und Konten, aufklappbar bis zur Buchung (mit Link nach Firefly), als CSV
-  exportierbar. Ist eine CSV eingelesen, steht dabei, wie viele davon sie abdeckt; nach dem
+  aus Firefly (24 Monate, 5 Jahre oder alles) und zeigt den Stand: „x von y Buchungen haben einen
+  Empfänger“ mit Fortschrittsbalken, je Monat „mit Empfänger / gesamt“, offene Anzahl, Summe und
+  Konten (wahlweise nur Monate mit offenen), aufklappbar bis zur Buchung (mit Link nach Firefly),
+  offene als CSV exportierbar. Ist eine CSV eingelesen, steht dabei, wie viele davon sie abdeckt; nach dem
   Übertragen wird die Prüfung automatisch wiederholt.
 - Übertragene Zeilen merkt sich das Dashboard (`DATA_DIR/csv-sync.json`, je Zeile nur ein
   Fingerabdruck plus Buchungsnummer und Name), ebenso Zeilen, die beim Einlesen schon synchron

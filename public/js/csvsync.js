@@ -553,6 +553,7 @@ export async function csvSync(view) {
   // ---- Noch nicht umgestellt: direkt in Firefly nachsehen (ohne CSV) -----------------
   let openScan = null; // { list, total, from, to }
   let openMonth = null;
+  let onlyOpen = true; // nur Monate mit offenen Buchungen zeigen
   const SCAN_RANGES = [['24', 'letzte 24 Monate'], ['60', 'letzte 5 Jahre'], ['all', 'alles (seit 2000)']];
   let scanRange = '24';
   const monthKey = (t) => String(t.date).slice(0, 7);
@@ -573,40 +574,52 @@ export async function csvSync(view) {
       el.innerHTML = `${head}<div class="muted">Lese Buchungen aus Firefly …</div>`;
       return;
     }
-    const { list, total } = openScan;
-    $('s-open-meta').textContent = list.length ? `${list.length} offen` : 'alles umgestellt';
-    if (!list.length) {
-      el.innerHTML = `${head}<div class="empty">Alle ${total} Buchungen im Zeitraum haben einen echten Empfänger. 🎉</div>`;
-      return;
-    }
+    const { list, total, all } = openScan;
+    const doneAll = total - list.length;
+    const pct = (a, b) => (b ? Math.floor((a / b) * 100) : 100);
+    $('s-open-meta').textContent = `${doneAll} von ${total} mit Empfänger (${pct(doneAll, total)} %)`;
+    // je Monat: gesamt / umgestellt / offen
+    const openIds = new Set(list.map((t) => String(t.transaction_journal_id)));
     const byMonth = new Map();
-    for (const t of list) {
+    for (const t of all) {
       const k = monthKey(t);
-      const g = byMonth.get(k) || { n: 0, sum: 0, accounts: new Map() };
-      g.n += 1;
-      g.sum += t.amount;
-      g.accounts.set(accountOf(t), (g.accounts.get(accountOf(t)) || 0) + 1);
+      const g = byMonth.get(k) || { total: 0, open: 0, sum: 0, accounts: new Map() };
+      g.total += 1;
+      if (openIds.has(String(t.transaction_journal_id))) {
+        g.open += 1;
+        g.sum += t.amount;
+        g.accounts.set(accountOf(t), (g.accounts.get(accountOf(t)) || 0) + 1);
+      }
       byMonth.set(k, g);
     }
-    const max = Math.max(...[...byMonth.values()].map((g) => g.n));
     // in einer schon eingelesenen CSV enthalten? (dann reicht „übertragen“ unten)
     const inCsv = new Set(results.filter((r) => r.t && ['neu', 'abweichend'].includes(r.status)).map((r) => String(r.t.transaction_journal_id)));
     const covered = list.filter((t) => inCsv.has(String(t.transaction_journal_id))).length;
     const rows = openMonth ? list.filter((t) => monthKey(t) === openMonth).sort((a, b) => String(a.date).localeCompare(String(b.date))) : [];
+    const months = [...byMonth].sort((a, b) => b[0].localeCompare(a[0])).filter(([, g]) => !onlyOpen || g.open);
+    const doneMonths = [...byMonth.values()].filter((g) => !g.open).length;
     el.innerHTML = `${head}
-      <p class="sync-top"><b>${list.length}</b> von ${total} Buchungen (${Math.round((list.length / total) * 100)} %) haben noch keinen echten Empfänger
-        ${results.length ? ` · davon <b>${covered}</b> in der eingelesenen CSV (unten übertragbar), <b>${list.length - covered}</b> nicht` : ''}
-        · <button class="link-btn" data-open-csv>Liste als CSV ↓</button></p>
-      <div class="table-wrap scroll"><table class="sync-months"><thead><tr><th>Monat</th><th class="num">offen</th><th class="num hide-sm">Summe</th><th class="hide-sm">Konten</th><th></th></tr></thead><tbody>
-      ${[...byMonth].sort((a, b) => b[0].localeCompare(a[0])).map(([k, g]) => `<tr data-month="${k}" class="${k === openMonth ? 'active' : ''}">
-        <td>${esc(monthLabel(k))}</td><td class="num"><b>${g.n}</b></td><td class="num hide-sm">${money(g.sum)}</td>
+      <div class="sync-total">
+        <div class="sync-total-num"><b>${doneAll}</b> von ${total} Buchungen haben einen Empfänger <span class="muted">(${pct(doneAll, total)} % – umgestellte und solche, die schon immer einen hatten)</span>
+          · <b>${list.length}</b> noch ohne · ${doneMonths} von ${byMonth.size} Monaten komplett</div>
+        <div class="progress done"><span style="width:${pct(doneAll, total)}%"></span></div>
+      </div>
+      ${list.length ? `<p class="sync-top">${results.length ? `Von den offenen sind <b>${covered}</b> in der eingelesenen CSV (unten übertragbar), <b>${list.length - covered}</b> nicht. · ` : ''}<button class="link-btn" data-open-csv>Offene als CSV ↓</button>
+        · <label class="check"><input type="checkbox" data-only-open ${onlyOpen ? 'checked' : ''}> nur Monate mit offenen</label></p>`
+        : '<div class="empty">Alle Buchungen im Zeitraum haben einen echten Empfänger. 🎉</div>'}
+      ${months.length ? `<div class="table-wrap scroll"><table class="sync-months"><thead><tr><th>Monat</th><th class="num">mit Empfänger</th><th class="num">offen</th><th class="num hide-sm">offen (Summe)</th><th class="hide-sm">Konten mit offenen</th><th>Fortschritt</th></tr></thead><tbody>
+      ${months.map(([k, g]) => `<tr data-month="${k}" class="${k === openMonth ? 'active' : ''}${g.open ? '' : ' complete'}">
+        <td>${esc(monthLabel(k))}</td>
+        <td class="num">${g.total - g.open} <span class="muted">/ ${g.total}</span></td>
+        <td class="num">${g.open ? `<b>${g.open}</b>` : '<span class="muted">–</span>'}</td>
+        <td class="num hide-sm">${g.open ? money(g.sum) : ''}</td>
         <td class="hide-sm"><span class="flow">${[...g.accounts].map(([a, n]) => `${esc(a)} (${n})`).join(', ')}</span></td>
-        <td><div class="mini-bar"><i style="width:${Math.round((g.n / max) * 100)}%"></i></div></td></tr>
-        ${k === openMonth ? `<tr class="sync-month-rows"><td colspan="5"><table><tbody>${rows.map((t) => `<tr style="cursor:default">
+        <td><div class="mini-bar ${g.open ? '' : 'full'}" title="${pct(g.total - g.open, g.total)} % umgestellt"><i style="width:${pct(g.total - g.open, g.total)}%"></i></div> <span class="muted">${pct(g.total - g.open, g.total)} %</span></td></tr>
+        ${k === openMonth && g.open ? `<tr class="sync-month-rows"><td colspan="6"><table><tbody>${rows.map((t) => `<tr style="cursor:default">
           <td class="date">${fmtDate(t.date)}</td>
           <td>${fireflyBoxShort(t)}${inCsv.has(String(t.transaction_journal_id)) ? '<span class="badge good">in der CSV gefunden</span>' : ''}</td>
           <td class="num">${money(t.type === 'deposit' ? t.amount : -t.amount)}</td></tr>`).join('')}</tbody></table></td></tr>` : ''}`).join('')}
-      </tbody></table></div>
+      </tbody></table></div>` : ''}
       <div class="legend" style="margin-top:8px"><span>Monat anklicken zeigt die Buchungen. Für Monate mit offenen Buchungen die CSV-Datei der Bank oben einlesen.</span></div>`;
   }
   const fireflyBoxShort = (t) => {
@@ -633,7 +646,7 @@ export async function csvSync(view) {
     } finally {
       api.setFresh(false);
     }
-    openScan = { list: txs.filter(hasNoParty), total: txs.length, from, to };
+    openScan = { list: txs.filter(hasNoParty), all: txs, total: txs.length, from, to };
     openMonth = null;
     renderOpen();
   }
@@ -647,6 +660,7 @@ export async function csvSync(view) {
         ...openScan.list.map((t) => [String(t.date).slice(0, 10), accountOf(t), t.description, t.notes || '', t.type === 'deposit' ? t.amount : -t.amount, counterparty(t) || '', t.category_name || '', t.transaction_journal_id]),
       ]);
     }
+    if (e.target.closest('label')) return;
     const m = e.target.closest('[data-month]');
     if (m) {
       openMonth = openMonth === m.dataset.month ? null : m.dataset.month;
@@ -655,6 +669,10 @@ export async function csvSync(view) {
   });
   $('s-open').addEventListener('change', (e) => {
     if (e.target.matches('[data-scan-range]')) scanRange = e.target.value;
+    if (e.target.matches('[data-only-open]')) {
+      onlyOpen = e.target.checked;
+      renderOpen();
+    }
   });
   renderOpen();
 
