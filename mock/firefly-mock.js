@@ -651,6 +651,23 @@ http
       let body = '';
       req.on('data', (c) => (body += c));
       req.on('end', () => {
+        // wie der Workflow firefly-buchung-bearbeiten: Gegenkonto wirklich setzen (für den CSV-Abgleich).
+        // /webhook/teilweise speichert nur die erste Hälfte und antwortet dann mit 504 (wie ein Abbruch)
+        const data = body ? JSON.parse(body) : {};
+        if (data.typ === 'gegenkonto_setzen') {
+          const list = data.aenderungen || [];
+          const partial = url.pathname.endsWith('/teilweise');
+          for (const a of partial ? list.slice(0, Math.ceil(list.length / 2)) : list) {
+            const j = journals.find((x) => x.id === String(a.transaction_journal_id));
+            if (!j) continue;
+            if (a.art === 'deposit') j.source = { id: null, name: a.name };
+            else j.destination = { id: null, name: a.name };
+          }
+          if (partial) {
+            res.writeHead(504, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ message: 'Gateway Timeout' }));
+          }
+        }
         const fail = url.pathname.endsWith('/fehler');
         res.writeHead(fail ? 500 : 200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(fail ? { message: 'Workflow could not be started' } : { ok: true, workflow: url.pathname.split('/').pop(), empfangen: body ? JSON.parse(body) : Object.fromEntries(url.searchParams) }));

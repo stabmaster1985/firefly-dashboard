@@ -8,20 +8,26 @@ import * as api from './api.js';
 import { money, esc, fmtDate, addDays } from './util.js';
 import { card, counterparty, fireflyTxUrl } from './common.js';
 import { actionFor, runAction } from './txedit.js';
-import { decodeCsv, readRows, matchRows, changeFor, statusFor, fingerprints } from './csvmatch.js';
+import { decodeCsv, readRows, matchRows, changeFor, statusFor, fingerprints, hasNoParty } from './csvmatch.js';
 
 const STATUS = {
   neu: ['Empfänger fehlt – wird ergänzt', 'good'],
   abweichend: ['anderer Empfänger in Firefly', 'warn'],
-  vorhanden: ['schon richtig', ''],
+  vorhanden: ['schon synchron', ''],
   'ohne-name': ['kein Name in der CSV', ''],
   umbuchung: ['Umbuchung', ''],
   mehrdeutig: ['mehrdeutig', 'warn'],
   'nicht-gefunden': ['nicht in Firefly gefunden', 'bad'],
   erledigt: ['übertragen ✓', 'good'],
-  frueher: ['schon früher übertragen', ''],
+  frueher: ['schon erledigt (gemerkt)', ''],
 };
-const CHUNK = 100;
+// Pakete an n8n: klein anfangen und an die Laufzeit anpassen – n8n antwortet erst,
+// wenn das ganze Paket in Firefly gespeichert ist, und nach 5 Minuten bricht die
+// Verbindung ab. Ziel: rund eine Minute je Paket.
+const CHUNK_START = 20;
+const CHUNK_MIN = 3;
+const CHUNK_MAX = 60;
+const TARGET_MS = 60_000;
 const MAX_ROWS = 600;
 
 export async function csvSync(view) {
@@ -46,9 +52,9 @@ export async function csvSync(view) {
     const el = $('s-mem');
     if (!el) return;
     el.innerHTML = memory.count
-      ? `Gemerkt: <b>${memory.count}</b> schon übertragene CSV-Zeile${memory.count === 1 ? '' : 'n'}${memory.since ? ` (seit ${fmtDate(memory.since)})` : ''} – werden beim erneuten Einlesen übersprungen.
+      ? `Gemerkt: <b>${memory.count}</b> erledigte CSV-Zeile${memory.count === 1 ? '' : 'n'} (übertragen oder schon synchron${memory.since ? `, seit ${fmtDate(memory.since)}` : ''}) – werden beim erneuten Einlesen übersprungen.
         <button class="link-btn" data-forget>Gedächtnis leeren</button>`
-      : '<span class="muted">Noch nichts übertragen. Übertragene Zeilen merkt sich das Dashboard, damit sie beim erneuten Einlesen derselben Datei übersprungen werden.</span>';
+      : '<span class="muted">Noch nichts gemerkt. Übertragene und schon synchrone Zeilen merkt sich das Dashboard, damit sie beim erneuten Einlesen derselben Datei übersprungen werden.</span>';
   };
 
   $('s-files').innerHTML = `
@@ -100,22 +106,32 @@ export async function csvSync(view) {
     let txs = [];
     if (open.length) {
       info.innerHTML = `${notes.join('<br>')}<br><span class="muted">Lade Firefly-Buchungen ${fmtDate(dates[0])} – ${fmtDate(dates.at(-1))} …</span>`;
-      txs = api.flattenTransactions(await api.getAll('transactions', {
-        start: addDays(new Date(`${dates[0]}T12:00:00`), -4), end: addDays(new Date(`${dates.at(-1)}T12:00:00`), 4),
-      }));
+      // frisch aus Firefly (nicht aus dem Zwischenspeicher): so zählt auch, was ein
+      // abgebrochener Lauf in n8n im Hintergrund noch gespeichert hat
+      api.setFresh(true);
+      try {
+        txs = api.flattenTransactions(await api.getAll('transactions', {
+          start: addDays(new Date(`${dates[0]}T12:00:00`), -4), end: addDays(new Date(`${dates.at(-1)}T12:00:00`), 4),
+        }));
+      } finally {
+        api.setFresh(false);
+      }
     }
     const matched = matchRows(open.map((x) => x.row), txs).map((r, k) => ({ ...r, fp: open[k].fp }));
     results = [...matched, ...known.map(({ row, fp }) => {
       const m = memory.rows[fp];
-      return { row, fp, t: null, status: 'frueher', reason: `am ${fmtDate(m.at)} übertragen (Buchung Nr. ${m.j}, „${m.name}“)` };
+      return { row, fp, t: null, status: 'frueher', reason: `am ${fmtDate(m.at)} erledigt (Buchung Nr. ${m.j}, „${m.name}“)` };
     })];
     picked.clear();
     // vorgewählt nur, was sicher zugeordnet ist (Betrag, Datum und Text gleich)
     results.forEach((r, i) => r.status === 'neu' && r.sure && picked.add(i));
     filter = 'neu';
-    info.innerHTML = `${notes.join('<br>')}<br>${unique.length} Zeilen${known.length ? ` · <b>${known.length} schon früher übertragen</b> (übersprungen)` : ''}${open.length
+    info.innerHTML = `${notes.join('<br>')}<br>${unique.length} Zeilen${known.length ? ` · <b>${known.length} schon erledigt</b> (gemerkt, übersprungen)` : ''}${open.length
       ? ` · ${txs.length} Firefly-Buchungen im Zeitraum ${fmtDate(dates[0])} – ${fmtDate(dates.at(-1))}` : ' · nichts Neues abzugleichen'}`;
     if (!open.length) filter = 'frueher';
+    // schon synchron (Firefly hat den Namen aus der CSV) → merken, beim nächsten Mal überspringen
+    const synced = matched.filter((r) => r.status === 'vorhanden' && r.t);
+    if (synced.length) memoryCall('POST', { items: synced.map((r) => ({ fp: r.fp, j: r.t.transaction_journal_id, name: r.row.name })) }).then(renderMemory);
     render();
   };
 
@@ -165,7 +181,7 @@ export async function csvSync(view) {
       ${rows.length > MAX_ROWS ? `<div class="legend" style="margin-top:8px"><span>Die ersten ${MAX_ROWS} von ${rows.length} (Auswahl gilt für alle)</span></div>` : ''}
       <div class="sync-run">
         ${action ? `<button class="btn primary" id="s-run"></button>
-          <span class="muted">über „${esc(action.name)}“ – in Paketen zu ${CHUNK}</span>`
+          <span class="muted">über „${esc(action.name)}“ – in kleinen Paketen, jedes wird danach in Firefly geprüft</span>`
         : '<span class="muted">Zum Übertragen eine Automation mit Auslöser „Kategorie übernehmen“ anlegen (Workflow n8n/firefly-buchung-bearbeiten.json, Version mit „gegenkonto_setzen“).</span>'}
         <div class="run-out" id="s-out"></div>
       </div>`;
@@ -216,36 +232,89 @@ export async function csvSync(view) {
     updateSelection();
   }
 
+  /** Buchung frisch aus Firefly lesen (am Zwischenspeicher vorbei): Steht der neue Empfänger schon drin? */
+  async function isSynced(r) {
+    const res = await fetch(`/api/transactions/${encodeURIComponent(r.t.groupId)}`, { headers: { 'X-No-Cache': '1' } }).catch(() => null);
+    if (!res?.ok) return false;
+    const body = await res.json().catch(() => null);
+    const split = (body?.data?.attributes?.transactions || []).find((x) => String(x.transaction_journal_id) === String(r.t.transaction_journal_id));
+    if (!split) return false;
+    const party = String((split.type === 'deposit' ? split.source_name : split.destination_name) || '').trim();
+    // angekommen: Name aus der CSV – oder (bei gleicher IBAN) ein anderes, aber echtes Gegenkonto als vorher
+    return party.toLowerCase() === r.row.name.trim().toLowerCase() || (!hasNoParty(split) && party !== String(counterparty(r.t) || '').trim());
+  }
+
+  let stopRequested = false;
   async function transfer(btn) {
     const list = [...picked].sort((a, b) => a - b).map((i) => results[i]).filter((r) => r.t && (r.status === 'neu' || (r.status === 'abweichend' && overwrite)));
     if (!list.length) return;
-    if (!window.confirm(`Bei ${list.length} Buchungen den Empfänger in Firefly setzen?\n\nFirefly ordnet sie dem Gegenkonto mit diesem Namen${withIban ? ' bzw. dieser IBAN' : ''} zu und legt es an, falls es noch fehlt. Kategorien, Tags und Notizen bleiben unverändert.`)) return;
+    if (!window.confirm(`Bei ${list.length} Buchungen den Empfänger in Firefly setzen?\n\nFirefly ordnet sie dem Gegenkonto mit diesem Namen${withIban ? ' bzw. dieser IBAN' : ''} zu und legt es an, falls es noch fehlt. Kategorien, Tags und Notizen bleiben unverändert.\n\nEs geht in kleinen Paketen; jedes wird danach in Firefly nachgeprüft. Du kannst jederzeit anhalten.`)) return;
     btn.disabled = true;
+    stopRequested = false;
     const out = $('s-out');
+    const queue = [...list];
+    let size = CHUNK_START;
     let done = 0;
-    for (let k = 0; k < list.length; k += CHUNK) {
-      const part = list.slice(k, k + CHUNK);
-      out.innerHTML = `<span class="muted">Übertrage ${k + 1}–${k + part.length} von ${list.length} …</span>`;
+    let failedInARow = 0;
+    const started = Date.now();
+    const finish = (r) => {
+      r.status = 'erledigt';
+      picked.delete(results.indexOf(r));
+    };
+    const progress = (msg) => {
+      const left = queue.length;
+      const per = done ? (Date.now() - started) / done : 0;
+      out.innerHTML = `<div class="progress"><span style="width:${Math.round((done / list.length) * 100)}%"></span></div>
+        <span class="muted">${msg} · ${done} von ${list.length} erledigt${per && left ? ` · noch ca. ${Math.max(1, Math.round((per * left) / 60000))} Min.` : ''} · Paketgröße ${size}</span>
+        <button class="link-btn" data-stop>Anhalten</button>`;
+    };
+    while (queue.length && !stopRequested) {
+      const part = queue.splice(0, size);
+      progress(`Übertrage ${part.length} Buchungen …`);
       const payload = { typ: 'gegenkonto_setzen', aenderungen: part.map((r) => changeFor(r, { iban: withIban })) };
+      const t0 = Date.now();
       const res = await runAction(action, { ...payload, daten: payload }).catch((err) => ({ ok: false, response: err.message }));
+      const took = Date.now() - t0;
+      let ok = part;
       if (!res.ok) {
-        out.innerHTML = `<span class="badge bad">Fehler ${esc(res.status || '')}</span> <span class="muted">nach ${done} übertragenen: ${esc(String(res.response || '').slice(0, 200))}</span>`;
-        render();
-        return;
+        // abgebrochen oder Fehler: n8n hat evtl. trotzdem einen Teil gespeichert → in Firefly nachsehen
+        progress(`Antwort fehlte (${esc(String(res.response || res.status || '').slice(0, 80))}) – prüfe in Firefly, was angekommen ist …`);
+        await new Promise((r) => setTimeout(r, 5000));
+        const checks = [];
+        for (const r of part) checks.push(await isSynced(r));
+        ok = part.filter((_, k) => checks[k]);
+        const missing = part.filter((_, k) => !checks[k]);
+        queue.unshift(...missing); // Rest noch einmal, mit kleineren Paketen
+        size = Math.max(CHUNK_MIN, Math.floor(size / 2));
+        failedInARow = ok.length ? 0 : failedInARow + 1;
+        if (failedInARow >= 3) {
+          ok.forEach(finish);
+          done += ok.length;
+          out.innerHTML = `<span class="badge bad">Abgebrochen</span> <span class="muted">Dreimal hintereinander kam nichts in Firefly an (${esc(String(res.response || res.status || '').slice(0, 160))}). ${done} sind übertragen; die übrigen bleiben ausgewählt – Automation unter „Automationen“ prüfen und erneut starten.</span>`;
+          break;
+        }
+      } else {
+        failedInARow = 0;
+        // Paketgröße an die Laufzeit anpassen (Ziel ~1 Minute je Paket)
+        const perItem = took / part.length;
+        size = Math.max(CHUNK_MIN, Math.min(CHUNK_MAX, Math.round(TARGET_MS / Math.max(perItem, 200))));
       }
-      part.forEach((r) => {
-        r.status = 'erledigt';
-        picked.delete(results.indexOf(r));
-      });
-      done += part.length;
-      // merken – bei erneutem Einlesen überspringen
-      await memoryCall('POST', { items: part.map((r) => ({ fp: r.fp, j: r.t.transaction_journal_id, name: r.row.name })) });
-      renderMemory();
+      ok.forEach(finish);
+      done += ok.length;
+      if (ok.length) {
+        // merken – bei erneutem Einlesen überspringen
+        await memoryCall('POST', { items: ok.map((r) => ({ fp: r.fp, j: r.t.transaction_journal_id, name: r.row.name })) });
+        renderMemory();
+      }
     }
     api.forget();
+    const stopped = stopRequested && queue.length;
+    const msg = out.innerHTML.includes('Abgebrochen') ? out.innerHTML : null;
     render();
-    $('s-out').innerHTML = `<span class="badge good">${done} übertragen ✓</span> <span class="muted">Danach im Labor: Regel-Vorschläge nach Empfänger („REWE → Lebensmittel“) und die KI-Analyse werden deutlich besser.</span>`;
+    $('s-out').innerHTML = msg || `<span class="badge ${stopped ? 'warn' : 'good'}">${done} übertragen${stopped ? ` – angehalten, ${queue.length} offen` : ' ✓'}</span>
+      <span class="muted">${stopped ? 'Die offenen bleiben ausgewählt; „übertragen“ macht dort weiter.' : 'Danach im Labor: Regel-Vorschläge nach Empfänger („REWE → Lebensmittel“) und die KI-Analyse werden deutlich besser.'}</span>`;
   }
+
 
   const drop = $('s-drop');
   $('s-input').addEventListener('change', (e) => e.target.files.length && load([...e.target.files]));
@@ -283,6 +352,11 @@ export async function csvSync(view) {
       results.forEach((x) => x.candidates?.forEach((c) => c.t === t && (c.used = true)));
       if (r.status === 'neu') picked.add(i);
       return render();
+    }
+    if (e.target.closest('[data-stop]')) {
+      stopRequested = true;
+      e.target.textContent = 'hält nach diesem Paket an …';
+      return;
     }
     if (e.target.id === 's-run') transfer(e.target);
   });

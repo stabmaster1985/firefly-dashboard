@@ -386,15 +386,22 @@ wählen (gern alle auf einmal, überlappende Zeilen zählen nur einmal):
 - Die Vorschau zeigt je Zeile, was passiert: **Empfänger fehlt – wird ergänzt** (vorgewählt),
   **anderer Empfänger in Firefly** (nur wenn ausdrücklich angekreuzt), schon richtig,
   mehrdeutig, nicht gefunden.
-- **Empfänger nach Firefly übertragen** schickt die Auswahl in Paketen zu 100 an die
-  Automation „Kategorie übernehmen“ (`typ: gegenkonto_setzen`, je Änderung `name`, ggf. `iban`/`bic`,
+- **Empfänger nach Firefly übertragen** schickt die Auswahl in kleinen Paketen an die
+  Automation „Kategorie übernehmen“ (Start mit 20, danach so bemessen, dass ein Paket rund eine
+  Minute dauert – n8n antwortet erst am Ende, nach 5 Minuten bricht die Verbindung ab). Kommt
+  keine Antwort, sieht das Dashboard in Firefly nach, was trotzdem gespeichert wurde, und schickt
+  nur den Rest erneut, mit kleineren Paketen. „Anhalten“ stoppt nach dem laufenden Paket
+  (`typ: gegenkonto_setzen`, je Änderung `name`, ggf. `iban`/`bic`,
   `art`). Der Workflow `n8n/firefly-buchung-bearbeiten.json` setzt Name/IBAN des Gegenkontos;
   Firefly ordnet das Konto zu oder legt es an. **Kategorien, Tags, Notizen und Beschreibung
   bleiben unverändert.** Wer den Workflow schon importiert hat: neu importieren (bzw. den
   Code-Knoten „Änderung bauen“ übernehmen).
 - Übertragene Zeilen merkt sich das Dashboard (`DATA_DIR/csv-sync.json`, je Zeile nur ein
-  Fingerabdruck plus Buchungsnummer und Name). Wird dieselbe Datei erneut eingelesen, werden sie
-  als „schon früher übertragen“ übersprungen; **Gedächtnis leeren** setzt das zurück.
+  Fingerabdruck plus Buchungsnummer und Name), ebenso Zeilen, die beim Einlesen schon synchron
+  sind (Firefly hat den Namen bereits – z. B. nach einem abgebrochenen Lauf, den n8n im
+  Hintergrund zu Ende gebracht hat; dafür liest der Abgleich Firefly frisch, nicht aus dem
+  Zwischenspeicher). Wird dieselbe Datei erneut eingelesen, werden sie als „schon erledigt“
+  übersprungen; **Gedächtnis leeren** setzt das zurück.
 
 Für künftige Importe im Data Importer „Name Zahlungsbeteiligter“ als **Name des Gegenkontos**
 (`opposing-name`) und „IBAN Zahlungsbeteiligter“ als **IBAN des Gegenkontos** (`opposing-iban`)
