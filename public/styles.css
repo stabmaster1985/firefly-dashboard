@@ -972,3 +972,4 @@ button.cal-day { cursor: pointer; }
 .sync-cands { display: grid; gap: 6px; }
 .sync-cand { display: grid; gap: 4px; justify-items: start; }
 .sync-table tr.check-me td { background: color-mix(in srgb, var(--status-warning) 8%, transparent); }
+.sync-mem { margin-top: 10px; font-size: 13px; line-height: 1.5; }

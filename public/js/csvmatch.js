@@ -218,6 +218,33 @@ export function matchRows(rows, txs) {
   return out;
 }
 
+/** Kurzer Hash (cyrb53) – auch ohne crypto.subtle (das fehlt bei http im LAN). */
+function hash(str) {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+/**
+ * Fingerabdruck je Zeile – gleich, egal aus welcher Datei sie stammt. Gleichartige
+ * Zeilen (zweimal 2,50 € beim Bäcker) werden durchnummeriert.
+ */
+export function fingerprints(rows) {
+  const seen = new Map();
+  return rows.map((r) => {
+    const key = [r.date, r.amount.toFixed(2), r.name, r.iban, r.text, r.purpose, r.own].join('|');
+    const n = (seen.get(key) || 0) + 1;
+    seen.set(key, n);
+    return hash(`${key}#${n}`);
+  });
+}
+
 /** Änderung für den n8n-Workflow (typ „gegenkonto_setzen“). */
 export const changeFor = ({ row, t }, { iban = true } = {}) => ({
   transaction_group_id: t.groupId,

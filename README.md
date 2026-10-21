@@ -392,6 +392,9 @@ wählen (gern alle auf einmal, überlappende Zeilen zählen nur einmal):
   Firefly ordnet das Konto zu oder legt es an. **Kategorien, Tags, Notizen und Beschreibung
   bleiben unverändert.** Wer den Workflow schon importiert hat: neu importieren (bzw. den
   Code-Knoten „Änderung bauen“ übernehmen).
+- Übertragene Zeilen merkt sich das Dashboard (`DATA_DIR/csv-sync.json`, je Zeile nur ein
+  Fingerabdruck plus Buchungsnummer und Name). Wird dieselbe Datei erneut eingelesen, werden sie
+  als „schon früher übertragen“ übersprungen; **Gedächtnis leeren** setzt das zurück.
 
 Für künftige Importe im Data Importer „Name Zahlungsbeteiligter“ als **Name des Gegenkontos**
 (`opposing-name`) und „IBAN Zahlungsbeteiligter“ als **IBAN des Gegenkontos** (`opposing-iban`)

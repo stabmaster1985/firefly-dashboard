@@ -8,7 +8,7 @@ import * as api from './api.js';
 import { money, esc, fmtDate, addDays } from './util.js';
 import { card, counterparty, fireflyTxUrl } from './common.js';
 import { actionFor, runAction } from './txedit.js';
-import { decodeCsv, readRows, matchRows, changeFor, statusFor } from './csvmatch.js';
+import { decodeCsv, readRows, matchRows, changeFor, statusFor, fingerprints } from './csvmatch.js';
 
 const STATUS = {
   neu: ['Empfänger fehlt – wird ergänzt', 'good'],
@@ -19,6 +19,7 @@ const STATUS = {
   mehrdeutig: ['mehrdeutig', 'warn'],
   'nicht-gefunden': ['nicht in Firefly gefunden', 'bad'],
   erledigt: ['übertragen ✓', 'good'],
+  frueher: ['schon früher übertragen', ''],
 };
 const CHUNK = 100;
 const MAX_ROWS = 600;
@@ -35,7 +36,20 @@ export async function csvSync(view) {
   let overwrite = false;
   let withIban = true;
   const picked = new Set(); // Zeilen-Indizes für die Übertragung
-  const action = await actionFor('categorize');
+  const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
+  // Gedächtnis: schon übertragene CSV-Zeilen (Fingerabdruck → Buchung), liegt auf dem Server
+  let memory = { count: 0, since: null, rows: {} };
+  const memoryCall = (method, body) => fetch('/local/csvsync', { method, headers, ...(body ? { body: JSON.stringify(body) } : {}) })
+    .then((r) => r.json()).then((m) => (m.rows ? (memory = m) : memory)).catch(() => memory);
+  const [action] = await Promise.all([actionFor('categorize'), memoryCall('GET')]);
+  const renderMemory = () => {
+    const el = $('s-mem');
+    if (!el) return;
+    el.innerHTML = memory.count
+      ? `Gemerkt: <b>${memory.count}</b> schon übertragene CSV-Zeile${memory.count === 1 ? '' : 'n'}${memory.since ? ` (seit ${fmtDate(memory.since)})` : ''} – werden beim erneuten Einlesen übersprungen.
+        <button class="link-btn" data-forget>Gedächtnis leeren</button>`
+      : '<span class="muted">Noch nichts übertragen. Übertragene Zeilen merkt sich das Dashboard, damit sie beim erneuten Einlesen derselben Datei übersprungen werden.</span>';
+  };
 
   $('s-files').innerHTML = `
     <p class="sync-intro">Fehlen in Firefly die Empfänger (z. B. weil „Name Zahlungsbeteiligter“ beim Import nicht als Gegenkonto
@@ -44,7 +58,9 @@ export async function csvSync(view) {
       Notizen bleiben, wie sie sind.</p>
     <label class="drop" id="s-drop"><input type="file" id="s-input" accept=".csv,text/csv" multiple>
       <b>CSV-Dateien wählen</b> oder hierher ziehen <span class="muted">– mehrere auf einmal möglich (z. B. alle Jahre)</span></label>
+    <div id="s-mem" class="sync-mem"></div>
     <div id="s-info" class="sync-info"></div>`;
+  renderMemory();
 
   const load = async (files) => {
     const info = $('s-info');
@@ -75,17 +91,31 @@ export async function csvSync(view) {
       max.set(k, max.get(k) - 1);
       return true;
     });
-    const dates = unique.map((r) => r.date).sort();
-    info.innerHTML = `${notes.join('<br>')}<br><span class="muted">Lade Firefly-Buchungen ${fmtDate(dates[0])} – ${fmtDate(dates.at(-1))} …</span>`;
-    const txs = api.flattenTransactions(await api.getAll('transactions', {
-      start: addDays(new Date(`${dates[0]}T12:00:00`), -4), end: addDays(new Date(`${dates.at(-1)}T12:00:00`), 4),
-    }));
-    results = matchRows(unique, txs);
+    // schon früher übertragene Zeilen nicht noch einmal abgleichen
+    const fps = fingerprints(unique);
+    const known = [];
+    const open = [];
+    unique.forEach((row, k) => (memory.rows[fps[k]] ? known : open).push({ row, fp: fps[k] }));
+    const dates = open.map((x) => x.row.date).sort();
+    let txs = [];
+    if (open.length) {
+      info.innerHTML = `${notes.join('<br>')}<br><span class="muted">Lade Firefly-Buchungen ${fmtDate(dates[0])} – ${fmtDate(dates.at(-1))} …</span>`;
+      txs = api.flattenTransactions(await api.getAll('transactions', {
+        start: addDays(new Date(`${dates[0]}T12:00:00`), -4), end: addDays(new Date(`${dates.at(-1)}T12:00:00`), 4),
+      }));
+    }
+    const matched = matchRows(open.map((x) => x.row), txs).map((r, k) => ({ ...r, fp: open[k].fp }));
+    results = [...matched, ...known.map(({ row, fp }) => {
+      const m = memory.rows[fp];
+      return { row, fp, t: null, status: 'frueher', reason: `am ${fmtDate(m.at)} übertragen (Buchung Nr. ${m.j}, „${m.name}“)` };
+    })];
     picked.clear();
     // vorgewählt nur, was sicher zugeordnet ist (Betrag, Datum und Text gleich)
     results.forEach((r, i) => r.status === 'neu' && r.sure && picked.add(i));
     filter = 'neu';
-    info.innerHTML = `${notes.join('<br>')}<br>${unique.length} Zeilen · ${txs.length} Firefly-Buchungen im Zeitraum ${fmtDate(dates[0])} – ${fmtDate(dates.at(-1))}`;
+    info.innerHTML = `${notes.join('<br>')}<br>${unique.length} Zeilen${known.length ? ` · <b>${known.length} schon früher übertragen</b> (übersprungen)` : ''}${open.length
+      ? ` · ${txs.length} Firefly-Buchungen im Zeitraum ${fmtDate(dates[0])} – ${fmtDate(dates.at(-1))}` : ' · nichts Neues abzugleichen'}`;
+    if (!open.length) filter = 'frueher';
     render();
   };
 
@@ -126,7 +156,8 @@ export async function csvSync(view) {
           : r.candidates?.length ? `<div class="sync-cands"><div class="muted">${r.status === 'mehrdeutig' ? 'Welche dieser Buchungen ist es?' : 'Mögliche Buchungen mit gleichem Betrag (bis 7 Tage daneben):'}</div>
               ${r.candidates.map((c, k) => `<div class="sync-cand">${fireflyBox(c.t)}${c.used ? '<div class="flow">schon einer anderen CSV-Zeile zugeordnet</div>'
                 : `<button class="btn small" data-choose="${r.i}:${k}">diese nehmen</button>`}</div>`).join('')}</div>`
-            : '<span class="muted">keine Buchung mit gleichem Betrag in der Nähe – vermutlich nie importiert oder in Firefly geändert</span>'}</td>
+            : r.status === 'frueher' ? `<span class="muted">${esc(r.reason)} – wird nicht noch einmal abgeglichen</span>`
+              : '<span class="muted">keine Buchung mit gleichem Betrag in der Nähe – vermutlich nie importiert oder in Firefly geändert</span>'}</td>
         <td class="num">${money(r.row.amount)}</td>
         <td><span class="badge ${STATUS[r.status][1]}" title="${esc(r.reason)}">${STATUS[r.status][0]}</span>
           ${['neu', 'abweichend', 'erledigt'].includes(r.status) && r.row.name ? `<div class="flow">Empfänger ${r.status === 'erledigt' ? 'ist jetzt' : 'wird'}: <b>${esc(r.row.name)}</b></div>` : ''}</td></tr>`).join('')}
@@ -207,6 +238,9 @@ export async function csvSync(view) {
         picked.delete(results.indexOf(r));
       });
       done += part.length;
+      // merken – bei erneutem Einlesen überspringen
+      await memoryCall('POST', { items: part.map((r) => ({ fp: r.fp, j: r.t.transaction_journal_id, name: r.row.name })) });
+      renderMemory();
     }
     api.forget();
     render();
@@ -220,6 +254,12 @@ export async function csvSync(view) {
     drop.classList.add('over');
   });
   drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  $('s-files').addEventListener('click', async (e) => {
+    if (!e.target.closest('[data-forget]')) return;
+    if (!window.confirm(`Gedächtnis leeren? Die ${memory.count} gemerkten Zeilen werden beim nächsten Einlesen wieder abgeglichen (in Firefly ändert sich dadurch nichts).`)) return;
+    await memoryCall('DELETE');
+    renderMemory();
+  });
   drop.addEventListener('drop', (e) => {
     e.preventDefault();
     drop.classList.remove('over');
