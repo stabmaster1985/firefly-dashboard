@@ -116,7 +116,13 @@ export async function checkHints() {
 export async function check(view) {
   view.innerHTML = `
     <div class="grid">
-      ${card('c-import', 'Import-Status je Konto', { meta: '<span id="c-import-meta"></span>', link: '<a class="link-btn" href="#/abgleich">CSV abgleichen →</a>' })}
+      ${card('c-import', 'Import-Status je Konto', { meta: '<span id="c-import-meta"></span>' })}
+      <section class="card span-12 csv-teaser">
+        <div><h2>CSV-Abgleich: fehlende Empfänger nachtragen</h2>
+          <p class="muted">Steht in Firefly als Empfänger nur „(no name)“ oder „Kartenzahlung“? Mit den Original-CSV-Dateien der Bank
+          lassen sich die Namen nachtragen – mit Vorschau, Kategorien bleiben unverändert.</p></div>
+        <a class="btn primary" href="#/abgleich">CSV-Dateien abgleichen →</a>
+      </section>
       ${card('c-backup', 'Datensicherung (Firefly)', { meta: '<span id="c-backup-meta"></span>' })}
       ${card('c-dup', 'Mögliche doppelte Buchungen', { filter: true, meta: '<span id="c-dup-meta">letzte 24 Monate · Ausgaben & Einnahmen</span>' })}
     </div>`;

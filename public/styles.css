@@ -958,3 +958,7 @@ button.cal-day { cursor: pointer; }
 .sync-opts label { display: inline-flex; gap: 6px; align-items: center; }
 .sync-run { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; font-size: 13px; }
 .sync-run .run-out { flex-basis: 100%; }
+.csv-teaser { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between; }
+.csv-teaser > div { flex: 1 1 320px; min-width: 0; }
+.csv-teaser p { margin: 6px 0 0; font-size: 14px; line-height: 1.5; }
+.csv-teaser h2 { margin: 0; font-size: 15px; font-weight: 600; }
