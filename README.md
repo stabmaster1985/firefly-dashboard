@@ -238,6 +238,18 @@ Modelle ab etwa 7–8 B Parametern mit gutem Deutsch, z. B. `qwen2.5:7b`, `llama
 `gemma2:9b`; kleinere Modelle sind schneller, ordnen aber unzuverlässiger ein. Die Daten
 verlassen dein Netz nicht.
 
+**Wenn es zu lange dauert:** „Speichern & testen“ schickt eine kleine Probe-Anfrage und zeigt,
+wie lange das Laden des Modells dauert, wie viele Token pro Sekunde es liest und schreibt und
+grob, wie lange ein Paket mit 8 Händlern braucht. Unter etwa 3 Token/s läuft das Modell
+vermutlich ohne GPU – dann ein kleineres Modell wählen (z. B. `qwen2.5:3b`, `llama3.2:3b`)
+und/oder die **Wartezeit aufs Modell** erhöhen (5–30 Minuten bis zum ersten Wort; danach wird
+abgebrochen, wenn 2 Minuten lang nichts mehr kommt). Antworten werden gestreamt, es gibt also
+kein festes Gesamt-Zeitlimit. Braucht ein Paket zu lange, wird es automatisch halbiert und die
+kleinere Größe für den Rest beibehalten; das Kategoriesystem wird dann aus den 40 größten
+Händlern entworfen. Das Modell bleibt zwischen den Paketen 30 Minuten geladen. Läuft auf
+demselben Ollama noch etwas anderes (z. B. der Paperless Companion mit anderem Modell),
+muss Ollama ggf. zwischen den Modellen wechseln – das kostet jedes Mal Ladezeit.
+
 ## Wie es funktioniert
 
 Ein kleiner Node.js-Server (ohne Framework) liefert die Oberfläche aus und reicht API-Anfragen an
@@ -392,6 +404,7 @@ auf <http://localhost:8080>.
 | `WARM_MINUTES` | nein | Vorwärmen alle N Minuten (Standard 10, `0` = aus) |
 | `FIREFLY_CONCURRENCY` | nein | Höchstzahl gleichzeitiger Anfragen an Firefly (Standard 4) |
 | `OLLAMA_URL` / `OLLAMA_MODEL` | nein | Vorgabe für die KI-Analyse im Labor (Standard `http://ollama:11434`, Modell im Labor wählbar) |
+| `OLLAMA_WAIT_MINUTES` | nein | Vorgabe für die Wartezeit aufs erste Wort (5, 10, 20 oder 30; Standard 10, im Labor änderbar) |
 | `DATA_DIR` | nein | Ablage für Automationen (Standard `./data`, im Docker-Image `/data`) |
 
 ## Geschwindigkeit

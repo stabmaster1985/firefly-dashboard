@@ -16,6 +16,28 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
   let aiLayer = { on: false, min: 80 };
   let aiFilter = 'alle';
   let aiEditing = null; // „kind:name“ des neuen Namens, der gerade umbenannt wird
+  let models = null; // { list } oder { error } – einmal laden, nicht bei jedem Neuzeichnen
+
+  async function loadModels() {
+    models = await fetch('/local/ai/models').then(async (r) => {
+      const d = await r.json();
+      return r.ok ? { list: d.models || [] } : { error: d.message || `HTTP ${r.status}` };
+    }).catch((err) => ({ error: err.message }));
+    onChange();
+  }
+
+  /** Messwerte der Probe-Anfrage verständlich machen. */
+  function verdict(m) {
+    const facts = [`Antwort nach ${m.seconds} s`, m.loadSeconds >= 1 ? `davon Modell laden ${m.loadSeconds} s` : 'Modell war schon geladen',
+      m.perSecond ? `schreibt ${m.perSecond} Token/s` : '', m.promptPerSecond ? `liest ${m.promptPerSecond} Token/s` : ''].filter(Boolean).join(' · ');
+    // grobe Schätzung für ein Paket mit 8 Händlern: ~1500 Token lesen, ~800 schreiben
+    const perBatch = m.perSecond && m.promptPerSecond ? Math.round((1500 / m.promptPerSecond + 800 / m.perSecond) / 6) / 10 : null;
+    const hint = !m.perSecond ? ''
+      : m.perSecond < 3 ? 'Sehr langsam – vermutlich ohne GPU. Ein kleineres Modell (z. B. qwen2.5:3b, llama3.2:3b) oder eine längere Wartezeit hilft.'
+        : m.perSecond < 8 ? 'Langsam, aber machbar – ein Durchlauf dauert eine Weile, die Seite darf dabei geschlossen werden.'
+          : 'Gute Geschwindigkeit.';
+    return `${facts}${perBatch ? ` · ca. ${perBatch} Min. je Paket mit 8 Händlern` : ''}${hint ? `<br>${hint}` : ''}`;
+  }
 
   const txTags = [...new Set(txs.flatMap((t) => t.tags || []))];
   const poolSet = (kind) => new Set((aiData.pool?.[kind]?.length ? aiData.pool[kind] : kind === 'tags' ? txTags : knownCategories).map((x) => x.toLowerCase()));
@@ -57,14 +79,22 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
       if (l?.bedarf) needs.set(l.bedarf, needs.get(l.bedarf) + t.amount);
     }
     const scheme = aiData.scheme?.kategorien || [];
+    const testState = aiData.test; // { running } | { metrics } | { error } – läuft auf dem Server
+    // während der Fortschrittsanzeige nicht unter den Fingern neu zeichnen, wenn gerade etwas eingetippt wird
+    if (el.querySelector('#ai-settings, .ai-rename')?.contains(document.activeElement) && document.activeElement.matches('input')) return;
     el.innerHTML = `
       <form class="ai-settings" id="ai-settings">
         <label>Ollama-Adresse <input name="url" value="${esc(st.url || '')}" placeholder="http://ollama:11434"></label>
-        <label>Modell <select name="model"><option value="${esc(st.model || '')}">${esc(st.model || '– wählen –')}</option></select></label>
+        <label>Modell <select name="model">${(models?.list?.length ? models.list.map((m) => m.name) : [st.model || ''])
+          .map((n) => `<option value="${esc(n)}"${n === st.model ? ' selected' : ''}>${esc(n || '– wählen –')}</option>`).join('')}</select></label>
         <label>Neue Kategorien &amp; Tags <select name="freedom">${[['vorhanden', 'möglichst vorhandene'], ['sinnvoll', 'vorschlagen, wenn sinnvoll'], ['frei', 'frei vorschlagen']]
           .map(([k, l]) => `<option value="${k}"${(st.freedom || 'sinnvoll') === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
-        <button class="btn">Speichern &amp; testen</button><span class="muted" id="ai-conn"></span>
+        <label>Wartezeit aufs Modell <select name="wait">${[5, 10, 20, 30].map((v) => `<option value="${v}"${Number(st.wait || 10) === v ? ' selected' : ''}>${v} Min.</option>`).join('')}</select></label>
+        <button class="btn"${testState?.running ? ' disabled' : ''}>Speichern &amp; testen</button>
+        <span class="muted" id="ai-conn">${models?.error ? `Ollama nicht erreichbar: ${esc(models.error)}` : models ? `verbunden · ${models.list.length} Modelle` : ''}</span>
       </form>
+      ${testState ? `<div class="ai-test ${testState.error ? 'bad' : ''}">${testState.running ? 'Teste Modell … (beim ersten Mal wird es geladen, das kann dauern)'
+        : testState.error ? `Test fehlgeschlagen: ${esc(testState.error)}` : `Test ok: ${verdict(testState.metrics)}`}</div>` : ''}
       <div class="ai-actions">
         <button class="btn primary" data-ai-run="classify"${running ? ' disabled' : ''}>Händler bewerten${labels.length ? ' (nur neue)' : ''}</button>
         <button class="btn" data-ai-run="scheme"${running ? ' disabled' : ''} title="Die KI entwirft aus deinen Händlern ein eigenes Kategoriesystem und ordnet danach alles neu ein">Kategoriesystem neu entwerfen (Clustern)</button>
@@ -73,7 +103,7 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
         ${labels.length && !running ? '<button class="link-btn" data-ai-reset>Ergebnisse verwerfen</button>' : ''}
       </div>
       ${job ? `<div class="ai-progress"><div class="progress"><span style="width:${job.total ? Math.round((job.done / job.total) * 100) : running ? 5 : 100}%"></span></div>
-        <span class="muted">${esc(job.message || '')}${job.total ? ` · ${job.done}/${job.total}` : ''}${job.lastError ? ` · letzter Fehler: ${esc(job.lastError)}` : ''}</span></div>` : ''}
+        <span class="muted">${esc(job.message || '')}${job.total ? ` · ${job.done}/${job.total}` : ''}${job.note ? ` · ${esc(job.note)}` : ''}${job.lastError ? ` · letzter Fehler: ${esc(job.lastError)}` : ''}</span></div>` : ''}
       ${scheme.length ? `<div class="ai-scheme"><span class="muted">KI-Kategoriesystem:</span> ${scheme.map((c) => nameTag('categories', c.name).replace('title="', `title="${esc(c.beschreibung)} · `)).join(' ')}</div>` : ''}
       ${labels.length ? `
         <div class="ai-layer">
@@ -88,18 +118,6 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
         <p class="ai-note">Alles bleibt im Dashboard gespeichert – auch über Neustarts und auf anderen Geräten. Nach Firefly geht erst etwas,
           wenn du bei „Deine Regeln“ „In Firefly anlegen“, „Änderungen an n8n übergeben“ oder den Export nutzt – neue Kategorien und Tags entstehen dabei in Firefly.</p>`
         : '<div class="empty">Noch keine KI-Bewertung. Ollama-Adresse und Modell eintragen, dann „Händler bewerten“. Je nach Modell und Datenmenge dauert das einige Minuten – du kannst die Seite dabei verlassen.</div>'}`;
-    // Modelle nachladen (ohne die Seite zu blockieren)
-    fetch('/local/ai/models').then((r) => r.json()).then((d) => {
-      const sel = el.querySelector('[name=model]');
-      if (!sel || !d.models) return;
-      sel.innerHTML = d.models.map((m) => `<option value="${esc(m.name)}"${m.name === st.model ? ' selected' : ''}>${esc(m.name)}</option>`).join('')
-        || '<option value="">keine Modelle gefunden</option>';
-      if (!st.model && d.models[0]) sel.value = d.models[0].name;
-      el.querySelector('#ai-conn').textContent = `verbunden · ${d.models.length} Modelle`;
-    }).catch(() => {
-      const c = el.querySelector('#ai-conn');
-      if (c) c.textContent = 'Ollama nicht erreichbar – Adresse prüfen';
-    });
   }
 
 
@@ -190,7 +208,7 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
     aiLayer = aiData.settings?.layer || aiLayer;
     pool = { categories: poolSet('categories'), tags: poolSet('tags') };
     onChange();
-    const running = aiData.job && !aiData.job.finished;
+    const running = (aiData.job && !aiData.job.finished) || aiData.test?.running;
     if (running && !polling) polling = setInterval(refreshAi, 1500);
     if (!running && polling) {
       clearInterval(polling);
@@ -255,9 +273,14 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
     e.preventDefault();
     if (e.target.id === 'ai-settings') {
       const f = e.target;
-      const res = await fetch('/local/ai/settings', { method: 'PUT', headers, body: JSON.stringify({ url: f.url.value.trim(), model: f.model.value, freedom: f.freedom.value }) })
+      const res = await fetch('/local/ai/settings', { method: 'PUT', headers, body: JSON.stringify({ url: f.url.value.trim(), model: f.model.value, freedom: f.freedom.value, wait: Number(f.wait.value) }) })
         .then((r) => r.json()).catch((err) => ({ message: err.message }));
-      if (res.message) window.alert(res.message);
+      if (res.message) return window.alert(res.message);
+      await refreshAi();
+      await loadModels();
+      if (models?.error) return;
+      // Probe-Anfrage im Hintergrund: lädt das Modell und misst die Geschwindigkeit
+      await fetch('/local/ai/test', { method: 'POST', headers }).catch(() => {});
       return refreshAi();
     }
     if (e.target.matches('.ai-rename')) {
@@ -281,5 +304,6 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
   }
 
   refreshAi();
+  loadModels();
   return { aiFor, isNew, nameTag, aiRules, render: renderAi };
 }

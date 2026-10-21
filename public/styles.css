@@ -939,3 +939,5 @@ button.cal-day { cursor: pointer; }
 .ai-note { margin: 14px 0 0; font-size: 12px; color: var(--text-muted); }
 .tag { white-space: nowrap; }
 .ai-new-row .ai-new-btns { white-space: nowrap; }
+.ai-test { margin: -6px 0 12px; font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+.ai-test.bad { color: var(--negative); }

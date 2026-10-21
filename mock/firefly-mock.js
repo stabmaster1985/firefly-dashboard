@@ -552,7 +552,20 @@ function fakeOllama(req, res, url) {
           : { nr, kategorie: 'Sonstiges', neu: true, tags: [], bedarf: 'sinnvoll', sicherheit: 40, grund: 'Unklarer Empfänger' };
       }) };
     }
-    setTimeout(() => send({ model: 'demo-llama:8b', message: { role: 'assistant', content: JSON.stringify(content) }, done: true }), 150);
+    // wie Ollama: gestreamt (eine JSON-Zeile je Stück), erstes Stück nach MOCK_OLLAMA_DELAY ms
+    const text = JSON.stringify(content);
+    const pieces = text.match(/.{1,40}/gs) || [''];
+    const delay = Number(process.env.MOCK_OLLAMA_DELAY || 150);
+    res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
+    let i = 0;
+    const next = () => {
+      if (i < pieces.length) {
+        res.write(`${JSON.stringify({ model: 'demo-llama:8b', message: { role: 'assistant', content: pieces[i++] }, done: false })}\n`);
+        return setTimeout(next, 5);
+      }
+      res.end(`${JSON.stringify({ model: 'demo-llama:8b', done: true, load_duration: 2.1e9, prompt_eval_count: 900, prompt_eval_duration: 9e9, eval_count: pieces.length * 10, eval_duration: pieces.length * 1e9 })}\n`);
+    };
+    setTimeout(next, delay * Math.max(1, (prompt.match(/^\d+\. /gm) || []).length / 4));
   });
 }
 
