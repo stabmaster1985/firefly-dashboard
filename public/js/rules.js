@@ -124,7 +124,7 @@ export const ruleMatches = (rule, t) => rule.enabled !== false && (rule.when || 
  * Wendet Regeln (Reihenfolge zählt: erste Kategorie-Regel gewinnt; Tags
  * sammeln sich) und automatische Tags auf eine Buchung an.
  */
-export function applyRules(t, rules, { autoTags = [], recurringParties = new Set(), bigFrom = 250 } = {}) {
+export function applyRules(t, rules, { autoTags = [], recurringParties = new Set(), bigFrom = 250, ai = null } = {}) {
   let category = t.category_name || null;
   let setBy = null;
   const tags = new Set();
@@ -138,6 +138,17 @@ export function applyRules(t, rules, { autoTags = [], recurringParties = new Set
     }
     (rule.addTags || []).forEach((tag) => tag && tags.add(tag));
   }
+  // KI-Ebene: greift nur, wenn keine eigene Regel die Kategorie festgelegt hat
+  let source = setBy ? 'rule' : null;
+  const label = ai ? ai(t) : null;
+  if (label) {
+    if (!setBy && label.kategorie) {
+      category = label.kategorie;
+      source = 'ai';
+    }
+    (label.tags || []).forEach((tag) => tags.add(tag));
+    if (label.bedarf) tags.add(`Bedarf: ${label.bedarf}`);
+  }
   const auto = new Set(autoTags);
   const party = lower(counterpartyOf(t));
   const day = new Date(String(t.date).slice(0, 10)).getDay();
@@ -147,7 +158,7 @@ export function applyRules(t, rules, { autoTags = [], recurringParties = new Set
   if (auto.has('wochenende') && (day === 0 || day === 6)) tags.add(AUTO_TAGS.wochenende);
   if (auto.has('gross') && t.type === 'withdrawal' && t.amount >= bigFrom) tags.add(AUTO_TAGS.gross);
   if (auto.has('klein') && t.type === 'withdrawal' && t.amount < 10) tags.add(AUTO_TAGS.klein);
-  return { category, changed: category !== (t.category_name || null), tags: [...tags], hits };
+  return { category, changed: category !== (t.category_name || null), tags: [...tags], hits, source, label };
 }
 
 let seq = 0;

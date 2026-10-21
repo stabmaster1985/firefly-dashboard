@@ -60,6 +60,9 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   ohne Kategorie auf einen Blick
 - **Kategorisierungshilfe** – für Buchungen „Ohne Kategorie“ ein Vorschlag aus ähnlichen
   früheren Buchungen; per Klick an n8n übergeben oder direkt in Firefly öffnen
+- **KI-Analyse mit Ollama** (im Labor, optional) – ein lokales Sprachmodell bewertet jeden
+  Händler: Kategorie, Tags, Bedarf (notwendig / sinnvoll / verzichtbar) und Sicherheit; schlägt
+  auch neue Kategorien/Tags vor (als „neu“ markiert) und kann ein eigenes Kategoriesystem entwerfen
 - **Kategorien-Labor** – alle Buchungen (24 Monate) probeweise neu kategorisieren und taggen,
   ohne Firefly anzufassen: eigene Regeln („Empfänger enthält REWE → Lebensmittel“, Betrag
   zwischen …, Tags), automatische Tags (Abo, Online, Bargeld, Wochenende, große Ausgabe,
@@ -197,6 +200,43 @@ Der Server nutzt die Sicherung und bewahrt die kaputte Datei als `<datei>.broken
 Gleichzeitiges Arbeiten auf mehreren Geräten überschreibt nichts: Gruppen werden in einzelnen
 Schritten gespeichert, Regeln mit Versionsnummer (bei einem Konflikt lädt das Labor den neuen
 Stand). Gruppen merken sich Buchungen über ihre feste Firefly-ID.
+
+## KI-Analyse mit Ollama
+
+Im **Labor** kann ein lokales Sprachmodell über [Ollama](https://ollama.com) die Buchungen
+einordnen – z. B. dieselbe Ollama-Instanz, die schon der Paperless Companion nutzt.
+
+- Bewertet wird pro **Händler**, nicht pro Buchung: Die Buchungen der letzten 24 Monate werden
+  nach Empfänger gruppiert (bei PayPal & Co. nach Buchungstext), das Modell bekommt Name,
+  Beispieltexte, Anzahl, Betrag und bisherige Kategorie. Das hält die Laufzeit klein.
+- **Händler bewerten** – ordnet in deine Kategorien ein (je nach Einstellung auch in neue),
+  vergibt Tags und eine **Bedarf**-Einschätzung samt Begründung und Sicherheit.
+- **Kategoriesystem neu entwerfen** – das Modell schlägt aus deinen Händlern 8–16 Kategorien vor
+  und ordnet danach alles neu ein.
+- **Neue Kategorien und Tags**: Die KI darf außer deinen vorhandenen auch neue vorschlagen
+  (Einstellung „möglichst vorhandene“, „vorschlagen, wenn sinnvoll“ oder „frei vorschlagen“).
+  Ob ein Vorschlag neu ist, entscheidet der Abgleich mit dem Bestand in Firefly: vorhandene
+  erscheinen als normale Marke, neue gestrichelt mit ✦. Schreibvarianten wie „Versicherungen“
+  werden automatisch der vorhandenen „Versicherung“ zugeordnet.
+- **Vorschläge prüfen**: Jeden neuen Namen kannst du übernehmen, **umbenennen bzw. mit einer
+  vorhandenen Kategorie oder einem vorhandenen Tag zusammenlegen** oder ignorieren. Je Händler
+  lässt sich ein Ergebnis annehmen (gilt dann auch unter der Mindest-Sicherheit) oder ablehnen.
+- Die Ergebnisse sind eine eigene Ebene: **KI-Ergebnisse anwenden** mit Mindest-Sicherheit;
+  eigene Regeln haben immer Vorrang. Danach wie gewohnt Vorher/Nachher ansehen.
+- **Alles bleibt erst einmal im Dashboard** (gespeichert auf dem Server, also auch nach
+  Neustarts und auf anderen Geräten). Nach Firefly geht erst etwas, wenn du – gern viel später –
+  „In Firefly anlegen“ (je Händler eine Regel in der Labor-Regelgruppe), „Änderungen an n8n
+  übergeben“ oder „Als Firefly-Regeln ↓“ nutzt. Neue Kategorien und Tags legt Firefly
+  dabei selbst an; n8n bekommt sie zusätzlich als `neue_kategorien` / `neue_tags`.
+- Der Lauf geht im Hintergrund weiter, wenn du die Seite verlässt; „Händler bewerten“ bewertet
+  danach nur neue Händler. Gespeichert wird in `DATA_DIR/ai-labels.json` und `ai-settings.json` (mit Sicherung und Tages-Schnappschuss).
+
+Einrichtung: Ollama-Adresse und Modell direkt im Labor eintragen („Speichern & testen“) oder
+per `OLLAMA_URL` / `OLLAMA_MODEL` vorgeben. Die Adresse muss vom Dashboard-Server aus
+erreichbar sein (im selben Docker-Netz z. B. `http://ollama:11434`). Gut geeignet sind
+Modelle ab etwa 7–8 B Parametern mit gutem Deutsch, z. B. `qwen2.5:7b`, `llama3.1:8b` oder
+`gemma2:9b`; kleinere Modelle sind schneller, ordnen aber unzuverlässiger ein. Die Daten
+verlassen dein Netz nicht.
 
 ## Wie es funktioniert
 
@@ -351,6 +391,7 @@ auf <http://localhost:8080>.
 | `CACHE_HISTORY_HOURS` | nein | Gültigkeit für abgeschlossene Zeiträume (Standard 12 h) |
 | `WARM_MINUTES` | nein | Vorwärmen alle N Minuten (Standard 10, `0` = aus) |
 | `FIREFLY_CONCURRENCY` | nein | Höchstzahl gleichzeitiger Anfragen an Firefly (Standard 4) |
+| `OLLAMA_URL` / `OLLAMA_MODEL` | nein | Vorgabe für die KI-Analyse im Labor (Standard `http://ollama:11434`, Modell im Labor wählbar) |
 | `DATA_DIR` | nein | Ablage für Automationen (Standard `./data`, im Docker-Image `/data`) |
 
 ## Geschwindigkeit

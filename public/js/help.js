@@ -79,7 +79,7 @@ export const PAGES = {
     app: 'Alles ist zunächst nur eine Probe auf Basis der Buchungen der letzten 24 Monate. Regeln, Gruppen und ausgeblendete Vorschläge speichert der Dashboard-Server (bleiben über Geräte und Updates erhalten).',
     firefly: 'Nichts, solange du nur probierst. Firefly ändert sich erst bei: „In Firefly anlegen“ (Regeln), „Änderungen an n8n übergeben“ (Kategorien/Tags direkt an Buchungen) oder „Nach Firefly übertragen“ in einer Gruppe. ' + VIA_N8N,
     tips: ['Typischer Ablauf: Vorschläge ansehen → als Gruppe bearbeiten → Ähnliche finden → Nach Firefly übertragen.', 'Oben „Ausgaben/Einnahmen“ wechselt die Grundlage.', '„Einschränken“ (Zeitraum, Konto, Kategorie, Text) wirkt auf alles im Labor: Fortschritt, Vorschläge, Buchungen, „Ähnliche finden“ und „Änderungen an n8n übergeben“. Regeln aus Gruppen werden trotzdem gegen alle Buchungen geprüft, damit sie außerhalb keine Fehltreffer erzeugen.', 'Auto-Tags (Abo, Online, …) sind nur eine Probe-Hilfe und gehen nur über „Änderungen an n8n übergeben“ nach Firefly.'],
-    cards: ['l-progress', 'l-groups', 'l-rules', 'l-suggest', 'l-struct', 'l-compare', 'l-tagtable', 'l-tx'],
+    cards: ['l-progress', 'l-groups', 'l-ai', 'l-rules', 'l-suggest', 'l-struct', 'l-compare', 'l-tagtable', 'l-tx'],
   },
   year: {
     title: 'Jahresrückblick',
@@ -161,6 +161,13 @@ export const CARDS = {
     app: 'Häkchen in den Labor-Listen + „Neue Gruppe“ oder „Als Gruppe bearbeiten“ bei einem Vorschlag. Im Editor: Name/Art ändern, „entfernen“, „gehört nicht dazu“ (Gegenbeispiel), „Ähnliche finden“ (gleiche Empfänger, seltene gemeinsame Wörter, ähnliche Beträge). Gespeichert wird jeder Schritt sofort auf dem Server; gelöschte Gruppen liegen 30 Tage im Papierkorb.',
     firefly: '„Als Labor-Regeln übernehmen“ ändert nichts in Firefly. „Nach Firefly übertragen“ legt die Regeln der Gruppe in einer eigenen Firefly-Regelgruppe „Dashboard: <Name>“ an (künftige Buchungen werden automatisch kategorisiert), wendet sie auf Wunsch auf vorhandene Buchungen an und setzt einzelne Buchungen direkt. ' + VIA_N8N,
     tips: ['„Sehr ähnlich“ ist schon angehakt – kurz prüfen, dann „Angehakte hinzufügen“.', 'Erneutes Übertragen aktualisiert die Regeln statt sie zu verdoppeln.', 'Der Filter über der Liste zeigt, was noch zu tun ist: „Offen“, „Nicht in Firefly“ (übernommen, aber noch nicht übertragen) und „Geändert seit Übertragung“ (nach dem Übertragen erweitert – erneut übertragen).'],
+  },
+  'l-ai': {
+    title: 'KI-Analyse mit Ollama',
+    what: 'Ein lokales Sprachmodell (Ollama, z. B. dieselbe Instanz wie der Paperless Companion) bewertet jeden Händler: Kategorie, Tags, Bedarf (notwendig / sinnvoll / verzichtbar), Sicherheit und Begründung. Auf Wunsch entwirft es ein eigenes Kategoriesystem (Clustern).',
+    app: 'Bewertet wird je Händler (bei PayPal & Co. nach Buchungstext), im Hintergrund – du kannst die Seite verlassen. Die KI darf je nach Einstellung auch neue Kategorien und Tags vorschlagen; ob etwas neu ist, ergibt der Abgleich mit dem Bestand in Firefly (gestrichelt mit ✦ = neu). Unter „Vorschläge prüfen“ neue Namen übernehmen, umbenennen, mit Vorhandenem zusammenlegen oder ignorieren; je Händler annehmen (✓, gilt auch unter der Mindest-Sicherheit) oder ablehnen (✕). „KI-Ergebnisse anwenden“ legt sie als Ebene unter deine Regeln – eigene Regeln und Gruppen haben Vorrang. Alles wird auf dem Server gespeichert.',
+    firefly: 'Nichts. Erst „In Firefly anlegen“, „Änderungen an n8n übergeben“ oder „Als Firefly-Regeln ↓“ nehmen die angewendeten KI-Ergebnisse mit (je Händler eine Regel) – wann du willst, auch viel später. Neue Kategorien und Tags entstehen dabei in Firefly. ' + VIA_N8N,
+    tips: ['Ollama-Adresse muss vom Dashboard-Server aus erreichbar sein, im selben Docker-Netz z. B. http://ollama:11434.', 'Gute Modelle: qwen2.5:7b, llama3.1:8b, gemma2:9b – kleinere sind schneller, aber ungenauer.', 'Mindest-Sicherheit eher bei 80 % lassen und vor dem Übertragen Vorher/Nachher ansehen.'],
   },
   'l-rules': {
     title: 'Deine Regeln',

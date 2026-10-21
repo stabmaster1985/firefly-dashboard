@@ -511,6 +511,51 @@ const routes = {
   },
 };
 
+// Nachgebautes Ollama für die KI-Analyse im Labor (Stichwort-Tabelle statt Modell)
+const FAKE_AI = [
+  [/rewe|edeka|aldi|lidl|wochenmarkt|einkauf/i, 'Lebensmittel', [], 'notwendig'],
+  [/dm-drogerie|rossmann/i, 'Drogerie', ['Haushalt'], 'notwendig'],
+  [/shell|aral|jet|tanken/i, 'Auto & Tanken', ['Auto'], 'notwendig'],
+  [/bahn|deutschlandticket/i, 'Mobilität', ['Pendeln'], 'notwendig'],
+  [/hausverwaltung|miete/i, 'Wohnen', ['Fixkosten'], 'notwendig'],
+  [/stadtwerke|strom|telekom|vodafone/i, 'Nebenkosten', ['Fixkosten'], 'notwendig'],
+  [/netflix|spotify|disney/i, 'Streaming', ['Abo', 'Online'], 'verzichtbar'],
+  [/huk|versicherung/i, 'Versicherungen', ['Fixkosten'], 'notwendig'],
+  [/pizzeria|sushi|café|cafe|biergarten|thai/i, 'Essen gehen', ['Ausgehen'], 'verzichtbar'],
+  [/kino|konzert|kletter|museum|schwimm/i, 'Freizeit', ['Hobby'], 'sinnvoll'],
+  [/amazon|zalando|ikea|mediamarkt|thalia|etsy|ebay|steam|vinted/i, 'Shopping', ['Online'], 'sinnvoll'],
+  [/booking/i, 'Urlaub', ['Reisen'], 'sinnvoll'],
+  [/apotheke|praxis|zahnarzt/i, 'Gesundheit', [], 'notwendig'],
+  [/geldautomat|bargeld/i, 'Bargeld', [], 'sinnvoll'],
+  [/geschenk|blumen/i, 'Geschenke', ['Familie'], 'sinnvoll'],
+];
+function fakeOllama(req, res, url) {
+  const send = (obj) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(obj));
+  };
+  if (url.pathname.endsWith('/api/tags')) return send({ models: [{ name: 'demo-llama:8b', size: 4.7e9, details: { family: 'llama' } }, { name: 'qwen2.5:7b', size: 4.4e9, details: { family: 'qwen2' } }] });
+  let body = '';
+  req.on('data', (c) => (body += c));
+  req.on('end', () => {
+    const prompt = JSON.parse(body).messages.at(-1).content;
+    let content;
+    if (prompt.includes('Kategoriesystem')) {
+      content = { kategorien: [...new Set(FAKE_AI.map((x) => x[1]))].map((name) => ({ name, beschreibung: `Alles rund um ${name}` })) };
+    } else {
+      const lines = prompt.split('\n').filter((l) => /^\d+\. /.test(l));
+      content = { ergebnisse: lines.map((l) => {
+        const nr = Number(l.split('.')[0]);
+        const hit = FAKE_AI.find(([re]) => re.test(l));
+        return hit
+          ? { nr, kategorie: hit[1], neu: false, tags: hit[2], bedarf: hit[3], sicherheit: 85, grund: 'Anhand von Name und Buchungstext' }
+          : { nr, kategorie: 'Sonstiges', neu: true, tags: [], bedarf: 'sinnvoll', sicherheit: 40, grund: 'Unklarer Empfänger' };
+      }) };
+    }
+    setTimeout(() => send({ model: 'demo-llama:8b', message: { role: 'assistant', content: JSON.stringify(content) }, done: true }), 150);
+  });
+}
+
 // MOCK_WORKERS begrenzt wie PHP-FPM, wie viele Abfragen gleichzeitig laufen
 const queue = [];
 let busy = 0;
@@ -573,6 +618,7 @@ http
         }
         : () => ({ data: { type: 'categories', id: cat[1], attributes: { name } } });
     }
+    if (url.pathname.startsWith('/ollama/')) return fakeOllama(req, res, url);
     if (url.pathname.startsWith('/webhook/')) {
       // Nachgebauter n8n-Webhook: antwortet mit dem, was ankam
       let body = '';

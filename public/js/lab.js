@@ -9,6 +9,7 @@ import { detectRecurring } from './recurring.js';
 import { FIELDS, OPS, INTERNAL_FIELDS, INTERNAL_OPS, AUTO_TAGS, applyRules, suggestRules, describeRule, toFireflyRules, counterpartyOf, normParty, ruleMatches } from './rules.js';
 import { suggestTags, suggestCategoryStructure } from './structure.js';
 import { createGroupsPanel } from './labgroups.js';
+import { createAiPanel } from './labai.js';
 
 const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
 const RULE_GROUP = 'Firefly Dashboard (Labor)';
@@ -50,6 +51,7 @@ export async function lab(view, { params }) {
       <section class="card span-3" id="l-tags"></section>
       ${card('l-progress', 'Fortschritt', { meta: '<span class="chips small" id="l-progress-tabs" role="group" aria-label="Aufteilung"></span>' })}
       ${card('l-groups', 'Gruppen', { meta: '<span class="muted">eigene Zusammenstellungen · bleiben gespeichert</span>' })}
+      ${card('l-ai', 'KI-Analyse mit Ollama', { meta: '<span class="muted">lokal – Daten bleiben in deinem Netz</span>' })}
       ${card('l-rules', 'Deine Regeln', { span: 'span-7', link: '<span class="lab-export"><button class="link-btn" data-export="firefly">Als Firefly-Regeln ↓</button> · <button class="link-btn" data-export="csv">Änderungen als CSV ↓</button><span id="l-n8n"></span></span>' })}
       ${card('l-suggest', 'Vorschläge', { span: 'span-5', meta: '<span id="l-suggest-meta"></span>' })}
       ${card('l-struct', 'Tags & Kategorien-Struktur', { meta: '<span class="chips small" id="l-struct-tabs" role="group" aria-label="Art"></span>' })}
@@ -61,7 +63,7 @@ export async function lab(view, { params }) {
     <div class="toast" id="l-toast" role="status" hidden></div>`;
   const $ = (id) => view.querySelector(`#${id}`);
   ['l-count', 'l-changed', 'l-none', 'l-tags'].forEach((id) => ($(id).innerHTML = skeleton(2, 22)));
-  ['l-progress', 'l-groups', 'l-rules', 'l-suggest', 'l-struct', 'l-compare', 'l-tagtable', 'l-tx'].forEach((id) => ($(id).innerHTML = skeleton(5)));
+  ['l-progress', 'l-groups', 'l-ai', 'l-rules', 'l-suggest', 'l-struct', 'l-compare', 'l-tagtable', 'l-tx'].forEach((id) => ($(id).innerHTML = skeleton(5)));
 
   let allTxs;
   let stored;
@@ -178,8 +180,10 @@ export async function lab(view, { params }) {
     },
   });
 
-  /** Alle Buchungen mit den aktuellen Regeln durchrechnen. */
-  const compute = () => txs.map((t) => ({ t, r: applyRules(t, rules, { autoTags, recurringParties }) }));
+  const ai = createAiPanel({ el: $('l-ai'), txs, knownCategories, code, from, onChange: () => view.isConnected && render() });
+
+  /** Alle Buchungen mit den aktuellen Regeln (und ggf. der KI-Ebene) durchrechnen. */
+  const compute = () => txs.map((t) => ({ t, r: applyRules(t, rules, { autoTags, recurringParties, ai: ai.aiFor }) }));
 
   function render() {
     const results = compute();
@@ -195,6 +199,7 @@ export async function lab(view, { params }) {
 
     renderAuto();
     renderProgress(results);
+    ai.render(results);
     renderRules(results);
     renderSuggestions();
     renderStructure();
@@ -313,7 +318,7 @@ export async function lab(view, { params }) {
         const b = before.get(n) || 0;
         const a = after.get(n) || 0;
         const d = a - b;
-        return `<tr style="cursor:default"><td>${esc(n)}${before.has(n) ? '' : ' <span class="badge">neu</span>'}</td><td class="num muted">${money(b, code)}</td>
+        return `<tr style="cursor:default"><td>${esc(n)}${n !== 'Ohne Kategorie' && ai.isNew('categories', n) ? ' <span class="badge new" title="noch nicht in Firefly">neu</span>' : ''}</td><td class="num muted">${money(b, code)}</td>
           <td class="num"><b>${money(a, code)}</b></td><td class="num ${Math.abs(d) < 0.01 ? 'muted' : ''}">${Math.abs(d) < 0.01 ? '–' : money(d, code, { signed: true })}</td></tr>`;
       }).join('')}</tbody></table></div>`;
   }
@@ -329,7 +334,7 @@ export async function lab(view, { params }) {
     const total = sum(txs, (t) => t.amount);
     $('l-tagtable').innerHTML = byTag.size
       ? `<div class="list">${[...byTag].sort((a, b) => b[1].sum - a[1].sum).map(([tag, g]) => `<button class="row plain tag-row${tagFilter === tag ? ' active' : ''}" data-tag="${esc(tag)}">
-          <div class="avatar">#</div><div style="min-width:0;text-align:left"><div class="title">${esc(tag)}</div><div class="subtitle">${g.n} Buchungen · ${Math.round((g.sum / total) * 100)} % der ${base.label}</div></div>
+          <div class="avatar">#</div><div style="min-width:0;text-align:left"><div class="title">${esc(tag)}${ai.isNew('tags', tag) ? ' <span class="badge new" title="noch nicht in Firefly">neu</span>' : ''}</div><div class="subtitle">${g.n} Buchungen · ${Math.round((g.sum / total) * 100)} % der ${base.label}</div></div>
           <div class="amount">${money(g.sum, code)}</div></button>`).join('')}</div>
         <div class="legend" style="margin-top:8px"><span>Tag anklicken zeigt die Buchungen unten</span></div>`
       : '<div class="empty">Noch keine Tags – Auto-Tags oben einschalten oder Regeln mit Tags anlegen.</div>';
@@ -353,8 +358,8 @@ export async function lab(view, { params }) {
       ? `<div class="table-wrap scroll"><table><tbody>${rows.slice(0, 500).map(({ t, r }, i) => `<tr ${txAttrs(i)}>${groups.pickCell(t)}
           <td class="date hide-sm">${fmtDate(t.date)}</td>
           <td><div class="desc">${esc(t.description)}</div><div class="flow"><span class="show-sm">${fmtDate(t.date)} · </span>${esc(counterpartyOf(t))}</div></td>
-          <td>${r.changed ? `<span class="muted strike">${esc(t.category_name || 'ohne')}</span> → <b>${esc(r.category || 'ohne')}</b>` : esc(r.category || '–')}
-            ${r.tags.length ? `<div>${r.tags.map((x) => `<span class="tag">${esc(x)}</span>`).join('')}</div>` : ''}
+          <td>${r.changed ? `<span class="muted strike">${esc(t.category_name || 'ohne')}</span> → <b>${esc(r.category || 'ohne')}</b>${ai.isNew('categories', r.category) ? ' <span class="badge new" title="noch nicht in Firefly">neu</span>' : ''}${r.source === 'ai' ? ` <span class="badge ai" title="${esc(r.label?.grund || '')}">KI ${r.label?.sicherheit ?? ''} %</span>` : ''}` : esc(r.category || '–')}
+            ${r.tags.length ? `<div>${r.tags.map((x) => ai.nameTag('tags', x)).join('')}</div>` : ''}
             <div class="status-line">${statusBadge(statusOf(t, r), idOf(t))}</div></td>
           <td class="num">${money(t.amount, t.currency_code)}</td></tr>`).join('')}</tbody></table></div>
         <div class="legend" style="margin-top:8px"><span>${rows.length > 500 ? `Die ersten 500 von ${rows.length} · ` : ''}<button class="link-btn" data-pick-all>Alle ${Math.min(rows.length, 500)} angezeigten auswählen</button> – z. B. für „✓ Passt so“ oder eine Gruppe</span></div>`
@@ -426,11 +431,11 @@ export async function lab(view, { params }) {
   function statusOf(t, r) {
     const id = idOf(t);
     if (groups.memberIds().has(id)) return 'gruppe';
-    if (r.hits.length) return 'regel';
+    if (r.hits.length || r.label) return 'regel'; // eigene Regel oder angewendetes KI-Ergebnis
     if (dismissed.reviewed.has(id)) return 'geprueft';
     return 'offen';
   }
-  const STATUS = { offen: 'offen', gruppe: 'in Gruppe', regel: 'Regel', geprueft: 'passt so' };
+  const STATUS = { offen: 'offen', gruppe: 'in Gruppe', regel: 'Regel/KI', geprueft: 'passt so' };
   const statusBadge = (s, id) => `<span class="st st-${s}">${STATUS[s]}</span>${s === 'offen'
     ? ` <button class="link-btn" data-ok-one="${esc(id)}" title="als erledigt markieren – Kategorie passt so">passt so</button>`
     : s === 'geprueft' ? ` <button class="link-btn" data-unok-one="${esc(id)}">zurücknehmen</button>` : ''}`;
@@ -643,7 +648,7 @@ export async function lab(view, { params }) {
     const results = compute().filter((x) => x.r.changed || x.r.tags.length);
     const stamp = new Date().toISOString().slice(0, 10);
     if (kind === 'firefly') {
-      const blob = new Blob([JSON.stringify(toFireflyRules(rules), null, 2)], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify(toFireflyRules([...rules, ...ai.aiRules()]), null, 2)], { type: 'application/json' });
       const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `firefly-regeln-${stamp}.json` });
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -654,7 +659,8 @@ export async function lab(view, { params }) {
       ]);
     } else if (kind === 'ff-rules' && rulesAction) {
       // Regeln aus Gruppen haben eigene Firefly-Regelgruppen („Nach Firefly übertragen“ in der Gruppe)
-      const all = toFireflyRules(rules.filter((r) => !r.groupId));
+      // plus KI-Ergebnisse (je Händler eine Regel), wenn die KI-Ebene an ist
+      const all = toFireflyRules([...rules.filter((r) => !r.groupId), ...ai.aiRules()]);
       const regeln = all.filter((r) => !r.hinweis);
       const skipped = all.length - regeln.length;
       if (!regeln.length) return window.alert('Keine Regel, die Firefly so übernehmen kann.');
@@ -682,6 +688,9 @@ export async function lab(view, { params }) {
       btn.textContent = changes.length > 50 ? 'Sende … (dauert bei vielen Änderungen ein paar Minuten)' : 'Sende …';
       const payload = {
         typ: 'kategorien_uebernehmen',
+        // was es in Firefly noch nicht gibt – der Workflow kann es vorab anlegen
+        neue_kategorien: [...new Set(changes.map((x) => x.r.category).filter((c) => c && ai.isNew('categories', c)))],
+        neue_tags: [...new Set(changes.flatMap((x) => x.r.tags).filter((x) => ai.isNew('tags', x)))],
         aenderungen: changes.map(({ t, r }) => ({
           transaction_group_id: t.groupId, transaction_journal_id: t.transaction_journal_id, datum: String(t.date).slice(0, 10),
           beschreibung: t.description, betrag: t.amount, kategorie_alt: t.category_name || null, kategorie: r.category,
