@@ -104,24 +104,22 @@ export async function csvSync(view) {
       el.innerHTML = '<div class="empty">Noch keine Datei gewählt.</div>';
       return;
     }
-    const rows = results.map((r, i) => ({ ...r, i })).filter((r) => filter === 'alle' || r.status === filter);
-    // Namen, die ergänzt würden (für den Überblick)
-    const names = new Map();
-    results.forEach((r, i) => picked.has(i) && names.set(r.row.name, (names.get(r.row.name) || 0) + 1));
-    $('s-meta').textContent = `${picked.size} zum Übertragen ausgewählt`;
+    const rows = visible();
+    // Scrollposition merken – nach dem Neuzeichnen geht es an derselben Stelle weiter
+    const wrap = el.querySelector('.table-wrap');
+    const scroll = { inner: wrap?.scrollTop || 0, page: window.scrollY };
     el.innerHTML = `
       <div class="chips sync-chips" role="group" aria-label="Filter">${[...Object.keys(STATUS), 'alle'].filter((s) => s === 'alle' || count(s))
         .map((s) => `<button class="chip small" data-filter="${s}" aria-pressed="${s === filter}">${s === 'alle' ? 'Alle' : STATUS[s][0]} <span class="muted">${s === 'alle' ? results.length : count(s)}</span></button>`).join('')}</div>
-      ${names.size ? `<p class="sync-top"><b>${names.size} Empfänger</b> werden ergänzt, am häufigsten: ${[...names].sort((a, b) => b[1] - a[1]).slice(0, 8)
-        .map(([n, c]) => `${esc(n)} <span class="muted">(${c}×)</span>`).join(', ')}</p>` : ''}
+      <p class="sync-top" id="s-top"></p>
       <div class="sync-opts">
         <label class="check"><input type="checkbox" data-opt="iban" ${withIban ? 'checked' : ''}> IBAN/BIC des Gegenkontos mitgeben</label>
         ${count('abweichend') ? `<label class="check"><input type="checkbox" data-opt="overwrite" ${overwrite ? 'checked' : ''}> auch abweichende Empfänger überschreiben (${count('abweichend')})</label>` : ''}
-        ${['neu', 'abweichend'].includes(filter) ? `<button class="link-btn" data-pick="all">alle angezeigten auswählen</button> · <button class="link-btn" data-pick="none">keine</button>` : ''}
+        ${rows.some(selectable) ? `<span><button class="link-btn" data-pick="all">alle${filter === 'alle' ? '' : ' angezeigten'} auswählen</button> · <button class="link-btn" data-pick="none">keine</button></span>` : ''}
       </div>
-      <div class="table-wrap scroll"><table class="sync-table"><thead><tr><th></th><th>Laut CSV</th><th>Firefly-Buchung, die geändert würde</th><th class="num">Betrag</th><th>Ergebnis</th></tr></thead><tbody>
+      <div class="table-wrap scroll"><table class="sync-table"><thead><tr><th>${rows.some(selectable) ? '<input type="checkbox" id="s-all" aria-label="alle angezeigten auswählen">' : ''}</th><th>Laut CSV</th><th>Firefly-Buchung, die geändert würde</th><th class="num">Betrag</th><th>Ergebnis</th></tr></thead><tbody>
       ${rows.slice(0, MAX_ROWS).map((r) => `<tr style="cursor:default" class="${r.t && !r.sure && r.status !== 'erledigt' ? 'check-me' : ''}">
-        <td>${r.t && ['neu', 'abweichend'].includes(r.status) ? `<input type="checkbox" data-row="${r.i}" ${picked.has(r.i) ? 'checked' : ''} aria-label="übertragen">` : ''}</td>
+        <td>${selectable(r) ? `<input type="checkbox" data-row="${r.i}" ${picked.has(r.i) ? 'checked' : ''} aria-label="übertragen">` : ''}</td>
         <td><div class="sync-date">${fmtDate(r.row.date)}</div><b>${esc(r.row.name || '–')}</b>${r.row.iban ? `<div class="flow">${esc(r.row.iban)}</div>` : ''}
           <div class="flow">${esc(r.row.text)}${r.row.purpose ? ` · ${esc(r.row.purpose.slice(0, 90))}` : ''}</div><div class="flow">${esc(r.row.file)}:${r.row.line}</div></td>
         <td>${r.t ? `${fireflyBox(r.t)}<div class="sync-how ${r.sure ? 'sure' : 'unsure'}">${r.sure ? '✓' : '⚠'} ${esc(r.how || '')}</div>`
@@ -135,11 +133,56 @@ export async function csvSync(view) {
       </tbody></table></div>
       ${rows.length > MAX_ROWS ? `<div class="legend" style="margin-top:8px"><span>Die ersten ${MAX_ROWS} von ${rows.length} (Auswahl gilt für alle)</span></div>` : ''}
       <div class="sync-run">
-        ${action ? `<button class="btn primary" id="s-run" ${picked.size ? '' : 'disabled'}>${picked.size} Empfänger nach Firefly übertragen</button>
+        ${action ? `<button class="btn primary" id="s-run"></button>
           <span class="muted">über „${esc(action.name)}“ – in Paketen zu ${CHUNK}</span>`
         : '<span class="muted">Zum Übertragen eine Automation mit Auslöser „Kategorie übernehmen“ anlegen (Workflow n8n/firefly-buchung-bearbeiten.json, Version mit „gegenkonto_setzen“).</span>'}
         <div class="run-out" id="s-out"></div>
       </div>`;
+    updateSelection();
+    const w = el.querySelector('.table-wrap');
+    if (w) w.scrollTop = scroll.inner;
+    window.scrollTo(0, scroll.page);
+  }
+
+  const selectable = (r) => Boolean(r.t) && ['neu', 'abweichend'].includes(r.status);
+  const visible = () => results.map((r, i) => ({ ...r, i })).filter((r) => filter === 'alle' || r.status === filter);
+  /** Nur Zähler, Überblick und Knöpfe aktualisieren – die Tabelle bleibt stehen (kein Sprung nach oben). */
+  function updateSelection() {
+    const el = $('s-result');
+    const names = new Map();
+    results.forEach((r, i) => picked.has(i) && names.set(r.row.name, (names.get(r.row.name) || 0) + 1));
+    $('s-meta').textContent = `${picked.size} zum Übertragen ausgewählt`;
+    const top = el.querySelector('#s-top');
+    if (top) {
+      top.hidden = !names.size;
+      top.innerHTML = names.size ? `<b>${names.size} Empfänger</b> werden ergänzt, am häufigsten: ${[...names].sort((a, b) => b[1] - a[1]).slice(0, 8)
+        .map(([n, c]) => `${esc(n)} <span class="muted">(${c}×)</span>`).join(', ')}` : '';
+    }
+    const run = el.querySelector('#s-run');
+    if (run) {
+      run.disabled = !picked.size;
+      run.textContent = `${picked.size} Empfänger nach Firefly übertragen`;
+    }
+    const ow = el.querySelector('[data-opt="overwrite"]');
+    if (ow) ow.checked = overwrite;
+    // Kopf-Häkchen: alle / einige / keine der angezeigten
+    const all = el.querySelector('#s-all');
+    if (all) {
+      const sel = visible().filter(selectable);
+      const n = sel.filter((r) => picked.has(r.i)).length;
+      all.checked = n > 0 && n === sel.length;
+      all.indeterminate = n > 0 && n < sel.length;
+    }
+  }
+  /** Alle bzw. keine der angezeigten Zeilen wählen (auch jenseits der ersten 600). */
+  function pickVisible(on) {
+    for (const r of visible().filter(selectable)) {
+      if (on) picked.add(r.i);
+      else picked.delete(r.i);
+      if (on && r.status === 'abweichend') overwrite = true;
+    }
+    $('s-result').querySelectorAll('[data-row]').forEach((box) => (box.checked = picked.has(Number(box.dataset.row))));
+    updateSelection();
   }
 
   async function transfer(btn) {
@@ -189,16 +232,7 @@ export async function csvSync(view) {
       return render();
     }
     const p = e.target.closest('[data-pick]');
-    if (p) {
-      results.forEach((r, i) => {
-        if (filter !== 'alle' && r.status !== filter) return;
-        if (!['neu', 'abweichend'].includes(r.status) || !r.t) return;
-        if (p.dataset.pick === 'all') picked.add(i);
-        else picked.delete(i);
-      });
-      if (p.dataset.pick === 'all' && filter === 'abweichend') overwrite = true;
-      return render();
-    }
+    if (p) return pickVisible(p.dataset.pick === 'all');
     const choose = e.target.closest('[data-choose]');
     if (choose) {
       // von Hand zugeordnet: Kandidat übernehmen, für andere Zeilen sperren
@@ -219,14 +253,19 @@ export async function csvSync(view) {
       if (row.checked) picked.add(i);
       else picked.delete(i);
       if (row.checked && results[i].status === 'abweichend') overwrite = true;
-      return render();
+      return updateSelection(); // Tabelle nicht neu aufbauen
     }
-    if (e.target.dataset.opt === 'iban') withIban = e.target.checked;
+    if (e.target.id === 's-all') return pickVisible(e.target.checked);
+    if (e.target.dataset.opt === 'iban') {
+      withIban = e.target.checked;
+      return;
+    }
     if (e.target.dataset.opt === 'overwrite') {
       overwrite = e.target.checked;
       results.forEach((r, i) => r.status === 'abweichend' && (overwrite ? picked.add(i) : picked.delete(i)));
+      $('s-result').querySelectorAll('[data-row]').forEach((box) => (box.checked = picked.has(Number(box.dataset.row))));
+      updateSelection();
     }
-    render();
   });
   render();
 }
