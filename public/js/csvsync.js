@@ -6,7 +6,7 @@
 
 import * as api from './api.js';
 import { money, esc, fmtDate, addDays } from './util.js';
-import { card, counterparty, fireflyTxUrl } from './common.js';
+import { card, counterparty, fireflyTxUrl, downloadCsv } from './common.js';
 import { actionFor, runAction } from './txedit.js';
 import { decodeCsv, readRows, matchRows, changeFor, statusFor, fingerprints, hasNoParty } from './csvmatch.js';
 
@@ -34,6 +34,7 @@ export async function csvSync(view) {
   view.innerHTML = `
     <div class="grid">
       ${card('s-files', 'Bank-CSV abgleichen', { meta: '<span class="muted">Dateien bleiben in deinem Browser</span>' })}
+      ${card('s-open', 'Noch nicht umgestellt: Buchungen ohne Empfänger in Firefly', { meta: '<span id="s-open-meta"></span>' })}
       ${card('s-result', 'Ergebnis', { filter: true, meta: '<span id="s-meta"></span>' })}
     </div>`;
   const $ = (id) => view.querySelector(`#${id}`);
@@ -132,6 +133,7 @@ export async function csvSync(view) {
     // schon synchron (Firefly hat den Namen aus der CSV) → merken, beim nächsten Mal überspringen
     const synced = matched.filter((r) => r.status === 'vorhanden' && r.t);
     if (synced.length) memoryCall('POST', { items: synced.map((r) => ({ fp: r.fp, j: r.t.transaction_journal_id, name: r.row.name })) }).then(renderMemory);
+    if (openScan && !openScan.loading) renderOpen(); // Abgleich mit „noch nicht umgestellt“
     render();
   };
 
@@ -308,6 +310,7 @@ export async function csvSync(view) {
       }
     }
     api.forget();
+    if (openScan && !openScan.loading) scanOpen(); // „noch nicht umgestellt“ aktualisieren
     const stopped = stopRequested && queue.length;
     const msg = out.innerHTML.includes('Abgebrochen') ? out.innerHTML : null;
     render();
@@ -381,5 +384,113 @@ export async function csvSync(view) {
       updateSelection();
     }
   });
+  // ---- Noch nicht umgestellt: direkt in Firefly nachsehen (ohne CSV) -----------------
+  let openScan = null; // { list, total, from, to }
+  let openMonth = null;
+  const SCAN_RANGES = [['24', 'letzte 24 Monate'], ['60', 'letzte 5 Jahre'], ['all', 'alles (seit 2000)']];
+  let scanRange = '24';
+  const monthKey = (t) => String(t.date).slice(0, 7);
+  const accountOf = (t) => (t.type === 'deposit' ? t.destination_name : t.source_name) || '–';
+  const monthLabel = (k) => fmtDate(`${k}-15`, { month: 'long', year: 'numeric' });
+
+  function renderOpen() {
+    const el = $('s-open');
+    const head = `<div class="sync-scan">
+        <label>Zeitraum <select data-scan-range>${SCAN_RANGES.map(([k, l]) => `<option value="${k}"${k === scanRange ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+        <button class="btn" data-scan>${openScan ? 'Neu prüfen' : 'In Firefly prüfen'}</button>
+        <span class="muted">liest Ausgaben und Einnahmen frisch aus Firefly und zeigt alle, bei denen kein echter Empfänger steht („(no name)“, leer, nur „Kartenzahlung“ …)</span></div>`;
+    if (!openScan) {
+      el.innerHTML = head;
+      return;
+    }
+    if (openScan.loading) {
+      el.innerHTML = `${head}<div class="muted">Lese Buchungen aus Firefly …</div>`;
+      return;
+    }
+    const { list, total } = openScan;
+    $('s-open-meta').textContent = list.length ? `${list.length} offen` : 'alles umgestellt';
+    if (!list.length) {
+      el.innerHTML = `${head}<div class="empty">Alle ${total} Buchungen im Zeitraum haben einen echten Empfänger. 🎉</div>`;
+      return;
+    }
+    const byMonth = new Map();
+    for (const t of list) {
+      const k = monthKey(t);
+      const g = byMonth.get(k) || { n: 0, sum: 0, accounts: new Map() };
+      g.n += 1;
+      g.sum += t.amount;
+      g.accounts.set(accountOf(t), (g.accounts.get(accountOf(t)) || 0) + 1);
+      byMonth.set(k, g);
+    }
+    const max = Math.max(...[...byMonth.values()].map((g) => g.n));
+    // in einer schon eingelesenen CSV enthalten? (dann reicht „übertragen“ unten)
+    const inCsv = new Set(results.filter((r) => r.t && ['neu', 'abweichend'].includes(r.status)).map((r) => String(r.t.transaction_journal_id)));
+    const covered = list.filter((t) => inCsv.has(String(t.transaction_journal_id))).length;
+    const rows = openMonth ? list.filter((t) => monthKey(t) === openMonth).sort((a, b) => String(a.date).localeCompare(String(b.date))) : [];
+    el.innerHTML = `${head}
+      <p class="sync-top"><b>${list.length}</b> von ${total} Buchungen (${Math.round((list.length / total) * 100)} %) haben noch keinen echten Empfänger
+        ${results.length ? ` · davon <b>${covered}</b> in der eingelesenen CSV (unten übertragbar), <b>${list.length - covered}</b> nicht` : ''}
+        · <button class="link-btn" data-open-csv>Liste als CSV ↓</button></p>
+      <div class="table-wrap scroll"><table class="sync-months"><thead><tr><th>Monat</th><th class="num">offen</th><th class="num hide-sm">Summe</th><th class="hide-sm">Konten</th><th></th></tr></thead><tbody>
+      ${[...byMonth].sort((a, b) => b[0].localeCompare(a[0])).map(([k, g]) => `<tr data-month="${k}" class="${k === openMonth ? 'active' : ''}">
+        <td>${esc(monthLabel(k))}</td><td class="num"><b>${g.n}</b></td><td class="num hide-sm">${money(g.sum)}</td>
+        <td class="hide-sm"><span class="flow">${[...g.accounts].map(([a, n]) => `${esc(a)} (${n})`).join(', ')}</span></td>
+        <td><div class="mini-bar"><i style="width:${Math.round((g.n / max) * 100)}%"></i></div></td></tr>
+        ${k === openMonth ? `<tr class="sync-month-rows"><td colspan="5"><table><tbody>${rows.map((t) => `<tr style="cursor:default">
+          <td class="date">${fmtDate(t.date)}</td>
+          <td>${fireflyBoxShort(t)}${inCsv.has(String(t.transaction_journal_id)) ? '<span class="badge good">in der CSV gefunden</span>' : ''}</td>
+          <td class="num">${money(t.type === 'deposit' ? t.amount : -t.amount)}</td></tr>`).join('')}</tbody></table></td></tr>` : ''}`).join('')}
+      </tbody></table></div>
+      <div class="legend" style="margin-top:8px"><span>Monat anklicken zeigt die Buchungen. Für Monate mit offenen Buchungen die CSV-Datei der Bank oben einlesen.</span></div>`;
+  }
+  const fireflyBoxShort = (t) => {
+    const url = fireflyTxUrl(t);
+    return `<div class="desc">${esc(t.description || '–')}${url ? ` <a href="${esc(url)}" target="_blank" rel="noopener" class="ff-link" title="In Firefly öffnen">↗</a>` : ''}</div>
+      <div class="flow">${esc(accountOf(t))} · Empfänger: ${esc(counterparty(t) || '–')} · Kategorie: ${esc(t.category_name || 'ohne')} · Nr. ${esc(t.transaction_journal_id)}</div>
+      ${t.notes ? `<div class="flow">Notiz: ${esc(String(t.notes).slice(0, 100))}</div>` : ''}`;
+  };
+
+  async function scanOpen() {
+    const to = new Date();
+    const from = scanRange === 'all' ? new Date(2000, 0, 1) : new Date(to.getFullYear(), to.getMonth() - Number(scanRange), 1);
+    openScan = { loading: true };
+    renderOpen();
+    api.setFresh(true);
+    let txs;
+    try {
+      txs = api.flattenTransactions(await api.getAll('transactions', { start: from, end: to }))
+        .filter((t) => t.type === 'withdrawal' || t.type === 'deposit');
+    } catch (err) {
+      openScan = null;
+      $('s-open').innerHTML = `<div class="empty">Konnte nicht geladen werden: ${esc(err.message)}</div>`;
+      return;
+    } finally {
+      api.setFresh(false);
+    }
+    openScan = { list: txs.filter(hasNoParty), total: txs.length, from, to };
+    openMonth = null;
+    renderOpen();
+  }
+
+  $('s-open').addEventListener('click', (e) => {
+    if (e.target.closest('[data-scan]')) return scanOpen();
+    if (e.target.closest('a')) return;
+    if (e.target.closest('[data-open-csv]')) {
+      return downloadCsv(`ohne-empfaenger-${new Date().toISOString().slice(0, 10)}.csv`, [
+        ['Datum', 'Konto', 'Beschreibung', 'Notizen', 'Betrag', 'Empfänger in Firefly', 'Kategorie', 'Buchungsnummer'],
+        ...openScan.list.map((t) => [String(t.date).slice(0, 10), accountOf(t), t.description, t.notes || '', t.type === 'deposit' ? t.amount : -t.amount, counterparty(t) || '', t.category_name || '', t.transaction_journal_id]),
+      ]);
+    }
+    const m = e.target.closest('[data-month]');
+    if (m) {
+      openMonth = openMonth === m.dataset.month ? null : m.dataset.month;
+      renderOpen();
+    }
+  });
+  $('s-open').addEventListener('change', (e) => {
+    if (e.target.matches('[data-scan-range]')) scanRange = e.target.value;
+  });
+  renderOpen();
+
   render();
 }

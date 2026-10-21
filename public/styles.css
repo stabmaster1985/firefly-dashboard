@@ -973,3 +973,12 @@ button.cal-day { cursor: pointer; }
 .sync-cand { display: grid; gap: 4px; justify-items: start; }
 .sync-table tr.check-me td { background: color-mix(in srgb, var(--status-warning) 8%, transparent); }
 .sync-mem { margin-top: 10px; font-size: 13px; line-height: 1.5; }
+.sync-scan { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 12px; font-size: 13px; }
+.sync-scan label { display: inline-flex; gap: 6px; align-items: center; }
+.sync-scan select { font: inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary); }
+.sync-months tbody tr[data-month] { cursor: pointer; }
+.sync-months tbody tr.active td { background: var(--accent-soft); }
+.sync-month-rows > td { padding: 0 0 8px 12px; }
+.sync-month-rows table { width: 100%; }
+.sync-month-rows .badge { margin-top: 4px; }
+.sync-months .mini-bar i { background: var(--status-warning); }
