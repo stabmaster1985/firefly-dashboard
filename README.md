@@ -387,11 +387,15 @@ wählen (gern alle auf einmal, überlappende Zeilen zählen nur einmal):
   **anderer Empfänger in Firefly** (nur wenn ausdrücklich angekreuzt), schon richtig,
   mehrdeutig, nicht gefunden.
 - **Empfänger nach Firefly übertragen**, Art **im Hintergrund** (Standard): Das Dashboard schickt
-  alles in wenigen großen Paketen (`hintergrund: true`); n8n antwortet sofort („angenommen“) und
-  speichert danach in Portionen zu 5 Buchungen (Knoten „In Portionen“, Batch Size anpassbar),
-  ohne Firefly-Webhooks je Buchung. Kein 5-Minuten-Limit mehr. Den Fortschritt liest das
-  Dashboard alle 15 s aus Firefly (die ältesten offenen Buchungen einzeln, am Ende einmal alles);
-  „Anzeige beenden“ stoppt nur die Anzeige, n8n arbeitet weiter. Braucht die aktuelle Vorlage
+  ein Paket (`hintergrund: true`); n8n antwortet sofort („angenommen“) und speichert danach in
+  Portionen zu 5 Buchungen (Knoten „In Portionen“, Batch Size anpassbar), ohne Firefly-Webhooks
+  je Buchung. Das Dashboard verfolgt in Firefly, wann das Paket angekommen ist (alle 10 s), und
+  schickt erst dann das nächste. Jedes Paket ist eine eigene n8n-Ausführung und so bemessen,
+  dass sie rund 3 Minuten dauert (Start mit 40, danach nach gemessener Geschwindigkeit) – so
+  stört auch ein Ausführungs-Zeitlimit in n8n (`EXECUTIONS_TIMEOUT`, oft 5 Minuten) nicht. Wird
+  ein Paket abgeschnitten, gehen die fehlenden mit kleinerem Paket noch einmal raus. „gleichzeitig“
+  lässt mehrere Pakete parallel laufen; „Anhalten“ stoppt nach den laufenden Paketen. Die Vorlage
+  setzt außerdem das Zeitlimit des Workflows auf 60 Minuten (Workflow-Einstellungen). Braucht die aktuelle Vorlage
   `n8n/firefly-buchung-bearbeiten.json` (Zweig „Hintergrund?“ – neu importieren bzw. die fünf
   neuen Knoten übernehmen und in „In Firefly speichern (Hintergrund)“ die Zugangsdaten wählen).
 - Art **in Paketen** (wie bisher) schickt die Auswahl in kleinen Paketen an die

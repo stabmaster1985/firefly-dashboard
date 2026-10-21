@@ -667,7 +667,9 @@ http
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ ok: true, hintergrund: true, angenommen: list.length }));
             const step = Number(process.env.MOCK_N8N_MS || 50);
-            list.forEach((a, k) => setTimeout(() => apply(a), step * (k + 1)));
+            // MOCK_N8N_LIMIT_MS: n8n bricht die Ausführung nach dieser Zeit ab (wie EXECUTIONS_TIMEOUT)
+            const limit = Number(process.env.MOCK_N8N_LIMIT_MS || 0);
+            list.forEach((a, k) => (!limit || step * (k + 1) <= limit) && setTimeout(() => apply(a), step * (k + 1)));
             return;
           }
           const partial = url.pathname.endsWith('/teilweise');
