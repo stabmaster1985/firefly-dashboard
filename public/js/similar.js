@@ -5,7 +5,7 @@
 // Merkmale: Empfänger (bei PayPal & Co. der Buchungstext), seltene Wörter im
 // Verwendungszweck (gewichtet nach Seltenheit), Betrag, bisherige Kategorie.
 
-import { counterpartyOf, partyKey, ruleMatches, isIntermediary, textKey } from './rules.js';
+import { partyKey, ruleMatches, merchantOf, wordConds } from './rules.js';
 import { words } from './structure.js';
 
 const idOf = (t) => String(t.transaction_journal_id);
@@ -45,7 +45,7 @@ function profile(index, list) {
   return { size: list.length, parties, weight, amounts, topCat: topCat && topCat[1] / list.length >= 0.6 ? topCat[0] : null };
 }
 
-const nameOf = (it) => (it.party.startsWith('text:') ? it.party.slice(5) : counterpartyOf(it.t));
+const nameOf = (it) => merchantOf(it.t).name;
 
 /**
  * Ähnliche Buchungen zu den Beispielen. Ergebnis: [{ t, score, sure, reasons }]
@@ -127,21 +127,19 @@ export function proposeRules(index, includeIds, { kind, name, groupId }) {
   const seen = new Set();
   for (const id of inc) {
     const it = index.byId.get(id);
-    // Empfänger (bei Zahlungsdiensten: Kennwort im Text)
-    const via = isIntermediary(counterpartyOf(it.t));
-    const pc = via
-      ? { field: 'description', op: 'contains', value: textKey(it.t) }
-      : { field: 'party', op: 'equals', value: counterpartyOf(it.t) };
-    const pKey = `${pc.field}:${pc.value.toLowerCase()}`;
+    // Empfänger (bei Zahlungsdiensten/„Kartenzahlung“: Kennwort in Beschreibung oder Notizen)
+    const pc = merchantOf(it.t).cond;
+    const pKey = `${pc.field}:${String(pc.value).toLowerCase()}`;
     if (pc.value && !seen.has(pKey)) {
       seen.add(pKey);
-      candidates.push({ rule: make([pc], via ? `Text enthält „${pc.value}“` : `Empfänger „${pc.value}“`), prio: 2 });
+      candidates.push({ rule: make([pc], pc.field === 'party' ? `Empfänger „${pc.value}“` : `${pc.field === 'notes' ? 'Notiz' : 'Text'} enthält „${pc.value}“`), prio: 2 });
     }
     for (const w of it.words) {
       const wKey = `w:${w}`;
       if (seen.has(wKey)) continue;
       seen.add(wKey);
-      candidates.push({ rule: make([{ field: 'description', op: 'contains', value: w }], `Text enthält „${w}“`), prio: 1, word: true });
+      const [wc] = wordConds(w, [it.t]); // das Wort steht in der Beschreibung oder in den Notizen
+      candidates.push({ rule: make([wc], `${wc.field === 'notes' ? 'Notiz' : 'Text'} enthält „${w}“`), prio: 1, word: true });
     }
   }
   // Treffer jeder Kandidaten-Regel

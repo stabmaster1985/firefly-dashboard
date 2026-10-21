@@ -5,6 +5,7 @@
 export const FIELDS = {
   party: 'Empfänger / Zahler',
   description: 'Beschreibung',
+  notes: 'Notizen',
   amount: 'Betrag',
   account: 'Konto',
   category: 'Firefly-Kategorie',
@@ -65,16 +66,83 @@ const lower = (s) => String(s ?? '').toLowerCase();
 /** Zahlungsdienste: dahinter stecken verschiedene Händler → nach Buchungstext gruppieren. */
 const INTERMEDIARIES = ['paypal', 'klarna', 'sumup', 'stripe', 'adyen', 'amazon payments', 'apple pay', 'google pay', 'sofort', 'giropay', 'mollie', 'unzer', 'payone', 'computop'];
 export const isIntermediary = (party) => INTERMEDIARIES.some((w) => lower(party).includes(w));
-/** Kennwort aus dem Buchungstext, z. B. „PayPal *DisneyPlus 123456“ → „disneyplus“. */
-export const textKey = (t) => normParty(String(t.description).replace(/^(paypal|klarna|sumup)\s*\*?/i, '')).split(' ').filter((w) => w.length > 2).slice(0, 2).join(' ');
 export const counterpartyOf = (t) => (t.type === 'deposit' ? t.source_name : t.destination_name) || '';
 export const normParty = (s) => lower(s).replace(/[0-9]+/g, ' ').replace(/[^\p{L}& ]+/gu, ' ').replace(/\s+/g, ' ').trim();
-/** Gruppierungsschlüssel: Empfänger, bei Zahlungsdiensten (PayPal …) der Buchungstext. */
-export const partyKey = (t) => (isIntermediary(counterpartyOf(t)) ? `text:${textKey(t)}` : normParty(counterpartyOf(t)));
+
+// ---- Bank-Standardtexte ------------------------------------------------------
+// Bei Kartenzahlungen steht in der Beschreibung (oder sogar als Empfänger) oft
+// nur „Kartenzahlung girocard“ samt Datum, Folgenummer, Verfallsdatum – der
+// eigentliche Händler steckt dann in den Notizen.
+const GENERIC = /\b(kartenzahlung|kartenumsatz|kartenzahlung girocard|girocard|girogo|debitkarte|debit|visa|mastercard|maestro|v ?pay|kontaktlos|contactless|apple ?pay|google ?pay|ec[- ]?karte|ec|pos|lastschrift|basis-?lastschrift|folgelastschrift|erstlastschrift|sepa|einzug|abbuchung|zahlung|umsatz|karte)\b/gi;
+const NOISE = [
+  /\b(EREF|MREF|CRED|KREF|PURP|IBAN|BIC|TAN)\s*[+:]\s*\S+/gi, // SEPA-Kennungen samt Wert
+  /\b(SVWZ|ABWA|ABWE)\s*[+:]\s*/gi, // SEPA-Feldnamen (Inhalt bleibt)
+  /\d{1,4}[-./]\d{1,2}[-./]\d{2,4}(?:[T ]\d{1,2}[:.]\d{2}(?:[:.]\d{2})?)?/g, // Datum, ggf. mit Uhrzeit
+  /\b\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\s*(?:uhr)?\b/gi,
+  /\b(kartenfolgenr|folge-?nr|verfalld(?:atum)?|verf\.?datum|debitk|karten-?nr|terminal(?:-?id)?|tid|beleg(?:-?nr)?|bon(?:-?nr)?|kundenref|referenz|ref|nr)\.?\s*[:#]?\s*[\w./-]*\d[\w./-]*/gi,
+  /\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){3,8}\b/g, // IBAN
+  /[\w-]*\d{4,}[\w-]*/g, // lange Nummern
+];
+/** Text ohne Bank-Standardtexte, Daten, Nummern und SEPA-Kennungen. */
+export function cleanText(s) {
+  let x = String(s ?? '');
+  for (const re of NOISE) x = x.replace(re, ' ');
+  return x.replace(GENERIC, ' ').replace(/[/\\|*_]+/g, ' ').replace(/\s+/g, ' ').replace(/^[\s,.;:+-]+|[\s,.;:+-]+$/g, '').trim();
+}
+/** Steht nach dem Aufräumen nichts Brauchbares mehr da (z. B. nur „Kartenzahlung girocard 03.10.“)? */
+export const isGenericText = (s) => (cleanText(s).match(/\p{L}/gu) || []).length < 2;
+// Empfänger: nur leer, „(no name)“ o. ä. oder reiner Standardtext zählt („O2“ ist ein echter Name)
+const isGenericParty = (party) => !String(party ?? '').trim() || /^\(.*\)$/.test(String(party).trim()) || !/\p{L}/u.test(cleanText(party));
+
+/** Aussagekräftiger Text: Beschreibung, sonst Notizen (dort steht bei Kartenzahlungen meist der Händler). */
+export function textSource(t) {
+  const d = String(t.description ?? '').replace(/^(paypal|klarna|sumup)\s*\*?/i, '');
+  if (!isGenericText(d)) return { field: 'description', text: cleanText(d) };
+  if (!isGenericText(t.notes)) return { field: 'notes', text: cleanText(t.notes) };
+  return { field: 'description', text: '' };
+}
+const KEY_STOP = new Set(['sagt', 'danke', 'vielen', 'dank', 'ihr', 'ihre', 'ihren', 'einkauf', 'bei', 'von', 'und', 'der', 'die', 'das', 'gmbh', 'mbh', 'the', 'for', 'mit', 'fuer', 'für', 'filiale']);
+const keyWords = (s) => normParty(s).split(' ').filter((w) => w.length > 2 && !KEY_STOP.has(w)).slice(0, 2);
+/** Kennwort aus dem Buchungstext, z. B. „PayPal *DisneyPlus 123456“ → „disneyplus“. */
+export const textKey = (t) => keyWords(textSource(t).text).join(' ');
+
+/**
+ * Händler einer Buchung: Schlüssel zum Gruppieren, Anzeigename und eine
+ * Regel-Bedingung, die ihn wiederfindet. Normal der Empfänger; bei
+ * Zahlungsdiensten (PayPal …) oder nichtssagendem Empfänger („Kartenzahlung“)
+ * das Kennwort aus Beschreibung bzw. Notizen.
+ */
+export function merchantOf(t) {
+  const party = counterpartyOf(t);
+  const via = isIntermediary(party);
+  if (!via && !isGenericParty(party)) return { key: normParty(party), name: party, via: null, cond: { field: 'party', op: 'equals', value: party } };
+  const src = textSource(t);
+  const words = keyWords(src.text);
+  if (!words.length) return { key: via ? '' : normParty(party), name: party, via: null, generic: !via, cond: { field: 'party', op: 'equals', value: party } };
+  // Bedingung: Kennwort so, wie es im Originaltext zusammenhängend vorkommt
+  const original = lower(src.field === 'notes' ? t.notes : t.description).replace(/\s+/g, ' ');
+  const phrase = words.join(' ');
+  const value = original.includes(phrase) ? phrase : words[0];
+  const name = src.text.split(' ').slice(0, 3).join(' ').slice(0, 40);
+  return { key: `text:${phrase}`, name, via: via ? party : null, generic: !via, from: src.field, cond: { field: src.field, op: 'contains', value } };
+}
+/** Gruppierungsschlüssel (siehe merchantOf). */
+export const partyKey = (t) => merchantOf(t).key;
+
+/**
+ * Bedingungen für ein Wort aus Beschreibung oder Notizen: je Feld, in dem es
+ * bei den Treffern vorkommt, eine (Firefly kennt kein „Beschreibung oder Notiz“).
+ */
+export function wordConds(w, hits) {
+  const q = lower(w);
+  const fields = ['description', 'notes'].filter((f) => hits.some((t) => lower(f === 'notes' ? t.notes : t.description).includes(q)));
+  return (fields.length ? fields : ['description']).map((field) => ({ field, op: 'contains', value: w }));
+}
 
 function fieldValue(t, field) {
   if (field === 'party') return counterpartyOf(t);
   if (field === 'description') return t.description;
+  if (field === 'notes') return t.notes || '';
   if (field === 'amount') return t.amount;
   if (field === 'account') return t.type === 'deposit' ? t.destination_name : t.source_name;
   if (field === 'category') return t.category_name || '';
@@ -177,15 +245,14 @@ export function suggestRules(txs, existingRules = [], knownCategories = []) {
   const expenses = txs.filter((t) => t.type === 'withdrawal' && !covered(t));
   const byParty = new Map();
   for (const t of expenses) {
-    // Zahlungsdienste nach Buchungstext, alle anderen nach Empfänger
-    const via = isIntermediary(counterpartyOf(t));
-    const key = via ? `text:${textKey(t)}` : normParty(counterpartyOf(t));
-    if (key.length < 2 || key === 'text:') continue;
-    if (!byParty.has(key)) byParty.set(key, { name: via ? textKey(t) : counterpartyOf(t), via, list: [] });
-    byParty.get(key).list.push(t);
+    // Händler: Empfänger, bei Zahlungsdiensten/„Kartenzahlung“ das Kennwort aus Beschreibung oder Notizen
+    const m = merchantOf(t);
+    if (m.key.length < 2 || m.key === 'text:') continue;
+    if (!byParty.has(m.key)) byParty.set(m.key, { cond: m.cond, list: [] });
+    byParty.get(m.key).list.push(t);
   }
   const used = new Set();
-  for (const [key, { name, via, list }] of byParty) {
+  for (const [key, { cond, list }] of byParty) {
     const cats = new Map();
     list.filter((t) => t.category_name).forEach((t) => cats.set(t.category_name, (cats.get(t.category_name) || 0) + 1));
     const categorized = [...cats.values()].reduce((a, n) => a + n, 0);
@@ -203,7 +270,7 @@ export function suggestRules(txs, existingRules = [], knownCategories = []) {
         ? `${missing}× ohne Kategorie, sonst ${n}× „${top}“`
         : `uneinheitlich: ${n}× „${top}“, ${changes}× anders${missing ? ` (davon ${missing} ohne)` : ''}`,
       changes,
-      rule: { id: newId(), enabled: true, when: [via ? { field: 'description', op: 'contains', value: name } : { field: 'party', op: 'equals', value: name }], setCategory: top, addTags: [] },
+      rule: { id: newId(), enabled: true, when: [cond], setCategory: top, addTags: [] },
     });
   }
   // Händlerliste – nur Kategorien vorschlagen, die es bei dir schon gibt (oder neu markieren)
@@ -213,11 +280,12 @@ export function suggestRules(txs, existingRules = [], knownCategories = []) {
   for (const [category, words] of MERCHANTS) {
     const target = findKnown(category) || category;
     for (const w of words) {
-      const hits = expenses.filter((t) => {
-        const via = isIntermediary(counterpartyOf(t));
-        if (used.has(via ? `text:${textKey(t)}` : normParty(counterpartyOf(t)))) return false;
-        return (!via && lower(counterpartyOf(t)).includes(w)) || lower(t.description).includes(w);
-      });
+      // Feld, in dem das Stichwort am häufigsten vorkommt (Empfänger, Beschreibung oder Notizen)
+      const open = expenses.filter((t) => !used.has(partyKey(t)));
+      const field = ['party', 'description', 'notes']
+        .map((f) => [f, open.filter((t) => (f !== 'party' || !isIntermediary(counterpartyOf(t))) && lower(fieldValue(t, f)).includes(w))])
+        .sort((a, b) => b[1].length - a[1].length)[0];
+      const hits = field[1];
       const changes = hits.filter((t) => t.category_name !== target).length;
       if (!changes) continue;
       out.push({
@@ -225,7 +293,7 @@ export function suggestRules(txs, existingRules = [], knownCategories = []) {
         kind: 'haendler',
         reason: `bekannter Händler „${w.trim()}“ → ${target}${known.has(lower(target)) ? '' : ' (neue Kategorie)'}`,
         changes,
-        rule: { id: newId(), enabled: true, when: [{ field: hits.every((t) => lower(counterpartyOf(t)).includes(w)) ? 'party' : 'description', op: 'contains', value: w.trim() }], setCategory: target, addTags: [] },
+        rule: { id: newId(), enabled: true, when: [{ field: field[0], op: 'contains', value: w.trim() }], setCategory: target, addTags: [] },
       });
     }
   }
@@ -255,6 +323,7 @@ export function toFireflyRules(rules) {
   const TRIGGER = {
     party: { contains: 'destination_account_contains', equals: 'destination_account_is', startsWith: 'destination_account_starts' },
     description: { contains: 'description_contains', equals: 'description_is', startsWith: 'description_starts' },
+    notes: { contains: 'notes_contains', equals: 'notes_is', startsWith: 'notes_starts' },
     amount: { gt: 'amount_more', lt: 'amount_less', equals: 'amount_exactly' },
     account: { contains: 'source_account_contains', equals: 'source_account_is', startsWith: 'source_account_starts' },
     category: { equals: 'category_is' },

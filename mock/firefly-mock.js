@@ -136,6 +136,18 @@ for (let m = new Date(firstDay); m <= today; m = new Date(m.getFullYear(), m.get
   if (rand() < 0.4) add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(10, 90), pick(['Apotheke', 'Zahnarzt Zuzahlung', 'Physiotherapie']), giro, ext('Praxis / Apotheke'), { category: 'Gesundheit' });
   if (mo === 6) add(day(14), 'withdrawal', 1240, 'Sommerurlaub Ostsee', kk, ext('Booking.com'), { category: 'Urlaub', tags: ['Urlaub'] });
   if (rand() < 0.3) add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(20, 60), 'Geschenk', kk, ext(pick(['Thalia', 'Blumen Meyer', 'Amazon'])), { category: 'Geschenke' });
+  // Import ohne „Name Zahlungsbeteiligter“: kein Empfänger, Beschreibung nur Bank-Standardtext,
+  // der Händler steht nur in den Notizen (Verwendungszweck) – für die Händlererkennung
+  for (let i = 0; i < 3; i++) {
+    const d = day(1 + Math.floor(rand() * 28));
+    const [shop, city, cat] = pick([['NETTO MARKEN-DISCOUNT', 'MUENCHEN', 'Lebensmittel'], ['BAECKEREI RIEDMAIER', 'MUENCHEN', 'Lebensmittel'],
+      ['ROSSMANN 2231', 'PASING', null], ['HORNBACH BAUMARKT', 'GERMERING', null], ['TANKSTELLE ESSO', 'MUENCHEN', 'Mobilität']]);
+    const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${10 + Math.floor(rand() * 9)}:${String(Math.floor(rand() * 60)).padStart(2, '0')}`;
+    add(d, 'withdrawal', between(6, 85), pick(['Kartenzahlung girocard', 'KARTENZAHLUNG']), giro, ext('(no name)'),
+      { category: rand() < 0.5 ? cat : null, notes: `${shop}//${city}/DE ${stamp} Folgenr. 0${Math.floor(rand() * 9)} Verfalld. 2027-12 girocard` });
+  }
+  if (mo % 2 === 1) add(day(12), 'withdrawal', 39.99, 'Basislastschrift', giro, ext('(no name)'),
+    { category: 'Nebenkosten', notes: `EREF+INV${100000 + mo} MREF+VF-88812 CRED+DE11ZZZ00000012345 SVWZ+Vodafone Kabel Deutschland Rechnung ${mo + 1}/${y}` });
   // Kita: dasselbe Thema bei verschiedenen Empfängern (für Tag-Vorschläge)
   add(day(3), 'withdrawal', 62, 'Essensgeld Kita Sonnenschein', giro, ext('Stadt Musterstadt'), { category: 'Kinder' });
   if (mo % 3 === 0) add(day(15), 'withdrawal', 30, 'Beitrag Förderverein Kita Sonnenschein', giro, ext('Förderverein Sonnenschein e.V.'), { category: 'Spenden' });
@@ -515,7 +527,7 @@ const routes = {
 const FAKE_AI = [
   [/rewe|edeka|aldi|lidl|wochenmarkt|einkauf/i, 'Lebensmittel', [], 'notwendig'],
   [/dm-drogerie|rossmann/i, 'Drogerie', ['Haushalt'], 'notwendig'],
-  [/shell|aral|jet|tanken/i, 'Auto & Tanken', ['Auto'], 'notwendig'],
+  [/shell|aral|jet|esso|tanken/i, 'Auto & Tanken', ['Auto'], 'notwendig'],
   [/bahn|deutschlandticket/i, 'Mobilität', ['Pendeln'], 'notwendig'],
   [/hausverwaltung|miete/i, 'Wohnen', ['Fixkosten'], 'notwendig'],
   [/stadtwerke|strom|telekom|vodafone/i, 'Nebenkosten', ['Fixkosten'], 'notwendig'],
@@ -526,6 +538,8 @@ const FAKE_AI = [
   [/amazon|zalando|ikea|mediamarkt|thalia|etsy|ebay|steam|vinted/i, 'Shopping', ['Online'], 'sinnvoll'],
   [/booking/i, 'Urlaub', ['Reisen'], 'sinnvoll'],
   [/apotheke|praxis|zahnarzt/i, 'Gesundheit', [], 'notwendig'],
+  [/netto|baeckerei/i, 'Lebensmittel', [], 'notwendig'],
+  [/hornbach|baumarkt/i, 'Haus & Garten', ['Haushalt'], 'sinnvoll'],
   [/geldautomat|bargeld/i, 'Bargeld', [], 'sinnvoll'],
   [/geschenk|blumen/i, 'Geschenke', ['Familie'], 'sinnvoll'],
 ];

@@ -5,7 +5,7 @@
 //  - Kategorien aufteilen (klar erkennbare Händlergruppen in einer Kategorie)
 // Jeder Vorschlag besteht aus normalen Labor-Regeln und lässt sich vorher ansehen.
 
-import { counterpartyOf, normParty } from './rules.js';
+import { counterpartyOf, normParty, wordConds } from './rules.js';
 
 const lower = (s) => String(s ?? '').toLowerCase();
 const fold = (s) => lower(s).replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
@@ -81,7 +81,7 @@ export function suggestWordTags(txs, existingRules = []) {
       reason: `„${w}“ steht im Verwendungszweck von ${n} Buchungen bei ${s.parties.size} Empfängern in ${s.cats.size} Kategorie${s.cats.size === 1 ? '' : 'n'}`,
       score: n * s.parties.size * Math.max(1, s.cats.size),
       hits: open,
-      rules: [{ id: newId(), enabled: true, when: [{ field: 'description', op: 'contains', value: w }], setCategory: '', addTags: [tag] }],
+      rules: wordConds(w, s.list).map((c) => ({ id: newId(), enabled: true, when: [c], setCategory: '', addTags: [tag] })),
     });
   }
   // Wörter, die fast immer zusammen auftreten, nur einmal vorschlagen

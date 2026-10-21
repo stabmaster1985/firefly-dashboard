@@ -207,8 +207,15 @@ Im **Labor** kann ein lokales Sprachmodell über [Ollama](https://ollama.com) di
 einordnen – z. B. dieselbe Ollama-Instanz, die schon der Paperless Companion nutzt.
 
 - Bewertet wird pro **Händler**, nicht pro Buchung: Die Buchungen der letzten 24 Monate werden
-  nach Empfänger gruppiert (bei PayPal & Co. nach Buchungstext), das Modell bekommt Name,
-  Beispieltexte, Anzahl, Betrag und bisherige Kategorie. Das hält die Laufzeit klein.
+  nach Empfänger gruppiert, das Modell bekommt Name, bis zu 4 Texte aus **Beschreibung und
+  Notizen**, Anzahl, Betrag, bisherige Kategorien und Tags. Das hält die Laufzeit klein.
+  „Was die KI sieht“ in der Karte zeigt genau diese Zeilen.
+- **Kartenzahlungen & Co.:** Bank-Standardtexte („Kartenzahlung girocard“, „Basislastschrift“,
+  Datum, Folgenummer, Verfallsdatum, SEPA-Kennungen …) werden entfernt. Fehlt ein echter
+  Empfänger (leer, „(no name)“, „Kartenzahlung“) oder ist es ein Zahlungsdienst wie PayPal,
+  wird der Händler aus der Beschreibung bzw. den **Notizen** erkannt. Das gilt im ganzen Labor
+  (Vorschläge, Gruppen, „Ähnliche finden“); Regeln dafür nutzen das neue Feld **Notizen**
+  (in Firefly `notes_contains`). Sind viele Buchungen betroffen, weist die KI-Karte darauf hin.
 - **Händler bewerten** – ordnet in deine Kategorien ein (je nach Einstellung auch in neue),
   vergibt Tags und eine **Bedarf**-Einschätzung samt Begründung und Sicherheit.
 - **Kategoriesystem neu entwerfen** – das Modell schlägt aus deinen Händlern 8–16 Kategorien vor

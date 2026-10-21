@@ -17,6 +17,29 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
   let aiFilter = 'alle';
   let aiEditing = null; // „kind:name“ des neuen Namens, der gerade umbenannt wird
   let models = null; // { list } oder { error } – einmal laden, nicht bei jedem Neuzeichnen
+  let preview = null; // { quality, merchants, lines } – was die KI zu sehen bekommt
+
+  async function loadPreview() {
+    preview = await fetch('/local/ai/preview').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    onChange();
+  }
+
+  /** Hinweis auf nichtssagende Importdaten + die Zeilen, die das Modell bekommt. */
+  function renderPreview() {
+    if (!preview) return '';
+    const q = preview.quality;
+    const pct = (n) => Math.round((n / (q.total || 1)) * 100);
+    const weak = q.total && (pct(q.genericDescription) >= 30 || pct(q.genericParty) >= 10);
+    return `${weak ? `<div class="ai-hint"><b>Deine Importdaten sind wenig aussagekräftig:</b>
+        ${pct(q.genericDescription) >= 30 ? `Bei ${pct(q.genericDescription)} % der Ausgaben steht in der Beschreibung nur ein Bank-Standardtext (z. B. „Kartenzahlung“, „Lastschrift“).` : ''}
+        ${q.genericParty ? `Bei ${pct(q.genericParty)} % fehlt ein echter Empfänger.` : ''}
+        ${q.fromNotes ? `Für ${pct(q.fromNotes)} % erkennt das Dashboard den Händler deshalb aus den Notizen.` : ''}
+        ${q.unknown ? `${q.unknown} Buchungen haben gar keinen erkennbaren Händler und werden übersprungen.` : ''}
+        Besser wird es, wenn beim Import der Name des Zahlungsbeteiligten als Gegenkonto und der Verwendungszweck als Beschreibung ankommen.</div>` : ''}
+      <details class="ai-preview"><summary>Was die KI sieht (${preview.merchants} Händler)</summary>
+        <p class="muted">So bekommt das Modell die ${Math.min(8, preview.merchants)} größten Händler – Bank-Standardtexte, Daten und Nummern sind entfernt, Notizen einbezogen:</p>
+        <pre>${preview.lines.map(esc).join('\n')}</pre></details>`;
+  }
 
   async function loadModels() {
     models = await fetch('/local/ai/models').then(async (r) => {
@@ -104,6 +127,7 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
       </div>
       ${job ? `<div class="ai-progress"><div class="progress"><span style="width:${job.total ? Math.round((job.done / job.total) * 100) : running ? 5 : 100}%"></span></div>
         <span class="muted">${esc(job.message || '')}${job.total ? ` · ${job.done}/${job.total}` : ''}${job.note ? ` · ${esc(job.note)}` : ''}${job.lastError ? ` · letzter Fehler: ${esc(job.lastError)}` : ''}</span></div>` : ''}
+      ${renderPreview()}
       ${scheme.length ? `<div class="ai-scheme"><span class="muted">KI-Kategoriesystem:</span> ${scheme.map((c) => nameTag('categories', c.name).replace('title="', `title="${esc(c.beschreibung)} · `)).join(' ')}</div>` : ''}
       ${labels.length ? `
         <div class="ai-layer">
@@ -298,12 +322,14 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
     if (!aiLayer.on) return [];
     return Object.entries(aiData.labels).filter(([, l]) => aiActive(l)).map(([key, l]) => [key, effLabel(l)]).map(([key, l]) => ({
       id: `ai-${key}`, enabled: true,
-      when: [key.startsWith('text:') ? { field: 'description', op: 'contains', value: l.name } : { field: 'party', op: 'equals', value: l.name }],
+      // Bedingung vom Server (Empfänger, Beschreibung oder Notizen); ältere Ergebnisse ohne: wie bisher
+      when: [l.match || (key.startsWith('text:') ? { field: 'description', op: 'contains', value: l.name } : { field: 'party', op: 'equals', value: l.name })],
       setCategory: l.kategorie || '', addTags: [...l.tags, ...(l.bedarf ? [`Bedarf: ${l.bedarf}`] : [])],
     })).filter((r) => r.setCategory || r.addTags.length);
   }
 
   refreshAi();
   loadModels();
+  loadPreview();
   return { aiFor, isNew, nameTag, aiRules, render: renderAi };
 }

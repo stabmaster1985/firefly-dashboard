@@ -1,7 +1,7 @@
 // Service Worker: App sofort starten (auch offline) und zuletzt geladene
 // Daten zeigen, wenn der Server nicht erreichbar ist.
 
-const VERSION = 'ffd-3';
+const VERSION = 'ffd-4';
 const SHELL = `${VERSION}-shell`;
 const DATA = `${VERSION}-data`;
 const MAX_DATA_ENTRIES = 400;
