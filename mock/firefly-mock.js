@@ -656,6 +656,20 @@ http
         const data = body ? JSON.parse(body) : {};
         if (data.typ === 'gegenkonto_setzen') {
           const list = data.aenderungen || [];
+          const apply = (a) => {
+            const j = journals.find((x) => x.id === String(a.transaction_journal_id));
+            if (!j) return;
+            if (a.art === 'deposit') j.source = { id: null, name: a.name };
+            else j.destination = { id: null, name: a.name };
+          };
+          if (data.hintergrund) {
+            // wie der Zweig „Hintergrund?“: sofort antworten, dann nacheinander speichern
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, hintergrund: true, angenommen: list.length }));
+            const step = Number(process.env.MOCK_N8N_MS || 50);
+            list.forEach((a, k) => setTimeout(() => apply(a), step * (k + 1)));
+            return;
+          }
           const partial = url.pathname.endsWith('/teilweise');
           for (const a of partial ? list.slice(0, Math.ceil(list.length / 2)) : list) {
             const j = journals.find((x) => x.id === String(a.transaction_journal_id));

@@ -386,7 +386,15 @@ wählen (gern alle auf einmal, überlappende Zeilen zählen nur einmal):
 - Die Vorschau zeigt je Zeile, was passiert: **Empfänger fehlt – wird ergänzt** (vorgewählt),
   **anderer Empfänger in Firefly** (nur wenn ausdrücklich angekreuzt), schon richtig,
   mehrdeutig, nicht gefunden.
-- **Empfänger nach Firefly übertragen** schickt die Auswahl in kleinen Paketen an die
+- **Empfänger nach Firefly übertragen**, Art **im Hintergrund** (Standard): Das Dashboard schickt
+  alles in wenigen großen Paketen (`hintergrund: true`); n8n antwortet sofort („angenommen“) und
+  speichert danach in Portionen zu 5 Buchungen (Knoten „In Portionen“, Batch Size anpassbar),
+  ohne Firefly-Webhooks je Buchung. Kein 5-Minuten-Limit mehr. Den Fortschritt liest das
+  Dashboard alle 15 s aus Firefly (die ältesten offenen Buchungen einzeln, am Ende einmal alles);
+  „Anzeige beenden“ stoppt nur die Anzeige, n8n arbeitet weiter. Braucht die aktuelle Vorlage
+  `n8n/firefly-buchung-bearbeiten.json` (Zweig „Hintergrund?“ – neu importieren bzw. die fünf
+  neuen Knoten übernehmen und in „In Firefly speichern (Hintergrund)“ die Zugangsdaten wählen).
+- Art **in Paketen** (wie bisher) schickt die Auswahl in kleinen Paketen an die
   Automation „Kategorie übernehmen“ (Start mit 20, danach so bemessen, dass ein Paket rund eine
   Minute dauert – n8n antwortet erst am Ende, nach 5 Minuten bricht die Verbindung ab). Kommt
   keine Antwort, sieht das Dashboard in Firefly nach, was trotzdem gespeichert wurde, und schickt

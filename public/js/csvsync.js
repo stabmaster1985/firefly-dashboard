@@ -30,6 +30,12 @@ const CHUNK_MAX = 60;
 const TARGET_MS = 60_000;
 const SIZES = ['auto', '10', '25', '50', '100', '200'];
 const PARALLEL = ['1', '2', '3', '4'];
+// Hintergrund: n8n antwortet sofort und arbeitet allein weiter; das Dashboard schickt große
+// Pakete (Grenze: Anfragegröße an den Dashboard-Server) und liest den Fortschritt aus Firefly
+const BG_CHUNK = 250;
+const BG_POLL_MS = 15_000;
+const BG_IDLE_POLLS = 12; // ~3 Minuten ohne jeden Fortschritt → n8n ist fertig oder hängt
+const BG_CHECK = 60; // je Prüfung so viele der ältesten offenen Buchungen einzeln nachsehen
 const MAX_ROWS = 600;
 
 export async function csvSync(view) {
@@ -47,6 +53,7 @@ export async function csvSync(view) {
   // Paketgröße und parallele Pakete – je Browser gemerkt
   let chunkSetting = SIZES.includes(storage('ffd-sync-size', 'auto')) ? storage('ffd-sync-size', 'auto') : 'auto';
   let parallel = PARALLEL.includes(storage('ffd-sync-parallel', '1')) ? Number(storage('ffd-sync-parallel', '1')) : 1;
+  let mode = storage('ffd-sync-mode', 'hintergrund') === 'pakete' ? 'pakete' : 'hintergrund';
   const picked = new Set(); // Zeilen-Indizes für die Übertragung
   const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
   // Gedächtnis: schon übertragene CSV-Zeilen (Fingerabdruck → Buchung), liegt auf dem Server
@@ -188,9 +195,13 @@ export async function csvSync(view) {
       ${rows.length > MAX_ROWS ? `<div class="legend" style="margin-top:8px"><span>Die ersten ${MAX_ROWS} von ${rows.length} (Auswahl gilt für alle)</span></div>` : ''}
       <div class="sync-run">
         ${action ? `<button class="btn primary" id="s-run"></button>
+          <label class="sync-set">Art <select data-opt="mode">
+            <option value="hintergrund"${mode === 'hintergrund' ? ' selected' : ''}>im Hintergrund (n8n arbeitet allein)</option>
+            <option value="pakete"${mode === 'pakete' ? ' selected' : ''}>in Paketen (wartet auf n8n)</option></select></label>
+          ${mode === 'hintergrund' ? `<span class="muted">Schickt alles in wenigen großen Paketen; n8n antwortet sofort und speichert danach in Portionen. Den Fortschritt liest das Dashboard alle ${BG_POLL_MS / 1000} s aus Firefly. Braucht die aktuelle Vorlage n8n/firefly-buchung-bearbeiten.json (Zweig „Hintergrund?“).</span>` : `
           <label class="sync-set">Paketgröße <select data-opt="size">${SIZES.map((v) => `<option value="${v}"${v === chunkSetting ? ' selected' : ''}>${v === 'auto' ? 'automatisch (~1 Min. je Paket)' : `${v} Buchungen`}</option>`).join('')}</select></label>
           <label class="sync-set">gleichzeitig <select data-opt="parallel">${PARALLEL.map((v) => `<option value="${v}"${Number(v) === parallel ? ' selected' : ''}>${v} Paket${v === '1' ? '' : 'e'}</option>`).join('')}</select></label>
-          <span class="muted">über „${esc(action.name)}“ – jedes Paket wird danach in Firefly geprüft. Mehrere Pakete gleichzeitig sind meist am schnellsten; ein Paket sollte unter 5 Minuten bleiben.</span>`
+          <span class="muted">über „${esc(action.name)}“ – jedes Paket wird danach in Firefly geprüft. Mehrere Pakete gleichzeitig sind meist am schnellsten; ein Paket sollte unter 5 Minuten bleiben.</span>`}`
         : '<span class="muted">Zum Übertragen eine Automation mit Auslöser „Kategorie übernehmen“ anlegen (Workflow n8n/firefly-buchung-bearbeiten.json, Version mit „gegenkonto_setzen“).</span>'}
         <div class="run-out" id="s-out"></div>
       </div>`;
@@ -253,12 +264,105 @@ export async function csvSync(view) {
     return party.toLowerCase() === r.row.name.trim().toLowerCase() || (!hasNoParty(split) && party !== String(counterparty(r.t) || '').trim());
   }
 
+  /**
+   * Hintergrund-Übertragung: alles in großen Paketen an n8n (antwortet sofort), danach
+   * regelmäßig frisch aus Firefly lesen, was schon umgestellt ist.
+   */
+  async function transferBackground(list) {
+    stopRequested = false;
+    const out = $('s-out');
+    const started = Date.now();
+    const pending = new Map(list.map((r) => [String(r.t.transaction_journal_id), r]));
+    let done = 0;
+    const show = (msg, extra = '') => {
+      const per = done ? (Date.now() - started) / done : 0;
+      out.innerHTML = `<div class="progress"><span style="width:${Math.round((done / list.length) * 100)}%"></span></div>
+        <span class="muted">${msg} · ${done} von ${list.length} in Firefly umgestellt${per && pending.size ? ` · noch ca. ${Math.max(1, Math.round((per * pending.size) / 60000))} Min.` : ''}</span>
+        <button class="link-btn" data-stop>Anzeige beenden</button>${extra}`;
+    };
+    // 1) senden
+    for (let k = 0; k < list.length && !stopRequested; k += BG_CHUNK) {
+      const part = list.slice(k, k + BG_CHUNK);
+      show(`Sende ${k + 1}–${k + part.length} an n8n …`);
+      const payload = { typ: 'gegenkonto_setzen', hintergrund: true, aenderungen: part.map((r) => changeFor(r, { iban: withIban })) };
+      const res = await runAction(action, { ...payload, daten: payload }).catch((err) => ({ ok: false, response: err.message }));
+      if (!res.ok) {
+        out.innerHTML = `<span class="badge bad">Fehler beim Senden</span> <span class="muted">${esc(String(res.response || res.status || '').slice(0, 200))} – Automation und n8n-Workflow prüfen (Zweig „Hintergrund?“ vorhanden?). Bereits gesendete Pakete arbeitet n8n trotzdem ab.</span>`;
+        if (!k) return render();
+        break;
+      }
+    }
+    // 2) Fortschritt: n8n arbeitet in der gesendeten Reihenfolge – darum die ältesten offenen
+    //    Buchungen einzeln (frisch) nachsehen, nicht jedes Mal den ganzen Zeitraum laden
+    const settle = async (rs) => {
+      for (const r of rs) {
+        pending.delete(String(r.t.transaction_journal_id));
+        r.status = 'erledigt';
+        picked.delete(results.indexOf(r));
+      }
+      done += rs.length;
+      if (rs.length) {
+        await memoryCall('POST', { items: rs.map((r) => ({ fp: r.fp, j: r.t.transaction_journal_id, name: r.row.name })) });
+        renderMemory();
+      }
+    };
+    let idle = 0;
+    while (pending.size && !stopRequested && idle < BG_IDLE_POLLS) {
+      show('n8n arbeitet im Hintergrund – prüfe regelmäßig in Firefly …');
+      await new Promise((r) => setTimeout(r, BG_POLL_MS));
+      if (stopRequested) break;
+      const batch = [...pending.values()].slice(0, BG_CHECK);
+      const ok = [];
+      for (let k = 0; k < batch.length; k += 6) {
+        const part = batch.slice(k, k + 6);
+        const checks = await Promise.all(part.map(isSynced));
+        part.forEach((r, n) => checks[n] && ok.push(r));
+      }
+      idle = ok.length ? 0 : idle + 1;
+      await settle(ok);
+    }
+    // zum Schluss einmal alles im Zeitraum frisch lesen – erfasst auch, was weiter hinten schon fertig ist
+    if (pending.size) {
+      show('Abschließende Prüfung in Firefly …');
+      const dates = [...pending.values()].map((r) => String(r.t.date).slice(0, 10)).sort();
+      api.setFresh(true);
+      try {
+        const txs = api.flattenTransactions(await api.getAll('transactions', {
+          start: addDays(new Date(`${dates[0]}T12:00:00`), -1), end: addDays(new Date(`${dates.at(-1)}T12:00:00`), 1),
+        }));
+        const ok = [];
+        for (const t of txs) {
+          const r = pending.get(String(t.transaction_journal_id));
+          if (!r) continue;
+          const party = String(counterparty(t) || '').trim();
+          if (party.toLowerCase() === r.row.name.trim().toLowerCase() || (!hasNoParty(t) && party !== String(counterparty(r.t) || '').trim())) ok.push(r);
+        }
+        await settle(ok);
+      } catch {
+        // dann eben beim nächsten Einlesen
+      } finally {
+        api.setFresh(false);
+      }
+    }
+    api.forget();
+    if (openScan && !openScan.loading) scanOpen();
+    render();
+    $('s-out').innerHTML = !pending.size
+      ? `<span class="badge good">${done} in Firefly umgestellt ✓</span> <span class="muted">Danach im Labor: Regel-Vorschläge nach Empfänger und die KI-Analyse werden deutlich besser.</span>`
+      : stopRequested
+        ? `<span class="badge warn">Anzeige beendet</span> <span class="muted">${done} bisher umgestellt, ${pending.size} noch nicht – n8n arbeitet ggf. weiter. Später die CSV erneut einlesen oder „Noch nicht umgestellt“ prüfen.</span>`
+        : `<span class="badge warn">${done} umgestellt, ${pending.size} offen</span> <span class="muted">Seit ${Math.round((BG_IDLE_POLLS * BG_POLL_MS) / 60000)} Minuten tut sich nichts mehr – n8n ist fertig oder hängt (Ausführungen in n8n ansehen). Die offenen bleiben ausgewählt und lassen sich erneut übertragen.</span>`;
+  }
+
   let stopRequested = false;
   async function transfer(btn) {
     const list = [...picked].sort((a, b) => a - b).map((i) => results[i]).filter((r) => r.t && (r.status === 'neu' || (r.status === 'abweichend' && overwrite)));
     if (!list.length) return;
-    if (!window.confirm(`Bei ${list.length} Buchungen den Empfänger in Firefly setzen?\n\nFirefly ordnet sie dem Gegenkonto mit diesem Namen${withIban ? ' bzw. dieser IBAN' : ''} zu und legt es an, falls es noch fehlt. Kategorien, Tags und Notizen bleiben unverändert.\n\nEs geht in kleinen Paketen; jedes wird danach in Firefly nachgeprüft. Du kannst jederzeit anhalten.`)) return;
+    if (!window.confirm(`Bei ${list.length} Buchungen den Empfänger in Firefly setzen?\n\nFirefly ordnet sie dem Gegenkonto mit diesem Namen${withIban ? ' bzw. dieser IBAN' : ''} zu und legt es an, falls es noch fehlt. Kategorien, Tags und Notizen bleiben unverändert.\n\n${mode === 'hintergrund'
+      ? 'n8n arbeitet im Hintergrund; das Dashboard zeigt den Fortschritt aus Firefly. „Anhalten“ beendet nur die Anzeige – n8n arbeitet weiter.'
+      : 'Es geht in kleinen Paketen; jedes wird danach in Firefly nachgeprüft. Du kannst jederzeit anhalten.'}`)) return;
     btn.disabled = true;
+    if (mode === 'hintergrund') return transferBackground(list);
     stopRequested = false;
     const out = $('s-out');
     const queue = [...list];
@@ -387,6 +491,11 @@ export async function csvSync(view) {
       return updateSelection(); // Tabelle nicht neu aufbauen
     }
     if (e.target.id === 's-all') return pickVisible(e.target.checked);
+    if (e.target.dataset.opt === 'mode') {
+      mode = e.target.value;
+      store('ffd-sync-mode', mode);
+      return render();
+    }
     if (e.target.dataset.opt === 'size') {
       chunkSetting = e.target.value;
       store('ffd-sync-size', chunkSetting);

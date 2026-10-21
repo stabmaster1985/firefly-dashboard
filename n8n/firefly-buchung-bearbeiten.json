@@ -126,7 +126,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Baut aus der Anfrage des Dashboards die Änderung(en) für die Firefly-API\nconst b = $('Webhook').first().json.body || {};\nconst put = (groupId, split) => ({ json: {\n  id: String(groupId),\n  payload: { apply_rules: false, fire_webhooks: true, transactions: [split] },\n} });\nif (b.typ === 'kategorie_setzen') {\n  // category_name legt eine noch unbekannte Kategorie automatisch an\n  return [put(b.transaction_group_id, { transaction_journal_id: String(b.transaction_journal_id), category_name: String(b.kategorie || '') })];\n}\nif (b.typ === 'tags_setzen') {\n  return [put(b.transaction_group_id, { transaction_journal_id: String(b.transaction_journal_id), tags: (b.tags || []).map(String) })];\n}\nif (b.typ === 'kategorien_uebernehmen') {\n  // Sammeländerung aus dem Kategorien-Labor\n  return (b.aenderungen || []).map((a) => put(a.transaction_group_id, {\n    transaction_journal_id: String(a.transaction_journal_id),\n    ...(a.kategorie ? { category_name: String(a.kategorie) } : {}),\n    ...(Array.isArray(a.tags) ? { tags: a.tags.map(String) } : {}),\n  }));\n}\nif (b.typ === 'gegenkonto_setzen') {\n  // CSV-Abgleich: Empfänger (Ausgabe) bzw. Zahler (Einnahme) nachtragen. Firefly ordnet das\n  // Gegenkonto über Name/IBAN zu und legt es an, falls es fehlt. Kategorie & Co. bleiben.\n  return (b.aenderungen || []).map((a) => {\n    const side = a.art === 'deposit' ? 'source' : 'destination';\n    return put(a.transaction_group_id, {\n      transaction_journal_id: String(a.transaction_journal_id),\n      [side + '_id']: null,\n      [side + '_name']: String(a.name || ''),\n      ...(a.iban ? { [side + '_iban']: String(a.iban) } : {}),\n      ...(a.bic ? { [side + '_bic']: String(a.bic) } : {}),\n    });\n  });\n}\nthrow new Error('Unbekannter typ: ' + b.typ);"
+        "jsCode": "// Baut aus der Anfrage des Dashboards die Änderung(en) für die Firefly-API\nconst b = $('Webhook').first().json.body || {};\nconst put = (groupId, split, hooks = true) => ({ json: {\n  id: String(groupId),\n  payload: { apply_rules: false, fire_webhooks: hooks, transactions: [split] },\n} });\nif (b.typ === 'kategorie_setzen') {\n  // category_name legt eine noch unbekannte Kategorie automatisch an\n  return [put(b.transaction_group_id, { transaction_journal_id: String(b.transaction_journal_id), category_name: String(b.kategorie || '') })];\n}\nif (b.typ === 'tags_setzen') {\n  return [put(b.transaction_group_id, { transaction_journal_id: String(b.transaction_journal_id), tags: (b.tags || []).map(String) })];\n}\nif (b.typ === 'kategorien_uebernehmen') {\n  // Sammeländerung aus dem Kategorien-Labor\n  return (b.aenderungen || []).map((a) => put(a.transaction_group_id, {\n    transaction_journal_id: String(a.transaction_journal_id),\n    ...(a.kategorie ? { category_name: String(a.kategorie) } : {}),\n    ...(Array.isArray(a.tags) ? { tags: a.tags.map(String) } : {}),\n  }));\n}\nif (b.typ === 'gegenkonto_setzen') {\n  // CSV-Abgleich: Empfänger (Ausgabe) bzw. Zahler (Einnahme) nachtragen. Firefly ordnet das\n  // Gegenkonto über Name/IBAN zu und legt es an, falls es fehlt. Kategorie & Co. bleiben.\n  return (b.aenderungen || []).map((a) => {\n    const side = a.art === 'deposit' ? 'source' : 'destination';\n    return put(a.transaction_group_id, {\n      transaction_journal_id: String(a.transaction_journal_id),\n      [side + '_id']: null,\n      [side + '_name']: String(a.name || ''),\n      ...(a.iban ? { [side + '_iban']: String(a.iban) } : {}),\n      ...(a.bic ? { [side + '_bic']: String(a.bic) } : {}),\n    }, false); // Nachtragen: keine Firefly-Webhooks je Buchung auslösen\n  });\n}\nthrow new Error('Unbekannter typ: ' + b.typ);"
       },
       "id": "c1",
       "name": "Änderung bauen",
@@ -555,6 +555,120 @@
         3560,
         260
       ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "h1c",
+              "leftValue": "={{ $('Webhook').first().json.body.typ === 'gegenkonto_setzen' && $('Webhook').first().json.body.hintergrund === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "h1",
+      "name": "Hintergrund?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        800,
+        760
+      ],
+      "notes": "CSV-Abgleich mit „hintergrund: true“: sofort antworten, danach in Portionen abarbeiten (kein 5-Minuten-Limit)"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, hintergrund: true, angenommen: ($('Webhook').first().json.body.aenderungen || []).length } }}",
+        "options": {}
+      },
+      "id": "h2",
+      "name": "Antwort angenommen",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1020,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// CSV-Abgleich im Hintergrund: je Buchung eine Änderung des Gegenkontos.\n// Keine Firefly-Webhooks je Buchung; Kategorie, Tags, Notizen bleiben unverändert.\nconst b = $('Webhook').first().json.body || {};\nreturn (b.aenderungen || []).map((a) => {\n  const side = a.art === 'deposit' ? 'source' : 'destination';\n  return { json: {\n    id: String(a.transaction_group_id),\n    payload: { apply_rules: false, fire_webhooks: false, transactions: [{\n      transaction_journal_id: String(a.transaction_journal_id),\n      [side + '_id']: null,\n      [side + '_name']: String(a.name || ''),\n      ...(a.iban ? { [side + '_iban']: String(a.iban) } : {}),\n      ...(a.bic ? { [side + '_bic']: String(a.bic) } : {}),\n    }] },\n  } };\n});"
+      },
+      "id": "h3",
+      "name": "Änderungen (Hintergrund)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 5,
+        "options": {}
+      },
+      "id": "h4",
+      "name": "In Portionen",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1460,
+        860
+      ],
+      "notes": "5 Buchungen gleichzeitig an Firefly, erst danach die nächsten 5 – „Batch Size“ erhöhen, wenn Firefly mehr verträgt"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $('Einstellungen').first().json.firefly_url }}/api/v1/transactions/{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.api+json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "h5",
+      "name": "In Firefly speichern (Hintergrund)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        960
+      ],
+      "notes": "Gleiche Header-Auth-Zugangsdaten wie „In Firefly speichern“. Fehler einzelner Buchungen halten den Lauf nicht an – das Dashboard prüft hinterher, was angekommen ist.",
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -609,7 +723,7 @@
         ],
         [
           {
-            "node": "Änderung bauen",
+            "node": "Hintergrund?",
             "type": "main",
             "index": 0
           }
@@ -796,6 +910,69 @@
         [
           {
             "node": "Antwort Regeln",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hintergrund?": {
+      "main": [
+        [
+          {
+            "node": "Antwort angenommen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Änderung bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Antwort angenommen": {
+      "main": [
+        [
+          {
+            "node": "Änderungen (Hintergrund)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Änderungen (Hintergrund)": {
+      "main": [
+        [
+          {
+            "node": "In Portionen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "In Portionen": {
+      "main": [
+        [],
+        [
+          {
+            "node": "In Firefly speichern (Hintergrund)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "In Firefly speichern (Hintergrund)": {
+      "main": [
+        [
+          {
+            "node": "In Portionen",
             "type": "main",
             "index": 0
           }
