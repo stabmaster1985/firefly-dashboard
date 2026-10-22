@@ -530,7 +530,7 @@ auf <http://localhost:8080>.
 | `FIREFLY_URL` | ja | Adresse der Firefly-III-Instanz |
 | `FIREFLY_TOKEN` | ja | Personal Access Token |
 | `PORT` / `HOST` | nein | Adresse des Dashboards (Standard `0.0.0.0:8080`) |
-| `DASHBOARD_USER` / `DASHBOARD_PASSWORD` | nein | Passwortschutz per HTTP Basic Auth – **empfohlen**, sobald das Dashboard nicht nur lokal läuft |
+| `DASHBOARD_USER` / `DASHBOARD_PASSWORD` | nein | Passwortschutz mit Anmeldeseite – **empfohlen**, sobald das Dashboard nicht nur lokal läuft. „Angemeldet bleiben“ hält 180 Tage je Gerät und verlängert sich bei Benutzung; Neustarts und Updates melden niemanden ab (Schlüssel in `DATA_DIR/session-secret`). Passwort ändern meldet alle Geräte ab. Für Skripte geht weiterhin HTTP Basic Auth. |
 | `FIREFLY_PUBLIC_URL` | nein | Basis für „In Firefly öffnen“-Links |
 | `CACHE_SECONDS` | nein | Gültigkeit für Daten des laufenden Zeitraums (Standard 60 s; danach wird sofort die letzte Antwort gezeigt und im Hintergrund erneuert) |
 | `CACHE_HISTORY_HOURS` | nein | Gültigkeit für abgeschlossene Zeiträume (Standard 12 h) |

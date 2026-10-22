@@ -1,5 +1,6 @@
 // Einstieg: Routing, Zeitraum, Theme und Verbindungsprüfung.
 
+import './session.js'; // zuerst: leitet bei abgelaufener Anmeldung zur Anmeldeseite
 import * as api from './api.js';
 import * as views from './views.js';
 import { categories, categoryDetail, tags, tagDetail, forecastEnabled } from './categories.js';
@@ -143,6 +144,11 @@ async function connect() {
       `Firefly III ${esc(about?.data?.version || '')}${email ? `<br>${esc(email)}` : ''}<div id="version-info"></div><div id="perf-info" class="perf"></div>`;
     updatePerf();
     versionBadge(document.getElementById('version-info'));
+    if (config.login && !document.querySelector('.nav-logout')) {
+      // Abmelden: am Rechner unten in der Seitenleiste, am Handy im „Mehr“-Raster
+      document.getElementById('instance-info').insertAdjacentHTML('beforeend', '<a href="logout" class="logout-link">Abmelden</a>');
+      document.getElementById('nav-more').insertAdjacentHTML('beforebegin', '<a href="logout" class="nav-logout"><svg viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4"/></svg><span>Abmelden</span></a>');
+    }
   } catch (err) {
     connectionError = err;
   }

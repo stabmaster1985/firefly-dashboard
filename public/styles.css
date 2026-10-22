@@ -137,6 +137,8 @@ button, input, select { font: inherit; color: inherit; }
 .nav a svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .nav a:hover { background: var(--surface-2); color: var(--text-primary); }
 .nav a.active { background: var(--accent-soft); color: var(--accent); }
+.nav .nav-logout { display: none; }
+.logout-link { display: inline-block; margin-top: 6px; color: var(--text-secondary); }
 .nav-more { display: none; align-items: center; justify-content: flex-start; line-height: inherit; border: 0; background: none; font: inherit; font-weight: 500; color: var(--text-secondary); border-radius: 10px; cursor: pointer; }
 .nav-more svg { width: 20px; height: 20px; fill: currentColor; }
 .nav-more.active { background: var(--accent-soft); color: var(--accent); }
@@ -698,6 +700,7 @@ tbody tr.dup-head:first-child td { padding-top: 4px; }
   .sidebar.nav-open { box-shadow: 0 -8px 30px rgba(0, 0, 0, .18); }
   .sidebar.nav-open .nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding-top: 6px; }
   .sidebar.nav-open .nav a { display: flex; padding: 10px 4px; }
+  .sidebar.nav-open .nav .nav-logout { display: flex; }
   .main { padding: 0 16px 96px; }
   .topbar { flex-wrap: wrap; padding: 14px 0 12px; }
   .topbar h1 { font-size: 20px; }

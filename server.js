@@ -6,7 +6,6 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { createActions } from './lib/actions.js';
@@ -18,6 +17,7 @@ import { createGroups } from './lib/groups.js';
 import { createAi } from './lib/ai.js';
 import { createCsvSync } from './lib/csvsync.js';
 import { createCleanup } from './lib/cleanup.js';
+import { createAuth } from './lib/auth.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
@@ -112,23 +112,6 @@ function send(res, status, body, headers = {}) {
   res.end(body);
 }
 
-function safeEqual(a, b) {
-  const ha = crypto.createHash('sha256').update(a).digest();
-  const hb = crypto.createHash('sha256').update(b).digest();
-  return crypto.timingSafeEqual(ha, hb);
-}
-
-function isAuthorized(req) {
-  if (!DASHBOARD_PASSWORD) return true;
-  const header = req.headers.authorization || '';
-  if (!header.startsWith('Basic ')) return false;
-  const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
-  const sep = decoded.indexOf(':');
-  const user = decoded.slice(0, sep);
-  const pass = decoded.slice(sep + 1);
-  return safeEqual(user, DASHBOARD_USER || user) && safeEqual(pass, DASHBOARD_PASSWORD);
-}
-
 // Gehaltstage, die Browser melden (für das Vorwärmen von Gehaltsmonaten)
 const monthStarts = new Set();
 let warmNow = null;
@@ -205,13 +188,11 @@ function serveStatic(req, res, url) {
   });
 }
 
-const server = http.createServer((req, res) => {
-  if (!isAuthorized(req)) {
-    return send(res, 401, 'Anmeldung erforderlich', {
-      'WWW-Authenticate': 'Basic realm="Firefly Dashboard", charset="UTF-8"',
-    });
-  }
+const auth = createAuth({ dataDir: DATA_DIR, user: DASHBOARD_USER, password: DASHBOARD_PASSWORD });
+
+const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
+  if (!(await auth.handle(req, res, url))) return;
   if (url.pathname.startsWith('/api/')) return proxy(req, res, url);
   if (url.pathname === '/local/actions' || url.pathname.startsWith('/local/actions/')) return handleActions(req, res, url);
   if (['/local/settings', '/local/goals', '/local/alerts', '/local/rules', '/local/dismissed'].includes(url.pathname)) return handleAutomation(req, res, url);
@@ -227,7 +208,7 @@ const server = http.createServer((req, res) => {
     return send(res, 200, JSON.stringify(firefly.summary()), { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' });
   }
   if (url.pathname === '/config.json') {
-    const config = { fireflyUrl: process.env.FIREFLY_PUBLIC_URL || FIREFLY_URL };
+    const config = { fireflyUrl: process.env.FIREFLY_PUBLIC_URL || FIREFLY_URL, login: auth.enabled };
     return send(res, 200, JSON.stringify(config), { 'Content-Type': MIME['.json'] });
   }
   serveStatic(req, res, url);
