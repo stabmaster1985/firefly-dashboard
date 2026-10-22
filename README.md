@@ -393,8 +393,11 @@ wählen (gern alle auf einmal, überlappende Zeilen zählen nur einmal):
   mehrdeutig, nicht gefunden.
 - **Empfänger nach Firefly übertragen**, Art **im Hintergrund** (Standard): Das Dashboard schickt
   ein Paket (`hintergrund: true`); n8n antwortet sofort („angenommen“) und speichert danach in
-  Portionen zu 5 Buchungen (Knoten „In Portionen“, Batch Size anpassbar), ohne Firefly-Webhooks
-  je Buchung. Das Dashboard verfolgt in Firefly, wann das Paket angekommen ist (alle 10 s), und
+  Portionen (Knoten „In Portionen“; wie viele Buchungen gleichzeitig, gibt das Dashboard mit
+  `portion` vor – Einstellung „Firefly je Paket gleichzeitig“, 5–40, Standard 10), ohne
+  Firefly-Webhooks je Buchung. Die Fortschrittsanzeige zeigt Buchungen pro Minute – so lässt sich
+  ausprobieren, was Firefly verträgt. Nachgeprüft wird schonend: je Runde die letzte Buchung des
+  Pakets (angekommen = Paket durch, dann einmal alle) und die ältesten offenen. Das Dashboard verfolgt in Firefly, wann das Paket angekommen ist (alle 10 s), und
   schickt erst dann das nächste. Jedes Paket ist eine eigene n8n-Ausführung und so bemessen,
   dass sie rund 3 Minuten dauert (Start mit 40, danach nach gemessener Geschwindigkeit) – so
   stört auch ein Ausführungs-Zeitlimit in n8n (`EXECUTIONS_TIMEOUT`, oft 5 Minuten) nicht. Wird

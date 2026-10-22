@@ -620,7 +620,7 @@
     },
     {
       "parameters": {
-        "batchSize": 5,
+        "batchSize": "={{ Math.min(50, Math.max(1, Number($('Webhook').first().json.body.portion) || 10)) }}",
         "options": {}
       },
       "id": "h4",
@@ -631,7 +631,7 @@
         1460,
         860
       ],
-      "notes": "5 Buchungen gleichzeitig an Firefly, erst danach die nächsten 5 – „Batch Size“ erhöhen, wenn Firefly mehr verträgt"
+      "notes": "So viele Buchungen gleichzeitig an Firefly (vom Dashboard vorgegeben, Feld „portion“, Standard 10), erst danach die nächsten"
     },
     {
       "parameters": {

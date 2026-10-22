@@ -41,6 +41,7 @@ const BG_MAX = 250; // Grenze: Anfragegröße an den Dashboard-Server
 const BG_TARGET_MS = 3 * 60_000;
 const BG_POLL_MS = 10_000;
 const BG_STALL_MS = 90_000; // so lange ohne Fortschritt in einem Paket → fertig oder hängt
+const PORTIONS = ['5', '10', '20', '40']; // so viele Buchungen speichert n8n gleichzeitig in Firefly
 const MAX_ROWS = 600;
 
 export async function csvSync(view) {
@@ -78,6 +79,7 @@ export async function csvSync(view) {
   let chunkSetting = SIZES.includes(storage('ffd-sync-size', 'auto')) ? storage('ffd-sync-size', 'auto') : 'auto';
   let parallel = PARALLEL.includes(storage('ffd-sync-parallel', '1')) ? Number(storage('ffd-sync-parallel', '1')) : 1;
   let mode = storage('ffd-sync-mode', 'hintergrund') === 'pakete' ? 'pakete' : 'hintergrund';
+  let portion = PORTIONS.includes(storage('ffd-sync-portion', '10')) ? Number(storage('ffd-sync-portion', '10')) : 10;
   const picked = new Set(); // Zeilen-Indizes für die Übertragung
   const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
   // Gedächtnis: schon übertragene CSV-Zeilen (Fingerabdruck → Buchung), liegt auf dem Server
@@ -235,6 +237,7 @@ export async function csvSync(view) {
             <option value="hintergrund"${mode === 'hintergrund' ? ' selected' : ''}>im Hintergrund (n8n arbeitet allein)</option>
             <option value="pakete"${mode === 'pakete' ? ' selected' : ''}>in Paketen (wartet auf n8n)</option></select></label>
           ${mode === 'hintergrund' ? `<label class="sync-set">gleichzeitig <select data-opt="parallel">${PARALLEL.map((v) => `<option value="${v}"${Number(v) === parallel ? ' selected' : ''}>${v} Paket${v === '1' ? '' : 'e'}</option>`).join('')}</select></label>
+            <label class="sync-set">Firefly je Paket gleichzeitig <select data-opt="portion">${PORTIONS.map((v) => `<option value="${v}"${Number(v) === portion ? ' selected' : ''}>${v} Buchungen</option>`).join('')}</select></label>
             <span class="muted">n8n antwortet sofort und speichert danach in Portionen. Jedes Paket ist so bemessen, dass n8n es in rund 3 Minuten schafft; das nächste geht erst raus, wenn das vorige in Firefly angekommen ist. Braucht die aktuelle Vorlage n8n/firefly-buchung-bearbeiten.json (Zweig „Hintergrund?“).</span>` : `
           <label class="sync-set">Paketgröße <select data-opt="size">${SIZES.map((v) => `<option value="${v}"${v === chunkSetting ? ' selected' : ''}>${v === 'auto' ? 'automatisch (~1 Min. je Paket)' : `${v} Buchungen`}</option>`).join('')}</select></label>
           <label class="sync-set">gleichzeitig <select data-opt="parallel">${PARALLEL.map((v) => `<option value="${v}"${Number(v) === parallel ? ' selected' : ''}>${v} Paket${v === '1' ? '' : 'e'}</option>`).join('')}</select></label>
@@ -332,7 +335,7 @@ export async function csvSync(view) {
       const per = done ? (Date.now() - started) / done : 0;
       const left = queue.length + inFlight;
       out.innerHTML = `<div class="progress"><span style="width:${Math.round((done / list.length) * 100)}%"></span></div>
-        <span class="muted">${msg} · ${done} von ${list.length} in Firefly umgestellt${per && left ? ` · noch ca. ${Math.max(1, Math.round((per * left) / 60000))} Min.` : ''} · Paketgröße ${size}${parallel > 1 ? ` · ${parallel} gleichzeitig` : ''}${failed.length ? ` · ${failed.length} nicht angekommen` : ''}</span>
+        <span class="muted">${msg} · ${done} von ${list.length} in Firefly umgestellt${per ? ` · ${Math.round(60000 / per)} Buchungen/Min.` : ''}${per && left ? ` · noch ca. ${Math.max(1, Math.round((per * left) / 60000))} Min.` : ''} · Paketgröße ${size} · ${portion} je Paket gleichzeitig${parallel > 1 ? ` · ${parallel} Pakete parallel` : ''}${failed.length ? ` · ${failed.length} nicht angekommen` : ''}</span>
         <button class="link-btn" data-stop>Anhalten</button>`;
     };
     const settle = async (rs) => {
@@ -351,7 +354,7 @@ export async function csvSync(view) {
         const part = queue.splice(0, size);
         inFlight += part.length;
         show(`Sende ${part.length} Buchungen an n8n …`);
-        const payload = { typ: 'gegenkonto_setzen', hintergrund: true, aenderungen: part.map((r) => (r.sentPayload = payloadFor(r))) };
+        const payload = { typ: 'gegenkonto_setzen', hintergrund: true, portion, aenderungen: part.map((r) => (r.sentPayload = payloadFor(r))) };
         const sentAt = Date.now();
         const res = await runAction(action, { ...payload, daten: payload }).catch((err) => ({ ok: false, response: err.message }));
         if (!res.ok && res.status && res.status < 500 && res.status !== 408) {
@@ -360,19 +363,34 @@ export async function csvSync(view) {
           inFlight -= part.length;
           break;
         }
-        // in Firefly verfolgen: n8n arbeitet in der gesendeten Reihenfolge
+        // in Firefly verfolgen: n8n arbeitet in der gesendeten Reihenfolge. Je Runde nur wenige
+        // Abfragen (Firefly ist beschäftigt): die letzte Buchung des Pakets – ist sie angekommen,
+        // ist n8n durch und der Rest wird einmal komplett geprüft – sonst die ältesten offenen
+        // als Fortschrittsanzeige.
         const open = [...part];
         let lastProgress = Date.now();
-        while (open.length && !aborted) {
-          show(`n8n speichert ein Paket mit ${part.length} Buchungen …`);
-          await new Promise((r) => setTimeout(r, BG_POLL_MS));
+        const checkAll = async (list) => {
           const ok = [];
-          // die ältesten offenen nachsehen; solange alle passen, weiter (höchstens 50 je Runde)
-          for (let k = 0; k < Math.min(open.length, 50); k += 10) {
-            const slice = open.slice(k, k + 10);
+          for (let k = 0; k < list.length; k += 10) {
+            const slice = list.slice(k, k + 10);
             const checks = await Promise.all(slice.map(isSynced));
             slice.forEach((r, n) => checks[n] && ok.push(r));
-            if (checks.filter(Boolean).length < slice.length) break;
+          }
+          return ok;
+        };
+        let finished = false;
+        while (open.length && !aborted && !finished) {
+          show(`n8n speichert ein Paket mit ${part.length} Buchungen …`);
+          await new Promise((r) => setTimeout(r, BG_POLL_MS));
+          let ok;
+          if (await isSynced(open[open.length - 1])) {
+            ok = await checkAll(open); // Paket durch – alle einmal nachsehen
+            finished = true;
+          } else {
+            ok = [];
+            const slice = open.slice(0, 10);
+            const checks = await Promise.all(slice.map(isSynced));
+            slice.forEach((r, n) => checks[n] && ok.push(r));
           }
           if (ok.length) {
             lastProgress = Date.now();
@@ -380,7 +398,7 @@ export async function csvSync(view) {
             inFlight -= ok.length;
             await settle(ok);
           } else if (Date.now() - lastProgress > BG_STALL_MS || (stopRequested && Date.now() - lastProgress > BG_POLL_MS * 2)) {
-            break; // fertig, abgebrochen oder hängt
+            break; // abgebrochen oder hängt
           }
         }
         const took = Date.now() - sentAt;
@@ -575,6 +593,11 @@ export async function csvSync(view) {
     if (e.target.dataset.opt === 'size') {
       chunkSetting = e.target.value;
       store('ffd-sync-size', chunkSetting);
+      return;
+    }
+    if (e.target.dataset.opt === 'portion') {
+      portion = Number(e.target.value);
+      store('ffd-sync-portion', String(portion));
       return;
     }
     if (e.target.dataset.opt === 'parallel') {
