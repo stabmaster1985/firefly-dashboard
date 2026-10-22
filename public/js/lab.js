@@ -422,7 +422,10 @@ export async function lab(view, { params }) {
       ['3m', 'letzte 3 Monate', iso(new Date(y, t0.getMonth() - 3, t0.getDate() + 1)), iso(t0)],
     ];
     const preset = PRESETS.find(([, , v, b]) => v === scope.von && b === scope.bis)?.[0] ?? 'eigener';
+    // am Handy zugeklappt, solange nichts eingeschränkt ist (spart einen halben Bildschirm)
+    if (scoped) form.classList.add('open');
     form.innerHTML = `<span class="scope-label">Einschränken:</span>
+      <button type="button" class="scope-toggle" data-scope-toggle aria-expanded="${scoped}">Einschränken <span class="muted">${scoped ? `${txs.length} von ${allTxs.length} Buchungen` : 'alle Buchungen'}</span></button>
       <label>Zeitraum <select name="zeit">${PRESETS.map(([k, l]) => `<option value="${k}"${k === preset ? ' selected' : ''}>${l}</option>`).join('')}<option value="eigener"${preset === 'eigener' ? ' selected' : ''}>eigener …</option></select></label>
       <span class="scope-dates"${preset === 'eigener' ? '' : ' hidden'}><input type="date" name="von" value="${esc(scope.von)}" aria-label="von"> – <input type="date" name="bis" value="${esc(scope.bis)}" aria-label="bis"></span>
       <label>Konto <select name="konto"><option value="">alle</option>${accounts.map((a) => `<option${a === scope.konto ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select></label>
@@ -443,6 +446,12 @@ export async function lab(view, { params }) {
       for (const k of ['konto', 'kategorie', 'text', 'min', 'max']) if (f.get(k)) next.set(k, String(f.get(k)).trim());
       location.hash = `#/labor${next.toString() ? `?${next}` : ''}`;
     };
+    form.addEventListener('click', (e) => {
+      const tg = e.target.closest('[data-scope-toggle]');
+      if (!tg) return;
+      form.classList.toggle('open');
+      tg.setAttribute('aria-expanded', String(form.classList.contains('open')));
+    });
     form.addEventListener('change', (e) => {
       if (e.target.name === 'zeit' && e.target.value === 'eigener') {
         form.querySelector('.scope-dates').hidden = false;

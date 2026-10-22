@@ -1172,3 +1172,19 @@ button.cal-day { cursor: pointer; }
   .btn { height: auto; min-height: 38px; padding-top: 7px; padding-bottom: 7px; line-height: 1.25; }
   .btn.small { min-height: 30px; padding-top: 4px; padding-bottom: 4px; }
 }
+/* Auswahlfelder nie breiter als ihr Platz – sonst macht ein langer Kategorie- oder Kontoname
+   die ganze Seite breiter und das Handy zoomt heraus */
+select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+.lab-scope label > select, .lab-scope label > input { min-width: 0; width: 100%; }
+/* Sicherheitsnetz: der Inhalt darf die Seite nicht verbreitern (clip statt hidden – „sticky“ funktioniert weiter) */
+.main { min-width: 0; overflow-x: clip; }
+
+/* Labor „Einschränken“: am Handy ein aufklappbarer Knopf */
+.scope-toggle { display: none; }
+@media (max-width: 760px) {
+  .scope-toggle { display: flex; justify-content: space-between; align-items: center; width: 100%; border: 0; background: none; font: inherit; font-weight: 600; color: var(--text-secondary); padding: 2px 0; cursor: pointer; }
+  .scope-toggle::after { content: '▾'; margin-left: 8px; }
+  .lab-scope.open .scope-toggle::after { content: '▴'; }
+  .lab-scope .scope-label { display: none; }
+  .lab-scope:not(.open) > :not(.scope-toggle) { display: none !important; }
+}
