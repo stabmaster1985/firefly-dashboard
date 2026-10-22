@@ -13,6 +13,7 @@ const UNKNOWN = 'unbekannt';
 const DAY = 86400000;
 const day = (iso) => Date.parse(`${iso}T12:00:00Z`);
 const isoOf = (ms) => new Date(ms).toISOString().slice(0, 10);
+const rowKey = (r) => [r.date, r.amount, r.name, r.purpose, r.text].join('|');
 const fmtIban = (iban) => iban.replace(/(.{4})/g, '$1 ').trim();
 
 /** Zeitraum-Lücken zwischen den Dateien eines Kontos (mehr als 5 Tage ohne Datei). */
@@ -109,7 +110,7 @@ export function csvArchive(el, { load, memory }) {
       const n = (seen.get(f.name) || 0) + 1;
       seen.set(f.name, n);
       const buf = await bytesOf(f);
-      out.push({ name: n > 1 ? f.name.replace(/(\.csv)?$/i, ` (${n})$1`) : f.name, arrayBuffer: async () => buf });
+      out.push({ id: f.id, name: n > 1 ? f.name.replace(/(\.csv)?$/i, ` (${n})$1`) : f.name, arrayBuffer: async () => buf });
     }
     return out;
   };
@@ -119,12 +120,17 @@ export function csvArchive(el, { load, memory }) {
     busy = `${g.label}: lese ${g.files.length} Datei${g.files.length === 1 ? '' : 'en'} …`;
     render();
     const rows = [];
-    for (const f of await asFiles(g.files)) rows.push(...readRows(decodeCsv(await f.arrayBuffer()), f.name).rows);
+    const idOf = new Map(); // eindeutiger Dateiname → Archiv-ID
+    for (const f of await asFiles(g.files)) {
+      idOf.set(f.name, f.id);
+      rows.push(...readRows(decodeCsv(await f.arrayBuffer()), f.name).rows);
+    }
     const unique = uniqueRows(rows);
     const fps = fingerprints(unique);
     const mem = memory();
     const fresh = unique.filter((_, k) => !mem.rows?.[fps[k]]);
     const counts = { frueher: unique.length - fresh.length };
+    const byKey = new Map(); // Zeile → Ergebnisse (für die Zuordnung zu jeder Datei, die sie enthält)
     if (fresh.length) {
       const dates = fresh.map((r) => r.date).sort();
       const start = isoOf(day(dates[0]) - 4 * DAY);
@@ -133,9 +139,29 @@ export function csvArchive(el, { load, memory }) {
       render();
       const groupsData = g.acc ? await api.getAll(`accounts/${g.acc.id}/transactions`, { start, end }) : await api.getAll('transactions', { start, end });
       const txs = api.flattenTransactions(groupsData);
-      for (const r of matchRows(fresh, txs)) counts[r.status] = (counts[r.status] || 0) + 1;
+      for (const r of matchRows(fresh, txs)) {
+        counts[r.status] = (counts[r.status] || 0) + 1;
+        const k = rowKey(r.row);
+        if (!byKey.has(k)) byKey.set(k, { 'nicht-gefunden': 0, neu: 0, abweichend: 0 });
+        if (r.status in byKey.get(k)) byKey.get(k)[r.status] += 1;
+      }
     }
-    data = await call('/status', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ status: { [g.key]: { counts, rows: unique.length, from: g.from, to: g.to, files: g.sig } } }) });
+    // je Datei: auch überlappende Dateien zeigen die Zeilen, die in Firefly fehlen
+    const perFile = {};
+    for (const f of new Set(rows.map((r) => r.file))) {
+      const inFile = new Map();
+      rows.filter((r) => r.file === f).forEach((r) => inFile.set(rowKey(r), (inFile.get(rowKey(r)) || 0) + 1));
+      const c = { missing: 0, neu: 0, abweichend: 0 };
+      inFile.forEach((n, k) => {
+        const res = byKey.get(k);
+        if (!res) return;
+        c.missing += Math.min(n, res['nicht-gefunden']);
+        c.neu += Math.min(n, res.neu);
+        c.abweichend += Math.min(n, res.abweichend);
+      });
+      perFile[idOf.get(f)] = c;
+    }
+    data = await call('/status', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ status: { [g.key]: { counts, perFile, rows: unique.length, from: g.from, to: g.to, files: g.sig } } }) });
   }
 
   async function upload(list) {
@@ -186,6 +212,20 @@ export function csvArchive(el, { load, memory }) {
     return `${parts.join(' · ')} <span class="muted">· geprüft ${fmtDate(s.at)}${g.stale ? ' – <b>Dateien seitdem geändert</b>' : ''}</span>`;
   };
 
+  /** Ergebnis des letzten Firefly-Abgleichs für eine Datei (leer, wenn nie geprüft). */
+  const fileState = (g, f) => (g.status?.perFile || {})[f.id] || {};
+  const fileBadges = (g, f) => {
+    if (!g.status) return '';
+    const c = (g.status.perFile || {})[f.id];
+    if (!c) return '<span class="muted">· nach der Prüfung hinzugekommen</span>';
+    return [
+      c.missing ? `<span class="badge bad" title="Diese Zeilen fanden sich in Firefly nicht – über „Neue Zeilen importieren“ nachholen">${c.missing} fehlen in Firefly</span>` : '',
+      c.neu ? `<span class="badge good">${c.neu} ohne Empfänger</span>` : '',
+      c.abweichend ? `<span class="badge warn">${c.abweichend} anderer Empfänger</span>` : '',
+      !c.missing && !c.neu && !c.abweichend ? '<span class="badge">alles in Firefly ✓</span>' : '',
+    ].join(' ');
+  };
+
   function render() {
     const gs = groups();
     const total = data.files.length;
@@ -213,11 +253,16 @@ export function csvArchive(el, { load, memory }) {
             <button class="btn small" data-check="${esc(g.key)}"${busy ? ' disabled' : ''}>${g.status ? 'Neu prüfen' : 'Mit Firefly abgleichen'}</button>
           </div>
           <div class="arch-status">${statusLine(g)}</div>
+          ${(() => {
+            const miss = g.files.filter((f) => fileState(g, f).missing);
+            return miss.length ? `<div class="arch-miss">Fehlende Einträge in ${miss.length} Datei${miss.length === 1 ? '' : 'en'}: ${miss.slice(0, 5).map((f) => `<b>${esc(f.name)}</b> ${f.info?.from ? `(${fmtDate(f.info.from)} – ${fmtDate(f.info.to)})` : ''}: ${fileState(g, f).missing}`).join(' · ')}${miss.length > 5 ? ` · +${miss.length - 5} weitere` : ''}
+              <button class="link-btn" data-pick-missing="${esc(g.key)}">nur diese auswählen</button></div>` : '';
+          })()}
           ${g.gaps.length ? `<div class="arch-gaps">Lücken ohne CSV: ${g.gaps.slice(0, 6).map(([a, b]) => `${fmtDate(a)} – ${fmtDate(b)}`).join(' · ')}${g.gaps.length > 6 ? ` · +${g.gaps.length - 6} weitere` : ''}</div>` : ''}
           ${g.key !== UNKNOWN && !g.acc && accounts.length ? '<div class="arch-gaps">Kein Bestandskonto mit dieser IBAN in Firefly – abgeglichen wird gegen alle Buchungen.</div>' : ''}
-          ${open.has(g.key) ? `<table class="arch-files"><tbody>${g.files.map((f) => `<tr>
+          ${open.has(g.key) ? `<table class="arch-files"><tbody>${g.files.map((f) => `<tr${fileState(g, f).missing ? ' class="arch-missing"' : ''}>
             <td><input type="checkbox" data-file="${f.id}" ${selected.has(f.id) ? 'checked' : ''} aria-label="Datei auswählen"></td>
-            <td>${esc(f.name)}${f.info?.error ? ` <span class="bad">(${esc(f.info.error)})</span>` : ''}</td>
+            <td>${esc(f.name)}${f.info?.error ? ` <span class="bad">(${esc(f.info.error)})</span>` : ''} ${fileBadges(g, f)}</td>
             <td>${f.info?.from ? `${fmtDate(f.info.from)} – ${fmtDate(f.info.to)}` : '–'}</td>
             <td class="num">${f.info?.rows ?? '–'} Zeilen</td>
             <td class="muted">hochgeladen ${fmtDate(f.at)}</td>
@@ -276,6 +321,14 @@ export function csvArchive(el, { load, memory }) {
       busy = '';
       render();
     };
+    if (t.dataset.pickMissing !== undefined) {
+      const g = groups().find((x) => x.key === t.dataset.pickMissing);
+      if (!g) return;
+      g.files.forEach((f) => selected.delete(f.id));
+      g.files.filter((f) => fileState(g, f).missing).forEach((f) => selected.add(f.id));
+      open.add(g.key);
+      return render();
+    }
     if (t.dataset.check) return runChecks([t.dataset.check]);
     if (t.id === 'a-check-sel') return runChecks(groups().filter((g) => g.files.some((f) => selected.has(f.id))).map((g) => g.key));
     if (t.id === 'a-load') {

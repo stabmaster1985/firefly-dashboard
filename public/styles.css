@@ -1071,3 +1071,7 @@ button.cal-day { cursor: pointer; }
   .arch-meta { margin-left: 26px; width: 100%; }
   .arch-files td:nth-child(5) { display: none; }
 }
+.arch-miss { font-size: 13px; margin: 6px 0 0 26px; color: var(--negative); }
+.arch-miss b { color: var(--text-primary); font-weight: 600; }
+.arch-files tr.arch-missing td { background: color-mix(in srgb, var(--negative) 7%, transparent); }
+.arch-files tr.arch-missing td:first-child { box-shadow: inset 3px 0 0 var(--negative); }
