@@ -238,10 +238,10 @@ export async function csvSync(view) {
             <option value="pakete"${mode === 'pakete' ? ' selected' : ''}>in Paketen (wartet auf n8n)</option></select></label>
           ${mode === 'hintergrund' ? `<label class="sync-set">gleichzeitig <select data-opt="parallel">${PARALLEL.map((v) => `<option value="${v}"${Number(v) === parallel ? ' selected' : ''}>${v} Paket${v === '1' ? '' : 'e'}</option>`).join('')}</select></label>
             <label class="sync-set">Firefly je Paket gleichzeitig <select data-opt="portion">${PORTIONS.map((v) => `<option value="${v}"${Number(v) === portion ? ' selected' : ''}>${v} Buchungen</option>`).join('')}</select></label>
-            <span class="muted">n8n antwortet sofort und speichert danach in Portionen. Jedes Paket ist so bemessen, dass n8n es in rund 3 Minuten schafft; das nächste geht erst raus, wenn das vorige in Firefly angekommen ist. Braucht die aktuelle Vorlage n8n/firefly-buchung-bearbeiten.json (Zweig „Hintergrund?“).</span>` : `
+            <span class="muted">n8n antwortet sofort und speichert danach in Portionen. Jedes Paket ist so bemessen, dass n8n es in rund 3 Minuten schafft; das nächste geht raus, sobald die letzte Buchung des vorigen in Firefly steht. Geprüft wird alles einmal am Ende; was fehlt, geht einmal erneut raus. Braucht die aktuelle Vorlage n8n/firefly-buchung-bearbeiten.json (Zweig „Hintergrund?“).</span>` : `
           <label class="sync-set">Paketgröße <select data-opt="size">${SIZES.map((v) => `<option value="${v}"${v === chunkSetting ? ' selected' : ''}>${v === 'auto' ? 'automatisch (~1 Min. je Paket)' : `${v} Buchungen`}</option>`).join('')}</select></label>
           <label class="sync-set">gleichzeitig <select data-opt="parallel">${PARALLEL.map((v) => `<option value="${v}"${Number(v) === parallel ? ' selected' : ''}>${v} Paket${v === '1' ? '' : 'e'}</option>`).join('')}</select></label>
-          <span class="muted">über „${esc(action.name)}“ – jedes Paket wird danach in Firefly geprüft. Mehrere Pakete gleichzeitig sind meist am schnellsten; ein Paket sollte unter 5 Minuten bleiben.</span>`}`
+          <span class="muted">über „${esc(action.name)}“ – Pakete ohne Antwort werden am Ende in Firefly geprüft und fehlende einmal erneut geschickt. Mehrere Pakete gleichzeitig sind meist am schnellsten; ein Paket sollte unter 5 Minuten bleiben.</span>`}`
         : '<span class="muted">Zum Übertragen eine Automation mit Auslöser „Kategorie übernehmen“ anlegen (Workflow n8n/firefly-buchung-bearbeiten.json, Version mit „gegenkonto_setzen“).</span>'}
         <div class="run-out" id="s-out"></div>
       </div>`;
@@ -314,31 +314,44 @@ export async function csvSync(view) {
     return true;
   }
 
+  /** Buchungen in Firefly nachsehen (10 gleichzeitig) → die angekommenen. */
+  async function verify(items, onStep) {
+    const ok = [];
+    for (let k = 0; k < items.length; k += 10) {
+      const slice = items.slice(k, k + 10);
+      const checks = await Promise.all(slice.map(isSynced));
+      slice.forEach((r, n) => checks[n] && ok.push(r));
+      onStep?.(Math.min(k + 10, items.length));
+    }
+    return ok;
+  }
+  let abortedFlag = null;
+
   /**
-   * Hintergrund-Übertragung: Pakete an n8n (antwortet sofort), je Paket in Firefly verfolgen,
-   * bis es angekommen ist; Paketgröße an die gemessene Geschwindigkeit anpassen.
+   * Hintergrund-Übertragung: erst alle Pakete an n8n schicken, dann einmal in Firefly prüfen.
+   * Beim Senden wird je Paket nur die letzte Buchung nachgesehen (n8n arbeitet der Reihe nach) –
+   * das gibt das Tempo vor, damit Firefly nicht überrannt wird, und misst die Paketgröße.
+   * Was bei der Prüfung fehlt, geht einmal erneut raus und wird danach noch einmal geprüft.
    */
   async function transferBackground(list) {
     stopRequested = false;
+    abortedFlag = null;
     const out = $('s-out');
     const started = Date.now();
-    const queue = [...list];
-    list.forEach((r) => delete r.bgTried);
-    const failed = [];
     let size = BG_START;
+    let perItem = 0;
+    let sent = 0;
+    let toSend = list.length;
     let done = 0;
     let emptyInARow = 0;
-    let aborted = null;
-    let inFlight = 0;
-    const show = (msg) => {
-      if (aborted) return;
-      const per = done ? (Date.now() - started) / done : 0;
-      const left = queue.length + inFlight;
-      out.innerHTML = `<div class="progress"><span style="width:${Math.round((done / list.length) * 100)}%"></span></div>
-        <span class="muted">${msg} · ${done} von ${list.length} in Firefly umgestellt${per ? ` · ${Math.round(60000 / per)} Buchungen/Min.` : ''}${per && left ? ` · noch ca. ${Math.max(1, Math.round((per * left) / 60000))} Min.` : ''} · Paketgröße ${size} · ${portion} je Paket gleichzeitig${parallel > 1 ? ` · ${parallel} Pakete parallel` : ''}${failed.length ? ` · ${failed.length} nicht angekommen` : ''}</span>
+    const show = (msg, part = sent / Math.max(1, toSend)) => {
+      if (abortedFlag) return;
+      out.innerHTML = `<div class="progress"><span style="width:${Math.round(part * 100)}%"></span></div>
+        <span class="muted">${msg}${perItem ? ` · ${Math.round(60000 / perItem)} Buchungen/Min.` : ''} · Paketgröße ${size} · ${portion} je Paket gleichzeitig${parallel > 1 ? ` · ${parallel} Pakete parallel` : ''}</span>
         <button class="link-btn" data-stop>Anhalten</button>`;
     };
     const settle = async (rs) => {
+      rs = rs.filter((r) => r.status !== 'erledigt');
       for (const r of rs) {
         r.status = 'erledigt';
         picked.delete(results.indexOf(r));
@@ -349,102 +362,94 @@ export async function csvSync(view) {
         renderMemory();
       }
     };
-    const worker = async () => {
-      while (queue.length && !stopRequested && !aborted) {
-        const part = queue.splice(0, size);
-        inFlight += part.length;
-        show(`Sende ${part.length} Buchungen an n8n …`);
-        const payload = { typ: 'gegenkonto_setzen', hintergrund: true, portion, aenderungen: part.map((r) => (r.sentPayload = payloadFor(r))) };
-        const sentAt = Date.now();
-        const res = await runAction(action, { ...payload, daten: payload }).catch((err) => ({ ok: false, response: err.message }));
-        if (!res.ok && res.status && res.status < 500 && res.status !== 408) {
-          aborted = `n8n lehnt ab (HTTP ${res.status}): ${String(res.response || '').slice(0, 160)}`;
-          queue.unshift(...part);
-          inFlight -= part.length;
-          break;
-        }
-        // in Firefly verfolgen: n8n arbeitet in der gesendeten Reihenfolge. Je Runde nur wenige
-        // Abfragen (Firefly ist beschäftigt): die letzte Buchung des Pakets – ist sie angekommen,
-        // ist n8n durch und der Rest wird einmal komplett geprüft – sonst die ältesten offenen
-        // als Fortschrittsanzeige.
-        const open = [...part];
-        let lastProgress = Date.now();
-        const checkAll = async (list) => {
-          const ok = [];
-          for (let k = 0; k < list.length; k += 10) {
-            const slice = list.slice(k, k + 10);
-            const checks = await Promise.all(slice.map(isSynced));
-            slice.forEach((r, n) => checks[n] && ok.push(r));
+    /** Alle Pakete schicken; Rückgabe: geschickt / gar nicht geschickt. */
+    const sendAll = async (items, round) => {
+      const queue = [...items];
+      const sentList = [];
+      sent = 0;
+      toSend = items.length;
+      const sending = () => `${round > 1 ? 'Zweiter Versuch: ' : ''}${sent} von ${toSend} an n8n geschickt${perItem && queue.length ? ` · noch ca. ${Math.max(1, Math.round((perItem * queue.length) / parallel / 60000))} Min.` : ''} – geprüft wird danach`;
+      const worker = async () => {
+        while (queue.length && !stopRequested && !abortedFlag) {
+          const part = queue.splice(0, size);
+          show(sending());
+          const payload = { typ: 'gegenkonto_setzen', hintergrund: true, portion, aenderungen: part.map((r) => (r.sentPayload = payloadFor(r))) };
+          const sentAt = Date.now();
+          const res = await runAction(action, { ...payload, daten: payload }).catch((err) => ({ ok: false, response: err.message }));
+          if (!res.ok && res.status && res.status < 500 && res.status !== 408) {
+            abortedFlag = `n8n lehnt ab (HTTP ${res.status}): ${String(res.response || '').slice(0, 160)}`;
+            queue.unshift(...part);
+            break;
           }
-          return ok;
-        };
-        let finished = false;
-        while (open.length && !aborted && !finished) {
-          show(`n8n speichert ein Paket mit ${part.length} Buchungen …`);
-          await new Promise((r) => setTimeout(r, BG_POLL_MS));
-          let ok;
-          if (await isSynced(open[open.length - 1])) {
-            ok = await checkAll(open); // Paket durch – alle einmal nachsehen
-            finished = true;
+          sentList.push(...part);
+          sent += part.length;
+          // Tempo: warten, bis n8n mit dem Paket durch ist. n8n arbeitet der Reihe nach – je Runde
+          // nur die letzte Buchung und die nächsten paar in der Reihenfolge nachsehen (Fortschritt,
+          // Hänger erkennen); die vollständige Prüfung kommt erst, wenn alles geschickt ist.
+          const last = part[part.length - 1];
+          let pos = 0;
+          let lastProgress = Date.now();
+          let through = false;
+          while (!abortedFlag && !stopRequested) {
+            show(sending());
+            await new Promise((r) => setTimeout(r, BG_POLL_MS));
+            if (await isSynced(last)) {
+              through = true;
+              break;
+            }
+            const before = pos;
+            for (let n = 0; n < 3 && pos < part.length - 1 && (await isSynced(part[pos])); n++) pos += 1;
+            if (pos > before) lastProgress = Date.now();
+            else if (Date.now() - lastProgress > BG_STALL_MS) break; // n8n hat aufgehört (z. B. Zeitlimit)
+          }
+          if (stopRequested) break;
+          const took = Date.now() - sentAt;
+          if (through) {
+            emptyInARow = 0;
+            perItem = took / part.length;
+            // Paketgröße: so viele, wie n8n + Firefly in ~3 Minuten schaffen
+            size = Math.max(BG_MIN, Math.min(BG_MAX, Math.round(BG_TARGET_MS / perItem)));
+            await settle([last]);
+          } else if (pos > 0) {
+            // angefangen, aber nicht fertig geworden (Zeitlimit) → kleiner, passend zum Geschafften
+            perItem = (lastProgress - sentAt) / pos;
+            size = Math.max(BG_MIN, Math.min(Math.floor(pos * 0.8), Math.round(BG_TARGET_MS / perItem)));
           } else {
-            ok = [];
-            const slice = open.slice(0, 10);
-            const checks = await Promise.all(slice.map(isSynced));
-            slice.forEach((r, n) => checks[n] && ok.push(r));
-          }
-          if (ok.length) {
-            lastProgress = Date.now();
-            for (const r of ok) open.splice(open.indexOf(r), 1);
-            inFlight -= ok.length;
-            await settle(ok);
-          } else if (Date.now() - lastProgress > BG_STALL_MS || (stopRequested && Date.now() - lastProgress > BG_POLL_MS * 2)) {
-            break; // abgebrochen oder hängt
+            size = Math.max(BG_MIN, Math.floor(size / 2));
+            emptyInARow += 1;
+            if (emptyInARow >= 3) abortedFlag = `Von drei Paketen hintereinander kam nichts in Firefly an${res.ok ? '' : ` (${String(res.response || res.status || '').slice(0, 120)})`}.`;
           }
         }
-        const took = Date.now() - sentAt;
-        const arrived = part.length - open.length;
-        inFlight -= open.length;
-        // nicht angekommen: einmal erneut (mit kleinerem Paket), danach als „nicht angekommen“ zählen
-        const retry = open.filter((r) => !r.bgTried);
-        open.forEach((r) => (r.bgTried = true));
-        failed.push(...open.filter((r) => !retry.includes(r)));
-        if (!stopRequested) queue.unshift(...retry);
-        else failed.push(...retry);
-        if (arrived) {
-          emptyInARow = 0;
-          // Paketgröße: so viele, wie n8n + Firefly in ~3 Minuten schaffen
-          const perItem = took / arrived;
-          size = Math.max(BG_MIN, Math.min(BG_MAX, Math.round(BG_TARGET_MS / perItem)));
-          if (open.length) size = Math.max(BG_MIN, Math.min(size, Math.floor(arrived * 0.8))); // abgeschnitten → kleiner
-        } else {
-          size = Math.max(BG_MIN, Math.floor(size / 2));
-          emptyInARow += 1;
-          if (emptyInARow >= 3) aborted = `Von drei Paketen hintereinander kam nichts in Firefly an${res.ok ? '' : ` (${String(res.response || res.status || '').slice(0, 120)})`}.`;
-        }
-      }
+      };
+      await Promise.all(Array.from({ length: Math.max(1, parallel) }, worker));
+      return { sentList, rest: queue };
     };
-    await Promise.all(Array.from({ length: Math.max(1, parallel) }, worker));
-    // zum Schluss: nicht angekommene noch einmal frisch prüfen (n8n war evtl. nur spät dran)
-    if (failed.length) {
-      show('Abschließende Prüfung in Firefly …');
-      const late = [];
-      for (let k = 0; k < failed.length; k += 10) {
-        const slice = failed.slice(k, k + 10);
-        const checks = await Promise.all(slice.map(isSynced));
-        slice.forEach((r, n) => checks[n] && late.push(r));
-      }
-      await settle(late);
-      late.forEach((r) => failed.splice(failed.indexOf(r), 1));
+    const check = async (items) => {
+      const open = items.filter((r) => r.status !== 'erledigt');
+      show(`Prüfe in Firefly: 0 von ${open.length} …`, 0);
+      const ok = await verify(open, (k) => show(`Prüfe in Firefly: ${k} von ${open.length} …`, k / Math.max(1, open.length)));
+      await settle(ok);
+      return open.filter((r) => !ok.includes(r));
+    };
+
+    const first = await sendAll(list, 1);
+    let missing = await check(first.sentList);
+    let unsent = first.rest;
+    if (missing.length && !stopRequested && !abortedFlag) {
+      const second = await sendAll(missing, 2);
+      unsent = [...unsent, ...second.rest];
+      missing = await check(second.sentList);
     }
     api.forget();
     if (openScan && !openScan.loading) scanOpen();
     render();
-    const left = queue.length + failed.length;
-    $('s-out').innerHTML = aborted
-      ? `<span class="badge bad">Abgebrochen</span> <span class="muted">${esc(aborted)} ${done} sind umgestellt; die übrigen ${left} bleiben ausgewählt. In n8n unter „Executions“ nachsehen, was passiert ist.</span>`
+    const left = unsent.length + missing.length;
+    const mins = Math.max(1, Math.round((Date.now() - started) / 60000));
+    $('s-out').innerHTML = abortedFlag
+      ? `<span class="badge bad">Abgebrochen</span> <span class="muted">${esc(abortedFlag)} ${done} sind umgestellt; die übrigen ${left} bleiben ausgewählt. In n8n unter „Executions“ nachsehen, was passiert ist.</span>`
       : !left
-        ? `<span class="badge good">${done} in Firefly umgestellt ✓</span> <span class="muted">Danach im Labor: Regel-Vorschläge nach Empfänger und die KI-Analyse werden deutlich besser.</span>`
-        : `<span class="badge warn">${done} umgestellt, ${left} offen</span> <span class="muted">${stopRequested ? 'Angehalten – ' : ''}${failed.length ? `${failed.length} kamen nicht in Firefly an (in n8n unter „Executions“ nachsehen). ` : ''}Die offenen bleiben ausgewählt; ein neuer Klick macht dort weiter.</span>`;
+        ? `<span class="badge good">${done} in Firefly umgestellt ✓</span> <span class="muted">alle geprüft · ${mins} Min. · Danach im Labor: Regel-Vorschläge nach Empfänger und die KI-Analyse werden deutlich besser.</span>`
+        : `<span class="badge warn">${done} umgestellt, ${left} offen</span> <span class="muted">${stopRequested ? 'Angehalten – geschickte Pakete wurden noch geprüft. ' : ''}${missing.length ? `${missing.length} kamen nach zwei Versuchen nicht in Firefly an (in n8n unter „Executions“ nachsehen). ` : ''}Die offenen bleiben ausgewählt; ein neuer Klick macht dort weiter.</span>`;
   }
 
   let stopRequested = false;
@@ -453,8 +458,8 @@ export async function csvSync(view) {
       .filter((r) => r.t && (r.status === 'neu' || (r.status === 'abweichend' && overwrite) || (r.status === 'vorhanden' && hasExtras(r))));
     if (!list.length) return;
     if (!window.confirm(`Bei ${list.length} Buchungen den Empfänger in Firefly setzen?\n\nFirefly ordnet sie dem Gegenkonto mit diesem Namen${withIban ? ' bzw. dieser IBAN' : ''} zu und legt es an, falls es noch fehlt. Kategorien, Tags und Notizen bleiben unverändert.\n\n${mode === 'hintergrund'
-      ? 'n8n arbeitet im Hintergrund; das Dashboard zeigt den Fortschritt aus Firefly. „Anhalten“ beendet nur die Anzeige – n8n arbeitet weiter.'
-      : 'Es geht in kleinen Paketen; jedes wird danach in Firefly nachgeprüft. Du kannst jederzeit anhalten.'}`)) return;
+      ? 'Erst gehen alle Pakete an n8n, danach prüft das Dashboard einmal in Firefly, was angekommen ist. „Anhalten“ schickt nichts Neues mehr – n8n arbeitet laufende Pakete noch ab.'
+      : 'Es geht in kleinen Paketen; Pakete ohne Antwort werden am Ende in Firefly nachgeprüft. Du kannst jederzeit anhalten.'}`)) return;
     btn.disabled = true;
     if (mode === 'hintergrund') return transferBackground(list);
     stopRequested = false;
@@ -466,6 +471,8 @@ export async function csvSync(view) {
     let failedInARow = 0;
     let aborted = null;
     let running = 0;
+    const unsure = []; // ohne Antwort von n8n – wird nach dem Senden geprüft
+    let lastError = '';
     const started = Date.now();
     const finish = (r) => {
       r.status = 'erledigt';
@@ -491,16 +498,18 @@ export async function csvSync(view) {
         const took = Date.now() - t0;
         let ok = part;
         if (!res.ok) {
-          // abgebrochen oder Fehler: n8n hat evtl. trotzdem einen Teil gespeichert → in Firefly nachsehen
-          progress(`Antwort fehlte (${esc(String(res.response || res.status || '').slice(0, 80))}) – prüfe in Firefly, was angekommen ist …`);
-          await new Promise((r) => setTimeout(r, 5000));
-          const checks = await Promise.all(part.map(isSynced));
-          ok = part.filter((_, k) => checks[k]);
-          queue.unshift(...part.filter((_, k) => !checks[k])); // Rest noch einmal, mit kleineren Paketen
+          // Antwort fehlte: n8n hat evtl. trotzdem gespeichert → erst nach dem Senden in Firefly nachsehen
+          ok = [];
+          unsure.push(...part);
+          lastError = String(res.response || res.status || '').slice(0, 160);
           size = Math.max(CHUNK_MIN, Math.floor(size / 2));
-          failedInARow = ok.length ? 0 : failedInARow + 1;
+          failedInARow += 1;
+          // mehrmals keine Antwort: abbrechen nur, wenn wirklich nichts ankommt (eine Stichprobe –
+          // oft bricht nur die Verbindung ab, während n8n weiterspeichert)
           if (failedInARow >= 3 * parallel) {
-            aborted = String(res.response || res.status || '').slice(0, 160);
+            await new Promise((r) => setTimeout(r, 5000));
+            if (await isSynced(part[0])) failedInARow = 0;
+            else aborted = lastError;
           }
         } else {
           failedInARow = 0;
@@ -518,6 +527,31 @@ export async function csvSync(view) {
       }
     };
     await Promise.all(Array.from({ length: Math.min(parallel, Math.ceil(list.length / size)) }, worker));
+    // erst jetzt: Pakete ohne Antwort in Firefly nachsehen; was fehlt, einmal erneut schicken und noch einmal prüfen
+    const recheck = async () => {
+      const items = unsure.splice(0);
+      const what = aborted;
+      aborted = null; // Fortschritt während der Prüfung anzeigen
+      progress(`Prüfe ${items.length} Buchungen ohne Antwort von n8n in Firefly …`);
+      const arrived = await verify(items, (k) => progress(`Prüfe in Firefly: ${k} von ${items.length} …`));
+      aborted = what;
+      arrived.forEach(finish);
+      done += arrived.length;
+      if (arrived.length) {
+        await memoryCall('POST', { items: arrived.map((r) => ({ fp: r.fp, j: r.t.transaction_journal_id, name: r.row.name })) });
+        renderMemory();
+      }
+      return items.filter((r) => !arrived.includes(r));
+    };
+    if (unsure.length) {
+      const missing = await recheck();
+      if (missing.length && !aborted && !stopRequested) {
+        queue.push(...missing);
+        failedInARow = 0;
+        await Promise.all(Array.from({ length: Math.min(parallel, Math.ceil(missing.length / size)) }, worker));
+        if (unsure.length) queue.push(...(await recheck()));
+      } else queue.push(...missing);
+    }
     if (aborted) {
       out.innerHTML = `<span class="badge bad">Abgebrochen</span> <span class="muted">Mehrmals hintereinander kam nichts in Firefly an (${esc(aborted)}). ${done} sind übertragen; die übrigen bleiben ausgewählt – Automation unter „Automationen“ prüfen, ggf. kleinere Pakete oder weniger gleichzeitig wählen und erneut starten.</span>`;
     }
@@ -526,8 +560,8 @@ export async function csvSync(view) {
     const stopped = stopRequested && queue.length;
     const msg = out.innerHTML.includes('Abgebrochen') ? out.innerHTML : null;
     render();
-    $('s-out').innerHTML = msg || `<span class="badge ${stopped ? 'warn' : 'good'}">${done} übertragen${stopped ? ` – angehalten, ${queue.length} offen` : ' ✓'}</span>
-      <span class="muted">${stopped ? 'Die offenen bleiben ausgewählt; „übertragen“ macht dort weiter.' : 'Danach im Labor: Regel-Vorschläge nach Empfänger („REWE → Lebensmittel“) und die KI-Analyse werden deutlich besser.'}</span>`;
+    $('s-out').innerHTML = msg || `<span class="badge ${queue.length ? 'warn' : 'good'}">${done} übertragen${stopped ? ` – angehalten, ${queue.length} offen` : queue.length ? `, ${queue.length} nicht angekommen` : ' ✓'}</span>
+      <span class="muted">${queue.length ? `${stopped ? '' : `Nach zwei Versuchen nicht in Firefly (${esc(lastError)}). `}Die offenen bleiben ausgewählt; „übertragen“ macht dort weiter.` : 'Danach im Labor: Regel-Vorschläge nach Empfänger („REWE → Lebensmittel“) und die KI-Analyse werden deutlich besser.'}</span>`;
   }
 
 

@@ -137,6 +137,9 @@ button, input, select { font: inherit; color: inherit; }
 .nav a svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .nav a:hover { background: var(--surface-2); color: var(--text-primary); }
 .nav a.active { background: var(--accent-soft); color: var(--accent); }
+.nav-more { display: none; align-items: center; justify-content: flex-start; line-height: inherit; border: 0; background: none; font: inherit; font-weight: 500; color: var(--text-secondary); border-radius: 10px; cursor: pointer; }
+.nav-more svg { width: 20px; height: 20px; fill: currentColor; }
+.nav-more.active { background: var(--accent-soft); color: var(--accent); }
 
 .sidebar-foot .perf { margin-top: 6px; cursor: help; font-variant-numeric: tabular-nums; }
 .sidebar-foot { margin-top: auto; padding: 0 10px; font-size: 12px; color: var(--text-muted); }
@@ -686,9 +689,15 @@ tbody tr.dup-head:first-child td { padding-top: 4px; }
     border-right: 0; border-top: 1px solid var(--border);
   }
   .brand, .sidebar-foot { display: none; }
-  .nav { flex-direction: row; justify-content: flex-start; width: 100%; overflow-x: auto; scrollbar-width: none; }
-  .nav a { min-width: 64px; }
-  .nav a { flex-direction: column; gap: 2px; font-size: 11px; padding: 6px 4px; flex: 1; text-align: center; }
+  .nav { flex-direction: row; width: 100%; min-width: 0; }
+  .nav a, .nav-more { flex-direction: column; gap: 2px; font-size: 11px; padding: 6px 4px; flex: 1 1 0; min-width: 0; text-align: center; }
+  .nav a span, .nav-more span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nav a:not([data-primary]) { display: none; }
+  .nav-more { display: flex; }
+  /* „Mehr“: alle Punkte als Raster über der Leiste, „Schließen“ bleibt unten rechts */
+  .sidebar.nav-open { box-shadow: 0 -8px 30px rgba(0, 0, 0, .18); }
+  .sidebar.nav-open .nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding-top: 6px; }
+  .sidebar.nav-open .nav a { display: flex; padding: 10px 4px; }
   .main { padding: 0 16px 96px; }
   .topbar { flex-wrap: wrap; padding: 14px 0 12px; }
   .topbar h1 { font-size: 20px; }
@@ -708,7 +717,7 @@ tbody tr.dup-head:first-child td { padding-top: 4px; }
   .card-tools { width: 100%; justify-content: space-between; }
   .card-filter { flex: 1; width: auto; }
   .ms-pop { width: min(300px, calc(100vw - 32px)); }
-  .nav a span { font-size: 10px; }
+  .nav a span, .nav-more span { font-size: 10px; }
   .month-panel { padding: 12px; }
   .dist-grid, .form-grid { grid-template-columns: 1fr; }
   .sankey-hint { display: flex; }

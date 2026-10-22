@@ -84,6 +84,10 @@ async function render() {
   titleEl.textContent = route.title;
   document.title = `${route.title} · Firefly Dashboard`;
   document.querySelectorAll('.nav a').forEach((a) => a.classList.toggle('active', a.dataset.route === route.nav));
+  // Handy: „Mehr“ markieren, wenn die aktuelle Seite nur im ausgeklappten Menü steht; Menü schließen
+  const activeLink = document.querySelector('.nav a.active');
+  document.getElementById('nav-more').classList.toggle('active', Boolean(activeLink && !activeLink.hasAttribute('data-primary')));
+  setNavOpen(false);
   document.querySelector('.period-wrap').hidden = Boolean(route.noPeriod);
   forecastBtn.hidden = Boolean(route.noPeriod);
   const helpBtn = document.getElementById('help-btn');
@@ -184,6 +188,24 @@ setInterval(updatePerf, 30_000);
 
 // ---- Bedienelemente -------------------------------------------------------
 
+// Handy-Navigation: vier Hauptpunkte + „Mehr“ (alle Punkte als Raster) – kein seitliches Wischen
+// am unteren Bildschirmrand nötig, das dort mit der Gesten-Steuerung des Telefons kollidiert
+function setNavOpen(open) {
+  document.querySelector('.sidebar').classList.toggle('nav-open', open);
+  const btn = document.getElementById('nav-more');
+  btn.setAttribute('aria-expanded', String(open));
+  btn.querySelector('span').textContent = open ? 'Schließen' : 'Mehr';
+}
+document.getElementById('nav-more').addEventListener('click', (e) => {
+  e.stopPropagation();
+  setNavOpen(!document.querySelector('.sidebar').classList.contains('nav-open'));
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.sidebar')) setNavOpen(false);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') setNavOpen(false);
+});
 window.addEventListener('hashchange', render);
 
 const rangeForm = document.getElementById('custom-range');
