@@ -417,6 +417,13 @@ wählen (gern alle auf einmal, überlappende Zeilen zählen nur einmal):
   Konten (wahlweise nur Monate mit offenen), aufklappbar bis zur Buchung (mit Link nach Firefly),
   offene als CSV exportierbar. Ist eine CSV eingelesen, steht dabei, wie viele davon sie abdeckt; nach dem
   Übertragen wird die Prüfung automatisch wiederholt.
+- **Optionen** neben „IBAN/BIC mitgeben“ (je Browser gemerkt): **nichtssagende Beschreibung
+  ersetzen** – wo in Firefly nur „Kartenzahlung girocard“, „Basislastschrift“ o. ä. steht, kommt der
+  bereinigte Verwendungszweck hinein, bei Kartenzahlungen „Kartenzahlung <Händler>“; **Zahlungsart
+  als Tag** – Buchungstext der Bank als Tag (Kartenzahlung, Lastschrift, Dauerauftrag, Überweisung,
+  Gutschrift, Bargeld, Bankentgelt, Rückbuchung; Unbekanntes wird nicht getaggt). Beides gilt auch
+  für „schon synchrone“ Buchungen; die Vorschau zeigt je Zeile, was sich ändert. Kategorien und
+  Notizen bleiben unverändert.
 - Übertragene Zeilen merkt sich das Dashboard (`DATA_DIR/csv-sync.json`, je Zeile nur ein
   Fingerabdruck plus Buchungsnummer und Name), ebenso Zeilen, die beim Einlesen schon synchron
   sind (Firefly hat den Namen bereits – z. B. nach einem abgebrochenen Lauf, den n8n im

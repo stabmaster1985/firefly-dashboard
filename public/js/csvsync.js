@@ -8,7 +8,7 @@ import * as api from './api.js';
 import { money, esc, fmtDate, addDays, storage, store } from './util.js';
 import { card, counterparty, fireflyTxUrl, downloadCsv } from './common.js';
 import { actionFor, runAction } from './txedit.js';
-import { decodeCsv, readRows, matchRows, changeFor, statusFor, fingerprints, hasNoParty } from './csvmatch.js';
+import { decodeCsv, readRows, matchRows, changeFor, statusFor, fingerprints, hasNoParty, betterDescription, paymentKind } from './csvmatch.js';
 
 const STATUS = {
   neu: ['Empfänger fehlt – wird ergänzt', 'good'],
@@ -54,6 +54,24 @@ export async function csvSync(view) {
   let filter = 'neu';
   let overwrite = false;
   let withIban = true;
+  // Zusatz-Optionen: nichtssagende Beschreibung ersetzen, Zahlungsart als Tag (je Browser gemerkt)
+  let optDesc = storage('ffd-sync-desc', '0') === '1';
+  let optTag = storage('ffd-sync-tag', '0') === '1';
+  /** Was außer dem Empfänger an einer Buchung ergänzt würde. */
+  const extrasOf = (r) => {
+    if (!r.t) return {};
+    const description = optDesc ? betterDescription(r.row, r.t) : null;
+    const kind = optTag ? paymentKind(r.row.text) : '';
+    const tag = kind && !(r.t.tags || []).some((x) => x.toLowerCase() === kind.toLowerCase()) ? kind : null;
+    return { ...(description ? { description } : {}), ...(tag ? { tag } : {}) };
+  };
+  const hasExtras = (r) => Object.keys(extrasOf(r)).length > 0;
+  /** Empfänger setzen? (nicht bei „schon synchron“, die nur Beschreibung/Tag bekommen) */
+  const setsParty = (r) => r.status === 'neu' || r.status === 'abweichend';
+  const payloadFor = (r) => {
+    const x = extrasOf(r);
+    return changeFor(r, { iban: withIban, party: setsParty(r), description: x.description || null, tags: x.tag ? [...(r.t.tags || []), x.tag] : null });
+  };
   // Paketgröße und parallele Pakete – je Browser gemerkt
   let chunkSetting = SIZES.includes(storage('ffd-sync-size', 'auto')) ? storage('ffd-sync-size', 'auto') : 'auto';
   let parallel = PARALLEL.includes(storage('ffd-sync-parallel', '1')) ? Number(storage('ffd-sync-parallel', '1')) : 1;
@@ -141,13 +159,14 @@ export async function csvSync(view) {
     })];
     picked.clear();
     // vorgewählt nur, was sicher zugeordnet ist (Betrag, Datum und Text gleich)
-    results.forEach((r, i) => r.status === 'neu' && r.sure && picked.add(i));
+    results.forEach((r, i) => ((r.status === 'neu' && r.sure) || (r.status === 'vorhanden' && hasExtras(r))) && picked.add(i));
     filter = 'neu';
     info.innerHTML = `${notes.join('<br>')}<br>${unique.length} Zeilen${known.length ? ` · <b>${known.length} schon erledigt</b> (gemerkt, übersprungen)` : ''}${open.length
       ? ` · ${txs.length} Firefly-Buchungen im Zeitraum ${fmtDate(dates[0])} – ${fmtDate(dates.at(-1))}` : ' · nichts Neues abzugleichen'}`;
     if (!open.length) filter = 'frueher';
     // schon synchron (Firefly hat den Namen aus der CSV) → merken, beim nächsten Mal überspringen
-    const synced = matched.filter((r) => r.status === 'vorhanden' && r.t);
+    // (mit offenen Ergänzungen – Beschreibung/Tag – noch nicht, die sollen beim nächsten Mal wieder auftauchen)
+    const synced = matched.filter((r) => r.status === 'vorhanden' && r.t && !hasExtras(r));
     if (synced.length) memoryCall('POST', { items: synced.map((r) => ({ fp: r.fp, j: r.t.transaction_journal_id, name: r.row.name })) }).then(renderMemory);
     if (openScan && !openScan.loading) renderOpen(); // Abgleich mit „noch nicht umgestellt“
     render();
@@ -178,6 +197,8 @@ export async function csvSync(view) {
       <p class="sync-top" id="s-top"></p>
       <div class="sync-opts">
         <label class="check"><input type="checkbox" data-opt="iban" ${withIban ? 'checked' : ''}> IBAN/BIC des Gegenkontos mitgeben</label>
+        <label class="check" title="Wo nur „Kartenzahlung girocard“, „Basislastschrift“ o. ä. steht: Verwendungszweck – bzw. „Kartenzahlung <Händler>“"><input type="checkbox" data-opt="desc" ${optDesc ? 'checked' : ''}> nichtssagende Beschreibung ersetzen</label>
+        <label class="check" title="Buchungstext der Bank als Tag: Kartenzahlung, Lastschrift, Dauerauftrag …"><input type="checkbox" data-opt="tag" ${optTag ? 'checked' : ''}> Zahlungsart als Tag</label>
         ${count('abweichend') ? `<label class="check"><input type="checkbox" data-opt="overwrite" ${overwrite ? 'checked' : ''}> auch abweichende Empfänger überschreiben (${count('abweichend')})</label>` : ''}
         ${rows.some(selectable) ? `<span><button class="link-btn" data-pick="all">alle${filter === 'alle' ? '' : ' angezeigten'} auswählen</button> · <button class="link-btn" data-pick="none">keine</button></span>` : ''}
       </div>
@@ -194,7 +215,11 @@ export async function csvSync(view) {
               : '<span class="muted">keine Buchung mit gleichem Betrag in der Nähe – vermutlich nie importiert oder in Firefly geändert</span>'}</td>
         <td class="num">${money(r.row.amount)}</td>
         <td><span class="badge ${STATUS[r.status][1]}" title="${esc(r.reason)}">${STATUS[r.status][0]}</span>
-          ${['neu', 'abweichend', 'erledigt'].includes(r.status) && r.row.name ? `<div class="flow">Empfänger ${r.status === 'erledigt' ? 'ist jetzt' : 'wird'}: <b>${esc(r.row.name)}</b></div>` : ''}</td></tr>`).join('')}
+          ${['neu', 'abweichend', 'erledigt'].includes(r.status) && r.row.name ? `<div class="flow">Empfänger ${r.status === 'erledigt' ? 'ist jetzt' : 'wird'}: <b>${esc(r.row.name)}</b></div>` : ''}
+          ${r.status !== 'erledigt' && r.t ? (() => {
+            const x = extrasOf(r);
+            return `${x.description ? `<div class="flow">Beschreibung wird: <b>${esc(x.description)}</b></div>` : ''}${x.tag ? `<div class="flow">neuer Tag: <span class="tag">${esc(x.tag)}</span></div>` : ''}`;
+          })() : ''}</td></tr>`).join('')}
       </tbody></table></div>
       ${rows.length > MAX_ROWS ? `<div class="legend" style="margin-top:8px"><span>Die ersten ${MAX_ROWS} von ${rows.length} (Auswahl gilt für alle)</span></div>` : ''}
       <div class="sync-run">
@@ -216,7 +241,7 @@ export async function csvSync(view) {
     window.scrollTo(0, scroll.page);
   }
 
-  const selectable = (r) => Boolean(r.t) && ['neu', 'abweichend'].includes(r.status);
+  const selectable = (r) => Boolean(r.t) && (['neu', 'abweichend'].includes(r.status) || (r.status === 'vorhanden' && hasExtras(r)));
   const visible = () => results.map((r, i) => ({ ...r, i })).filter((r) => filter === 'alle' || r.status === filter);
   /** Nur Zähler, Überblick und Knöpfe aktualisieren – die Tabelle bleibt stehen (kein Sprung nach oben). */
   function updateSelection() {
@@ -233,7 +258,7 @@ export async function csvSync(view) {
     const run = el.querySelector('#s-run');
     if (run) {
       run.disabled = !picked.size;
-      run.textContent = `${picked.size} Empfänger nach Firefly übertragen`;
+      run.textContent = optDesc || optTag ? `${picked.size} Buchungen nach Firefly übertragen` : `${picked.size} Empfänger nach Firefly übertragen`;
     }
     const ow = el.querySelector('[data-opt="overwrite"]');
     if (ow) ow.checked = overwrite;
@@ -263,10 +288,20 @@ export async function csvSync(view) {
     if (!res?.ok) return false;
     const body = await res.json().catch(() => null);
     const split = (body?.data?.attributes?.transactions || []).find((x) => String(x.transaction_journal_id) === String(r.t.transaction_journal_id));
-    if (!split) return false;
-    const party = String((split.type === 'deposit' ? split.source_name : split.destination_name) || '').trim();
-    // angekommen: Name aus der CSV – oder (bei gleicher IBAN) ein anderes, aber echtes Gegenkonto als vorher
-    return party.toLowerCase() === r.row.name.trim().toLowerCase() || (!hasNoParty(split) && party !== String(counterparty(r.t) || '').trim());
+    return split ? arrivedIn(r, split) : false;
+  }
+  /** Ist die Änderung an dieser (frisch gelesenen) Buchung angekommen? */
+  function arrivedIn(r, split) {
+    const sent = r.sentPayload || {};
+    if (sent.gegenkonto !== false) {
+      const party = String((split.type === 'deposit' ? split.source_name : split.destination_name) || '').trim();
+      // Name aus der CSV – oder (bei gleicher IBAN) ein anderes, aber echtes Gegenkonto als vorher
+      const ok = party.toLowerCase() === r.row.name.trim().toLowerCase() || (!hasNoParty(split) && party !== String(counterparty(r.t) || '').trim());
+      if (!ok) return false;
+    }
+    if (sent.beschreibung && String(split.description || '').trim() !== sent.beschreibung.trim()) return false;
+    if (sent.tags && !sent.tags.every((x) => (split.tags || []).includes(x))) return false;
+    return true;
   }
 
   /**
@@ -309,7 +344,7 @@ export async function csvSync(view) {
         const part = queue.splice(0, size);
         inFlight += part.length;
         show(`Sende ${part.length} Buchungen an n8n …`);
-        const payload = { typ: 'gegenkonto_setzen', hintergrund: true, aenderungen: part.map((r) => changeFor(r, { iban: withIban })) };
+        const payload = { typ: 'gegenkonto_setzen', hintergrund: true, aenderungen: part.map((r) => (r.sentPayload = payloadFor(r))) };
         const sentAt = Date.now();
         const res = await runAction(action, { ...payload, daten: payload }).catch((err) => ({ ok: false, response: err.message }));
         if (!res.ok && res.status && res.status < 500 && res.status !== 408) {
@@ -389,7 +424,8 @@ export async function csvSync(view) {
 
   let stopRequested = false;
   async function transfer(btn) {
-    const list = [...picked].sort((a, b) => a - b).map((i) => results[i]).filter((r) => r.t && (r.status === 'neu' || (r.status === 'abweichend' && overwrite)));
+    const list = [...picked].sort((a, b) => a - b).map((i) => results[i])
+      .filter((r) => r.t && (r.status === 'neu' || (r.status === 'abweichend' && overwrite) || (r.status === 'vorhanden' && hasExtras(r))));
     if (!list.length) return;
     if (!window.confirm(`Bei ${list.length} Buchungen den Empfänger in Firefly setzen?\n\nFirefly ordnet sie dem Gegenkonto mit diesem Namen${withIban ? ' bzw. dieser IBAN' : ''} zu und legt es an, falls es noch fehlt. Kategorien, Tags und Notizen bleiben unverändert.\n\n${mode === 'hintergrund'
       ? 'n8n arbeitet im Hintergrund; das Dashboard zeigt den Fortschritt aus Firefly. „Anhalten“ beendet nur die Anzeige – n8n arbeitet weiter.'
@@ -424,7 +460,7 @@ export async function csvSync(view) {
         const part = queue.splice(0, size);
         running += part.length;
         progress(`Übertrage ${part.length} Buchungen …`);
-        const payload = { typ: 'gegenkonto_setzen', aenderungen: part.map((r) => changeFor(r, { iban: withIban })) };
+        const payload = { typ: 'gegenkonto_setzen', aenderungen: part.map((r) => (r.sentPayload = payloadFor(r))) };
         const t0 = Date.now();
         const res = await runAction(action, { ...payload, daten: payload }).catch((err) => ({ ok: false, response: err.message }));
         const took = Date.now() - t0;
@@ -542,6 +578,19 @@ export async function csvSync(view) {
     if (e.target.dataset.opt === 'iban') {
       withIban = e.target.checked;
       return;
+    }
+    if (e.target.dataset.opt === 'desc' || e.target.dataset.opt === 'tag') {
+      if (e.target.dataset.opt === 'desc') optDesc = e.target.checked;
+      else optTag = e.target.checked;
+      store('ffd-sync-desc', optDesc ? '1' : '0');
+      store('ffd-sync-tag', optTag ? '1' : '0');
+      // „schon synchron“ mit Ergänzungen mit auswählen bzw. wieder abwählen
+      results.forEach((r, i) => {
+        if (r.status !== 'vorhanden') return;
+        if (hasExtras(r)) picked.add(i);
+        else picked.delete(i);
+      });
+      return render();
     }
     if (e.target.dataset.opt === 'overwrite') {
       overwrite = e.target.checked;

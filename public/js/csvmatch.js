@@ -4,7 +4,7 @@
 // Gegenkonto zugeordnet war). Rein rechnerisch, ohne DOM – im Browser und
 // in Tests nutzbar. Geschrieben wird hier nichts.
 
-import { counterpartyOf, cleanText } from './rules.js';
+import { counterpartyOf, cleanText, isGenericText } from './rules.js';
 
 /** Bytes → Text: UTF-8, sonst Windows-1252 (viele Bank-Exporte). */
 export function decodeCsv(buffer) {
@@ -245,15 +245,46 @@ export function fingerprints(rows) {
   });
 }
 
+/** Zahlungsart aus dem Buchungstext („KARTENZAHLUNG girocard“ → „Kartenzahlung“). */
+export function paymentKind(text) {
+  const s = String(text ?? '').toLowerCase();
+  if (!s.trim()) return '';
+  if (/karte|girocard|debit|kontaktlos/.test(s)) return 'Kartenzahlung';
+  if (/lastschrift|einzug/.test(s)) return 'Lastschrift';
+  if (/dauerauftrag/.test(s)) return 'Dauerauftrag';
+  if (/gutschrift|lohn|gehalt|rente/.test(s)) return 'Gutschrift';
+  if (/überweisung|ueberweisung/.test(s)) return 'Überweisung';
+  if (/bargeld|geldautomat|auszahlung/.test(s)) return 'Bargeld';
+  if (/entgelt|gebühr|gebuehr|abschluss|zins/.test(s)) return 'Bankentgelt';
+  if (/storno|retoure|rückbuchung|rueckbuchung/.test(s)) return 'Rückbuchung';
+  return ''; // unbekannt – lieber kein Tag als ein zufälliger
+}
+
+/**
+ * Aussagekräftigere Beschreibung, wenn die heutige nur ein Bank-Standardtext ist:
+ * der bereinigte Verwendungszweck – oder (bei Kartenzahlungen, wo der auch nichts sagt)
+ * „Kartenzahlung REWE Markt GmbH“. null = nichts zu ändern.
+ */
+export function betterDescription(row, t) {
+  if (!isGenericText(t.description)) return null;
+  const purpose = cleanText(row.purpose);
+  const next = !isGenericText(row.purpose) && purpose ? purpose.slice(0, 120)
+    : row.name ? `${paymentKind(row.text) || 'Zahlung'} ${row.name}`.slice(0, 120) : null;
+  return next && next !== String(t.description).trim() ? next : null;
+}
+
 /** Änderung für den n8n-Workflow (typ „gegenkonto_setzen“). */
-export const changeFor = ({ row, t }, { iban = true } = {}) => ({
+export const changeFor = ({ row, t }, { iban = true, party = true, description = null, tags = null } = {}) => ({
   transaction_group_id: t.groupId,
   transaction_journal_id: t.transaction_journal_id,
   art: t.type,
   datum: String(t.date).slice(0, 10),
   betrag: t.amount,
   name: row.name,
-  ...(iban && row.iban ? { iban: row.iban } : {}),
-  ...(iban && row.bic ? { bic: row.bic } : {}),
+  ...(party ? {} : { gegenkonto: false }), // nur Beschreibung/Tags ergänzen
+  ...(party && iban && row.iban ? { iban: row.iban } : {}),
+  ...(party && iban && row.bic ? { bic: row.bic } : {}),
+  ...(description ? { beschreibung: description } : {}),
+  ...(tags ? { tags } : {}),
   name_alt: counterpartyOf(t) || null,
 });

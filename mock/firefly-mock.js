@@ -712,8 +712,12 @@ http
           const apply = (a) => {
             const j = journals.find((x) => x.id === String(a.transaction_journal_id));
             if (!j) return;
-            if (a.art === 'deposit') j.source = { id: null, name: a.name };
-            else j.destination = { id: null, name: a.name };
+            if (a.gegenkonto !== false) {
+              if (a.art === 'deposit') j.source = { id: null, name: a.name };
+              else j.destination = { id: null, name: a.name };
+            }
+            if (a.beschreibung) j.description = a.beschreibung;
+            if (Array.isArray(a.tags)) j.tags = a.tags;
           };
           if (data.hintergrund) {
             // wie der Zweig „Hintergrund?“: sofort antworten, dann nacheinander speichern
@@ -726,12 +730,7 @@ http
             return;
           }
           const partial = url.pathname.endsWith('/teilweise');
-          for (const a of partial ? list.slice(0, Math.ceil(list.length / 2)) : list) {
-            const j = journals.find((x) => x.id === String(a.transaction_journal_id));
-            if (!j) continue;
-            if (a.art === 'deposit') j.source = { id: null, name: a.name };
-            else j.destination = { id: null, name: a.name };
-          }
+          for (const a of partial ? list.slice(0, Math.ceil(list.length / 2)) : list) apply(a);
           if (partial) {
             res.writeHead(504, { 'Content-Type': 'application/json' });
             return res.end(JSON.stringify({ message: 'Gateway Timeout' }));
