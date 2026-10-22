@@ -597,7 +597,12 @@ function fakeOllama(req, res, url) {
     const delay = Number(process.env.MOCK_OLLAMA_DELAY || 150);
     res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
     let i = 0;
+    let gone = false;
+    res.on('close', () => {
+      if (!res.writableEnded) (gone = true), console.log('[mock] Ollama: Anfrage vom Dashboard abgebrochen');
+    });
     const next = () => {
+      if (gone) return;
       if (i < pieces.length) {
         res.write(`${JSON.stringify({ model: 'demo-llama:8b', message: { role: 'assistant', content: pieces[i++] }, done: false })}\n`);
         return setTimeout(next, 5);

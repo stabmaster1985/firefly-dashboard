@@ -120,7 +120,7 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
         <button class="btn"${testState?.running ? ' disabled' : ''}>Speichern &amp; testen</button>
         <span class="muted" id="ai-conn">${models?.error ? `Ollama nicht erreichbar: ${esc(models.error)}` : models ? `verbunden · ${models.list.length} Modelle` : ''}</span>
       </form>
-      ${testState ? `<div class="ai-test ${testState.error ? 'bad' : ''}">${testState.running ? 'Teste Modell … (beim ersten Mal wird es geladen, das kann dauern)'
+      ${testState ? `<div class="ai-test ${testState.error ? 'bad' : ''}">${testState.running ? 'Teste Modell … (beim ersten Mal wird es geladen, das kann dauern) <button class="link-btn" data-ai-stop>Anhalten</button>'
         : testState.error ? `Test fehlgeschlagen: ${esc(testState.error)}` : `Test ok: ${verdict(testState.metrics)}`}</div>` : ''}
       <div class="ai-actions">
         <button class="btn primary" data-ai-run="classify"${running ? ' disabled' : ''}>Händler bewerten${labels.length ? ' (nur neue)' : ''}</button>

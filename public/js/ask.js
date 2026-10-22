@@ -30,7 +30,7 @@ const loadHistory = () => {
 export async function askPage(view) {
   let history = loadHistory();
   let mode = MODES.some(([k]) => k === storage('ffd-ask-mode', 'auto')) ? storage('ffd-ask-mode', 'auto') : 'auto';
-  let busy = false;
+  let busy = null; // AbortController der laufenden Frage
   view.innerHTML = `<div class="grid">${card('q-chat', 'Frag deine Finanzen', { meta: '<span class="muted">Zahlen exakt aus Firefly · nur lesen</span>' })}</div>`;
   const el = view.querySelector('#q-chat');
   el.innerHTML = `
@@ -111,29 +111,50 @@ export async function askPage(view) {
   async function send(text) {
     const frage = text.trim();
     if (!frage || busy) return;
-    busy = true;
+    busy = new AbortController();
+    setBusy(true);
     input.value = '';
     history.push({ role: 'user', text: frage });
     render();
-    log.insertAdjacentHTML('beforeend', `<div class="ask-msg bot pending">${mode === 'ki' ? 'Frage wird mit der KI verstanden – das kann je nach Modell dauern …' : 'Rechne …'}</div>`);
+    log.insertAdjacentHTML('beforeend', `<div class="ask-msg bot pending">${mode === 'ki' ? 'Frage wird mit der KI verstanden – das kann je nach Modell dauern …' : 'Rechne …'}
+      <button class="link-btn" data-cancel>Abbrechen</button></div>`);
     log.scrollTop = log.scrollHeight;
     try {
-      const res = await fetch('/local/ai/ask', { method: 'POST', headers, body: JSON.stringify({ frage, modus: mode }) });
+      const res = await fetch('/local/ai/ask', { method: 'POST', headers, body: JSON.stringify({ frage, modus: mode }), signal: busy.signal });
       const body = await res.json();
       if (!res.ok) throw new Error(body.message || `HTTP ${res.status}`);
       history.push({ role: 'bot', a: body });
     } catch (err) {
-      history.push({ role: 'bot', error: `Konnte nicht beantwortet werden: ${err.message}` });
+      history.push({ role: 'bot', error: busy.signal.aborted ? 'Abgebrochen.' : `Konnte nicht beantwortet werden: ${err.message}` });
     }
-    busy = false;
+    busy = null;
+    setBusy(false);
     save();
     render();
     input.focus();
   }
 
+  const sendBtn = el.querySelector('#q-send');
+  const setBusy = (on) => {
+    sendBtn.textContent = on ? 'Abbrechen' : 'Fragen';
+    sendBtn.classList.toggle('primary', !on);
+  };
+  // Abbrechen: Verbindung trennen und dem Server Bescheid geben, damit Ollama sofort aufhört
+  const cancel = () => {
+    if (!busy) return;
+    busy.abort();
+    fetch('/local/ai/ask/stop', { method: 'POST', headers }).catch(() => {});
+  };
   el.querySelector('#q-form').addEventListener('submit', (e) => {
     e.preventDefault();
-    send(input.value);
+    if (busy) cancel();
+    else send(input.value);
+  });
+  log.addEventListener('click', (e) => {
+    if (e.target.closest('[data-cancel]')) cancel();
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && busy) cancel();
   });
   el.querySelector('#q-examples').addEventListener('click', (e) => {
     const ex = e.target.closest('[data-example]');
