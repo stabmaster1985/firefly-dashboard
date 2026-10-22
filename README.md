@@ -66,7 +66,8 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
 - **Fragen** – mit den eigenen Daten chatten: „Wie viel habe ich im letzten Monat bei Amazon
   ausgegeben?“, „Top 5 Händler der letzten 3 Monate“, „Lebensmittel dieses Jahr im Vergleich zum
   Vorjahr“, „Restaurant pro Monat“, „größte Ausgaben im September“, „wie oft bei REWE seit
-  Januar“. Die Frage wird in eine Abfrage übersetzt (Zeitraum inkl. Gehaltsmonat, Händler,
+  Januar“, „Was habe ich im Oktober mehr ausgegeben als im September?“ (Änderung je Händler
+  oder Kategorie, gleich gebliebene Posten ausgeblendet). Die Frage wird in eine Abfrage übersetzt (Zeitraum inkl. Gehaltsmonat, Händler,
   Kategorie, Tag, Einnahmen/Ausgaben, Summe/Anzahl/Liste/Top/Verlauf/Vergleich) – häufige Fragen
   ohne KI, ungewöhnliche mit Ollama (Modell aus dem Labor; Einstellung „Verstehen“). **Die Zahlen
   rechnet immer das Dashboard exakt aus den Firefly-Buchungen**, die KI rechnet nichts. Jede

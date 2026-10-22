@@ -75,7 +75,7 @@ export const PAGES = {
   },
   ask: {
     title: 'Fragen',
-    what: 'Mit den eigenen Finanzdaten chatten: „Wie viel habe ich im letzten Monat bei Amazon ausgegeben?“, „Top 5 Händler der letzten 3 Monate“, „Lebensmittel dieses Jahr im Vergleich zum Vorjahr“, „Restaurant pro Monat“.',
+    what: 'Mit den eigenen Finanzdaten chatten: „Wie viel habe ich im letzten Monat bei Amazon ausgegeben?“, „Top 5 Händler der letzten 3 Monate“, „Lebensmittel dieses Jahr im Vergleich zum Vorjahr“, „Restaurant pro Monat“, „Was habe ich im Oktober mehr ausgegeben als im September?“ (je Händler, gleich gebliebene Posten ausgeblendet).',
     app: 'Die Frage wird in eine Abfrage übersetzt (Zeitraum, Händler, Kategorie, Tag, Art der Auswertung) – häufige Fragen ohne KI, ungewöhnliche mit Ollama (wie im Labor eingestellt). Die Zahlen rechnet das Dashboard exakt aus den Firefly-Buchungen; eine KI rechnet nichts und erfindet keine Beträge. Jede Antwort zeigt, wie sie die Frage verstanden hat, und die Buchungen dahinter. Ohne Zeitangabe gelten die letzten 12 Monate. Der Verlauf bleibt nur in diesem Browser.',
     firefly: READ_ONLY,
     tips: ['„Verstehen: automatisch“ nutzt die KI nur, wenn die schnelle Erkennung unsicher ist – das spart Wartezeit bei langsamem Ollama.', 'Händler-, Kategorie- und Tag-Namen so schreiben, wie sie in Firefly heißen; Groß/klein ist egal.'],

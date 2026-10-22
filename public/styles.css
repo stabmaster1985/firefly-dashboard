@@ -1032,3 +1032,8 @@ button.cal-day { cursor: pointer; }
 .ask-foot { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 10px; font-size: 13px; }
 .ask-foot .chips { flex: 1 1 100%; }
 @media (max-width: 640px) { .ask-msg, .ask-msg.bot { max-width: 100%; width: auto; } }
+.ask-table .ask-worse { color: var(--negative); }
+.ask-table .ask-better { color: var(--positive); }
+.ask-table th { text-align: left; font-weight: 600; font-size: 12px; color: var(--text-secondary, inherit); padding: 4px 6px; }
+.ask-table th.num { text-align: right; }
+.ask-table td.num, .ask-table th.num { white-space: nowrap; }

@@ -3,13 +3,15 @@
 // höchstens die Frage in eine Abfrage. Ohne KI versteht eine einfache Erkennung
 // die häufigsten Fragen selbst. Rein rechnerisch, ohne DOM (Server, Browser, Tests).
 //
-// Abfrage: { auswertung, art, zeitraum, monat?, jahr?, n?, von?, bis?, vergleich?,
-//            haendler: [], kategorien: [], tags: [], text?, limit? }
+// Abfrage: { auswertung, art, zeitraum, monat?, jahr?, n?, von?, bis?, vergleich?, vergleich_monat?,
+//            richtung?, gruppe?, haendler: [], kategorien: [], tags: [], text?, limit? }
+//   auswertung „aenderung“: je Händler (oder Kategorie) mehr/weniger als im Vergleichszeitraum,
+//   Gleichgebliebenes ausgeblendet
 
 import { monthModel, isoDate } from './util.js';
 import { merchantOf, counterpartyOf } from './rules.js';
 
-export const AUSWERTUNGEN = ['summe', 'anzahl', 'liste', 'groesste', 'top_haendler', 'top_kategorien', 'verlauf'];
+export const AUSWERTUNGEN = ['summe', 'anzahl', 'liste', 'groesste', 'top_haendler', 'top_kategorien', 'verlauf', 'aenderung'];
 export const ZEITRAEUME = ['dieser_monat', 'letzter_monat', 'dieses_jahr', 'letztes_jahr', 'letzte_30_tage', 'letzte_n_monate',
   'monat', 'jahr', 'gehaltsmonat', 'letzter_gehaltsmonat', 'benutzerdefiniert', 'alles'];
 
@@ -35,7 +37,10 @@ export function parseQuestion(question, known = {}, now = new Date()) {
   // Zeitraum
   const year = now.getFullYear();
   let m;
-  if (has(/letzte[nm]? monat|vormonat|vorigen monat|im letzten monat/)) Object.assign(query, { zeitraum: 'letzter_monat' }), sure = true;
+  // „diesen Monat … als letzten Monat“: betrachtet wird der aktuelle, verglichen mit dem davor
+  if (has(/(dies|aktuell)\w* monat/) && has(/letzte[nm]? monat|vormonat|vorigen monat/)) Object.assign(query, { zeitraum: 'dieser_monat', vergleich: 'vorperiode' }), sure = true;
+  else if (has(/dies\w* jahr/) && has(/letzte[nms]? jahr|vorjahr/)) Object.assign(query, { zeitraum: 'dieses_jahr', vergleich: 'vorjahr' }), sure = true;
+  else if (has(/letzte[nm]? monat|vormonat|vorigen monat|im letzten monat/)) Object.assign(query, { zeitraum: 'letzter_monat' }), sure = true;
   else if (has(/(dies|aktuell)\w* monat|im monat|bisher im monat/)) Object.assign(query, { zeitraum: 'dieser_monat' }), sure = true;
   else if (has(/letzte[nm]? gehaltsmonat/)) Object.assign(query, { zeitraum: 'letzter_gehaltsmonat' }), sure = true;
   else if (has(/gehaltsmonat/)) Object.assign(query, { zeitraum: 'gehaltsmonat' }), sure = true;
@@ -44,11 +49,21 @@ export function parseQuestion(question, known = {}, now = new Date()) {
   else if (has(/letzte[nms]? jahr|vorjahr|im vergangenen jahr/) && !has(/vergleich|gegenueber|als im vorjahr|zum vorjahr/)) Object.assign(query, { zeitraum: 'letztes_jahr' }), sure = true;
   else if (has(/dies\w* jahr|im jahr|bisher|seit jahresbeginn|seit januar/)) Object.assign(query, { zeitraum: 'dieses_jahr' }), sure = true;
   else if (has(/insgesamt|ueberhaupt|jemals|alle zeit/)) Object.assign(query, { zeitraum: 'alles' }), sure = true;
-  // Monat mit Namen („im März“, „März 2025“)
-  const monthIdx = MONATE.findIndex((n, i) => new RegExp(`\\b(${n}|${MONATE_KURZ[i]}\\.?)\\b`).test(q));
-  if (monthIdx >= 0 && !has(/seit januar/)) {
-    const y = Number((q.match(/\b(20\d\d)\b/) || [])[1]) || (monthIdx > now.getMonth() ? year - 1 : year);
-    Object.assign(query, { zeitraum: 'monat', monat: `${y}-${String(monthIdx + 1).padStart(2, '0')}` });
+  // Monate mit Namen („im März“, „März 2025“) – in der Reihenfolge der Frage; zwei Monate =
+  // „Oktober im Vergleich zum September“ (der erste ist der betrachtete, der zweite der Vergleich)
+  const mentioned = [];
+  MONATE.forEach((n, i) => {
+    const re = new RegExp(`\\b(${n}|${MONATE_KURZ[i]}\\.?)\\b`, 'g');
+    let hit;
+    while ((hit = re.exec(q))) mentioned.push({ i, at: hit.index });
+  });
+  mentioned.sort((a, b) => a.at - b.at);
+  const explicitYear = Number((q.match(/\b(20\d\d)\b/) || [])[1]);
+  const monthKey = (i) => `${explicitYear || (i > now.getMonth() ? year - 1 : year)}-${String(i + 1).padStart(2, '0')}`;
+  if (mentioned.length && !has(/seit januar/)) {
+    Object.assign(query, { zeitraum: 'monat', monat: monthKey(mentioned[0].i) });
+    const other = mentioned.find((x) => x.i !== mentioned[0].i);
+    if (other) Object.assign(query, { vergleich: 'monat', vergleich_monat: monthKey(other.i) });
     sure = true;
   } else if ((m = q.match(/\b(20\d\d)\b/))) {
     Object.assign(query, { zeitraum: 'jahr', jahr: Number(m[1]) });
@@ -57,7 +72,13 @@ export function parseQuestion(question, known = {}, now = new Date()) {
 
   // Art und Auswertung
   if (has(/einnahm|verdien|bekommen|eingegangen|gehalt bekommen|gutschrift/)) query.art = 'einnahmen';
-  if (has(/groesst|teuerst|hoechst/)) query.auswertung = 'groesste';
+  // „Was habe ich im Oktober mehr ausgegeben als im September?“ → je Posten die Änderung
+  if (has(/mehr .*als|weniger .*als|unterschied|differenz|gestiegen|gesunken|teurer geworden|veraender|geaendert|abweichung/)) {
+    query.auswertung = 'aenderung';
+    query.richtung = has(/weniger|gesunken|gespart/) && !has(/mehr|gestiegen|teurer/) ? 'weniger' : has(/mehr|gestiegen|teurer/) && !has(/weniger|gesunken/) ? 'mehr' : 'beide';
+    query.gruppe = has(/kategorie/) ? 'kategorie' : 'haendler';
+    if (!query.vergleich) query.vergleich = has(/vorjahr|letzte[nms]? jahr/) ? 'vorjahr' : 'vorperiode';
+  } else if (has(/groesst|teuerst|hoechst/)) query.auswertung = 'groesste';
   else if (has(/(top|meist|am meisten).*(kategorie)|welche kategorie|kategorien/)) query.auswertung = 'top_kategorien';
   else if (has(/\btop\b|am meisten|wo .* (geld|ausgegeben)|welche[nr]? (haendler|laeden|geschaefte)|bei wem/)) query.auswertung = 'top_haendler';
   else if (has(/verlauf|pro monat|je monat|monatlich|entwicklung|jeden monat/)) query.auswertung = 'verlauf';
@@ -65,7 +86,7 @@ export function parseQuestion(question, known = {}, now = new Date()) {
   else if (has(/wie oft|wie viele (mal|buchungen|einkaeufe)|anzahl/)) query.auswertung = 'anzahl';
   const top = q.match(/top\s*(\d{1,2})|(\d{1,2})\s*(groesst|teuerst)/);
   if (top) query.limit = Number(top[1] || top[2]);
-  if (has(/vergleich|gegenueber|als im vorjahr|zum vorjahr|mehr als|weniger als/)) query.vergleich = has(/vorjahr|letzte[nms]? jahr/) ? 'vorjahr' : 'vorperiode';
+  if (!query.vergleich && has(/vergleich|gegenueber|als im vorjahr|zum vorjahr|mehr als|weniger als/)) query.vergleich = has(/vorjahr|letzte[nms]? jahr/) ? 'vorjahr' : 'vorperiode';
 
   // Namen aus dem Bestand – längste zuerst, als ganzes Wort
   const findNames = (names) => {
@@ -113,6 +134,12 @@ export function cleanQuery(input = {}) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(input.von || '')) q.von = input.von;
   if (/^\d{4}-\d{2}-\d{2}$/.test(input.bis || '')) q.bis = input.bis;
   if (['vorjahr', 'vorperiode'].includes(input.vergleich)) q.vergleich = input.vergleich;
+  if (/^\d{4}-\d{2}$/.test(input.vergleich_monat || '')) Object.assign(q, { vergleich: 'monat', vergleich_monat: input.vergleich_monat });
+  if (q.auswertung === 'aenderung') {
+    q.richtung = ['mehr', 'weniger', 'beide'].includes(input.richtung) ? input.richtung : 'beide';
+    q.gruppe = input.gruppe === 'kategorie' ? 'kategorie' : 'haendler';
+    if (!q.vergleich) q.vergleich = 'vorperiode';
+  }
   if (input.text) q.text = String(input.text).slice(0, 60);
   if (Number(input.limit) > 0) q.limit = Math.min(50, Math.round(Number(input.limit)));
   if (q.zeitraum === 'monat' && !q.monat) q.zeitraum = 'dieser_monat';
@@ -154,8 +181,21 @@ export function resolvePeriod(q, now = new Date(), payday = 24) {
   }
 }
 
-/** Vergleichszeitraum: gleich lang davor bzw. ein Jahr früher. */
-export function comparePeriod(p, kind) {
+/** Vergleichszeitraum: ein bestimmter Monat, ein Jahr früher oder gleich lang davor (ganzer Monat → Vormonat). */
+export function comparePeriod(p, kind, q = {}) {
+  const monthName = (d) => d.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+  if (kind === 'monat' && q.vergleich_monat) {
+    const [yy, mm] = q.vergleich_monat.split('-').map(Number);
+    const s = new Date(yy, mm - 1, 1);
+    const e = new Date(yy, mm, 0);
+    return { start: s, end: e, label: `${monthName(s)} (${fmt(s)} – ${fmt(e)})` };
+  }
+  // Zeitraum beginnt am Monatsersten → Vergleich ist der ganze Vormonat (nicht „31 Tage davor“)
+  if (kind !== 'vorjahr' && p.start.getDate() === 1 && p.start.getMonth() === p.end.getMonth() && p.start.getFullYear() === p.end.getFullYear()) {
+    const s = new Date(p.start.getFullYear(), p.start.getMonth() - 1, 1);
+    const e = new Date(p.start.getFullYear(), p.start.getMonth(), 0);
+    return { start: s, end: e, label: `${monthName(s)} (${fmt(s)} – ${fmt(e)})` };
+  }
   if (kind === 'vorjahr') {
     const s = new Date(p.start.getFullYear() - 1, p.start.getMonth(), p.start.getDate());
     const e = new Date(p.end.getFullYear() - 1, p.end.getMonth(), p.end.getDate());
@@ -223,6 +263,30 @@ export function runQuery(q, txs, period, compare = null) {
   if (q.auswertung === 'verlauf') result.months = group((t) => String(t.date).slice(0, 7)).sort((a, b) => a.name.localeCompare(b.name));
   if (q.auswertung === 'groesste') result.hits = [...hits].sort((a, b) => Number(b.amount) - Number(a.amount)).slice(0, limit);
   if (q.auswertung === 'liste') result.hits = result.hits.slice(0, limit);
+  if (q.auswertung === 'aenderung' && compare) {
+    // je Posten: jetzt vs. Vergleich; Gleichgebliebenes ausblenden
+    const keyOf = q.gruppe === 'kategorie' ? (t) => t.category_name || 'ohne Kategorie' : (t) => merchantOf(t).name || counterpartyOf(t) || '–';
+    const sums = new Map();
+    const addTo = (list, field) => {
+      for (const t of list) {
+        const k = keyOf(t);
+        const g = sums.get(k) || { name: k, cur: 0, prev: 0, nCur: 0, nPrev: 0 };
+        g[field] += Number(t.amount);
+        g[field === 'cur' ? 'nCur' : 'nPrev'] += 1;
+        sums.set(k, g);
+      }
+    };
+    addTo(hits, 'cur');
+    addTo(txs.filter((t) => inPeriod(compare)(t) && match(t)), 'prev');
+    const all = [...sums.values()].map((g) => ({ ...g, cur: Math.round(g.cur * 100) / 100, prev: Math.round(g.prev * 100) / 100, diff: Math.round((g.cur - g.prev) * 100) / 100 }));
+    result.same = all.filter((g) => Math.abs(g.diff) < 0.01).length;
+    let diffs = all.filter((g) => Math.abs(g.diff) >= 0.01);
+    if (q.richtung === 'mehr') diffs = diffs.filter((g) => g.diff > 0).sort((a, b) => b.diff - a.diff);
+    else if (q.richtung === 'weniger') diffs = diffs.filter((g) => g.diff < 0).sort((a, b) => a.diff - b.diff);
+    else diffs.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+    result.diffsTotal = diffs.length;
+    result.diffs = diffs.slice(0, q.limit || 100);
+  }
   return result;
 }
 
@@ -249,6 +313,17 @@ export function answerText(r) {
   if (!r.n) return `Keine ${what}${filter ? ` ${filter}` : ''} im Zeitraum ${when} gefunden.`;
   const verb = q.art === 'einnahmen' ? 'eingenommen' : 'ausgegeben';
   let text;
+  if (q.auswertung === 'aenderung' && r.compare) {
+    const diff = r.sum - r.compare.sum;
+    const by = q.gruppe === 'kategorie' ? 'Kategorien' : 'Händler';
+    const lead = r.diffs.slice(0, 5).map((g) => `${g.name} ${g.diff > 0 ? '+' : '−'}${euro(Math.abs(g.diff))} (${euro(g.prev)} → ${euro(g.cur)})`).join(', ');
+    const running = r.period.end >= atDay(new Date()) && r.period.start <= atDay(new Date());
+    return `${what}${filter ? ` ${filter}` : ''}: ${when} ${euro(r.sum)}, ${r.compare.period.label} ${euro(r.compare.sum)} – ${diff >= 0 ? `${euro(diff)} mehr` : `${euro(-diff)} weniger`}.`
+      + (r.diffs.length ? ` ${q.richtung === 'weniger' ? 'Weniger' : q.richtung === 'mehr' ? 'Mehr' : 'Verändert'} bei ${r.diffsTotal} ${by}${r.diffsTotal > 5 ? ', am meisten' : ''}: ${lead}.`
+        : ` Keine ${by} mit ${q.richtung === 'weniger' ? 'weniger' : 'mehr'} ${what}.`)
+      + (r.same ? ` ${r.same} gleich gebliebene ausgeblendet.` : '')
+      + (running ? ' Hinweis: Der Zeitraum läuft noch – Buchungen bis heute.' : '');
+  }
   switch (q.auswertung) {
     case 'anzahl':
       text = `${r.n} ${what}${filter ? ` ${filter}` : ''} im Zeitraum ${when}, zusammen ${euro(r.sum)}.`;

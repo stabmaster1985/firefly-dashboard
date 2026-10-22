@@ -14,6 +14,7 @@ const EXAMPLES = [
   'Zeig mir die größten Ausgaben im letzten Monat',
   'Welche Kategorien kosten im aktuellen Gehaltsmonat am meisten?',
   'Ausgaben für Restaurant pro Monat',
+  'Was habe ich im Oktober mehr ausgegeben als im September?',
 ];
 const MODES = [['auto', 'automatisch (KI nur, wenn nötig)'], ['schnell', 'schnell (ohne KI)'], ['ki', 'immer mit KI']];
 const HISTORY_KEY = 'ffd-ask-history';
@@ -58,8 +59,21 @@ export async function askPage(view) {
     return chips.map((c) => `<span class="tag">${esc(c)}</span>`).join(' ');
   };
 
+  // „Oktober 2026 (01.10.2026 – 31.10.2026)“ → „Oktober 2026“ für Spaltenköpfe
+  const short = (label) => String(label || '').replace(/\s*\(.*\)\s*$/, '');
   const details = (a) => {
     const parts = [];
+    if (a.diffs?.length) {
+      parts.push(`<table class="ask-table"><thead><tr><th>Posten</th><th class="num">${esc(short(a.vergleich) || 'Vergleich')}</th><th class="num">${esc(short(a.zeitraum))}</th><th class="num">Änderung</th></tr></thead>
+        <tbody>${a.diffs.map((g) => `<tr><td>${esc(g.name)}</td><td class="num">${money(g.prev)}</td><td class="num">${money(g.cur)}</td>
+          <td class="num"><b class="${(a.query?.art === 'einnahmen' ? g.diff < 0 : g.diff > 0) ? 'ask-worse' : 'ask-better'}">${g.diff > 0 ? '+' : '−'}${money(Math.abs(g.diff))}</b></td></tr>`).join('')}</tbody></table>`);
+    }
+    if (a.diffs && (a.same || a.diffsTotal > a.diffs.length)) {
+      const bits = [];
+      if (a.diffsTotal > a.diffs.length) bits.push(`${a.diffs.length} von ${a.diffsTotal} gezeigt`);
+      if (a.same) bits.push(`${a.same} gleich gebliebene Posten ausgeblendet`);
+      parts.push(`<div class="muted ask-note">${bits.join(' · ')}</div>`);
+    }
     if (a.groups?.length) {
       const max = Math.max(...a.groups.map((g) => g.sum));
       parts.push(`<table class="ask-table"><tbody>${a.groups.map((g) => `<tr><td>${esc(g.name)}</td><td class="num">${g.n}×</td>
