@@ -3,7 +3,7 @@
 // Export (Firefly-Regeln, CSV oder n8n) macht es auf Wunsch dauerhaft.
 
 import * as api from './api.js';
-import { money, esc, fmtDate, today, debounce, isoDate } from './util.js';
+import { money, esc, fmtDate, today, debounce, isoDate, storage, store } from './util.js';
 import { skeleton, card, stat, sum, mainCurrency, downloadCsv, txAttrs, bindTxDetails } from './common.js';
 import { detectRecurring } from './recurring.js';
 import { FIELDS, OPS, INTERNAL_FIELDS, INTERNAL_OPS, AUTO_TAGS, applyRules, suggestRules, describeRule, toFireflyRules, counterpartyOf, normParty, ruleMatches } from './rules.js';
@@ -17,6 +17,13 @@ const RULE_DESC = 'Aus dem Kategorien-Labor des Firefly Dashboards – Änderung
 const BASES = {
   ausgaben: { label: 'Ausgaben', type: 'withdrawal' },
   einnahmen: { label: 'Einnahmen', type: 'deposit' },
+};
+
+// Unterseiten des Labors – statt alles untereinander; Karte → Reiter
+const LAB_TABS = [['uebersicht', 'Übersicht'], ['regeln', 'Regeln'], ['ki', 'KI'], ['struktur', 'Struktur'], ['ergebnis', 'Ergebnis']];
+const CARD_TAB = {
+  'l-count': 'uebersicht', 'l-changed': 'uebersicht', 'l-none': 'uebersicht', 'l-tags': 'uebersicht', 'l-progress': 'uebersicht', 'l-groups': 'uebersicht',
+  'l-rules': 'regeln', 'l-suggest': 'regeln', 'l-ai': 'ki', 'l-struct': 'struktur', 'l-compare': 'ergebnis', 'l-tagtable': 'ergebnis', 'l-tx': 'ergebnis',
 };
 
 export async function lab(view, { params }) {
@@ -44,9 +51,7 @@ export async function lab(view, { params }) {
       <span class="meta-line">Nur Probe – Firefly bleibt unverändert · Buchungen seit ${fmtDate(from)}</span>
     </div>
     <form class="lab-scope${scoped ? ' active' : ''}" id="lab-scope"></form>
-    <nav class="lab-jump" aria-label="Abschnitte">${[['l-progress', 'Fortschritt'], ['l-groups', 'Gruppen'], ['l-ai', 'KI'], ['l-rules', 'Regeln'], ['l-suggest', 'Vorschläge'],
-      ['l-struct', 'Struktur'], ['l-compare', 'Vorher/nachher'], ['l-tagtable', 'Tags'], ['l-tx', 'Buchungen']]
-      .map(([id, l]) => `<button type="button" class="chip small" data-jump="${id}">${l}</button>`).join('')}</nav>
+    <nav class="lab-tabs" role="tablist" aria-label="Bereiche des Labors">${LAB_TABS.map(([k, l]) => `<button type="button" class="lab-tab" role="tab" data-lab-tab="${k}">${l}</button>`).join('')}</nav>
     <div class="grid">
       <section class="card span-3" id="l-count"></section>
       <section class="card span-3" id="l-changed"></section>
@@ -65,6 +70,33 @@ export async function lab(view, { params }) {
     <div class="pick-bar" id="l-pickbar" hidden></div>
     <div class="toast" id="l-toast" role="status" hidden></div>`;
   const $ = (id) => view.querySelector(`#${id}`);
+  // Reiter: Karten zuordnen, gewählten Reiter zeigen (Adresse ?tab=…, sonst zuletzt genutzter)
+  for (const [id, tab] of Object.entries(CARD_TAB)) {
+    const sec = $(id).matches('section') ? $(id) : $(id).closest('.card');
+    sec.dataset.labTab = tab;
+  }
+  let activeTab = LAB_TABS.some(([k]) => k === params.get('tab')) ? params.get('tab') : storage('ffd-lab-tab', 'uebersicht');
+  if (!LAB_TABS.some(([k]) => k === activeTab)) activeTab = 'uebersicht';
+  const setTab = (tab) => {
+    activeTab = tab;
+    store('ffd-lab-tab', tab);
+    view.querySelectorAll('[data-lab-tab]').forEach((x) => {
+      if (x.classList.contains('lab-tab')) x.setAttribute('aria-selected', String(x.dataset.labTab === tab));
+      else x.hidden = x.dataset.labTab !== tab;
+    });
+    // Adresse mitführen (teilbar), ohne die Seite neu aufzubauen
+    const [path, query = ''] = location.hash.slice(1).split('?');
+    const q = new URLSearchParams(query);
+    q.set('tab', tab);
+    history.replaceState(null, '', `#${path}?${q}`);
+  };
+  /** Zu einer Karte springen – vorher ihren Reiter öffnen. */
+  const reveal = (el) => {
+    const sec = el?.closest('[data-lab-tab]');
+    if (sec && sec.dataset.labTab !== activeTab) setTab(sec.dataset.labTab);
+    setTimeout(() => sec?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30);
+  };
+  setTab(activeTab);
   ['l-count', 'l-changed', 'l-none', 'l-tags'].forEach((id) => ($(id).innerHTML = skeleton(2, 22)));
   ['l-progress', 'l-groups', 'l-ai', 'l-rules', 'l-suggest', 'l-struct', 'l-compare', 'l-tagtable', 'l-tx'].forEach((id) => ($(id).innerHTML = skeleton(5)));
 
@@ -155,6 +187,7 @@ export async function lab(view, { params }) {
   const knownTags = [...new Set([...allTxs.flatMap((t) => t.tags || []), ...rules.flatMap((r) => r.addTags || [])])].sort((a, b) => a.localeCompare(b, 'de'));
   const groups = createGroupsPanel({
     view,
+    reveal,
     card: $('l-groups'),
     bar: $('l-pickbar'),
     txs,
@@ -232,7 +265,7 @@ export async function lab(view, { params }) {
         <span class="badge">${count(rule)}×</span>
         <span class="rule-btns"><button class="icon-btn small" data-up title="nach oben" ${i ? '' : 'disabled'}>↑</button><button class="icon-btn small" data-del title="Regel löschen">✕</button></span>
       </div>`;
-    }).join('')}</div>` : '<div class="empty">Noch keine Regeln – übernimm rechts einen Vorschlag oder lege unten eine an.</div>'}
+    }).join('')}</div>` : '<div class="empty">Noch keine Regeln – übernimm einen Vorschlag oder lege unten eine an.</div>'}
       <form class="rule-form" id="rule-form">
         <select name="field">${fieldOpts}</select><select name="op">${opOpts}</select>
         <input name="value" placeholder="Wert, z. B. REWE" required><input name="value2" placeholder="bis" hidden>
@@ -343,7 +376,7 @@ export async function lab(view, { params }) {
       ? `<div class="list">${[...byTag].sort((a, b) => b[1].sum - a[1].sum).map(([tag, g]) => `<button class="row plain tag-row${tagFilter === tag ? ' active' : ''}" data-tag="${esc(tag)}">
           <div class="avatar">#</div><div style="min-width:0;text-align:left"><div class="title">${esc(tag)}${ai.isNew('tags', tag) ? ' <span class="badge new" title="noch nicht in Firefly">neu</span>' : ''}</div><div class="subtitle">${g.n} Buchungen · ${Math.round((g.sum / total) * 100)} % der ${base.label}</div></div>
           <div class="amount">${money(g.sum, code)}</div></button>`).join('')}</div>
-        <div class="legend" style="margin-top:8px"><span>Tag anklicken zeigt die Buchungen unten</span></div>`
+        <div class="legend" style="margin-top:8px"><span>Tag anklicken zeigt seine Buchungen</span></div>`
       : '<div class="empty">Noch keine Tags – Auto-Tags oben einschalten oder Regeln mit Tags anlegen.</div>';
   }
 
@@ -492,7 +525,7 @@ export async function lab(view, { params }) {
         <tbody>${rows.slice(0, 200).map((g) => `<tr data-focus="${esc(g.name)}"${focus?.by === progressBy && focus.value === g.name ? ' class="active"' : ''}>
           <td>${esc(g.name)}</td><td class="num"><b>${g.open}</b><div class="flow">${money(g.sum, code)}</div></td><td class="num hide-sm">${g.total}</td>
           <td class="hide-sm"><div class="mini-bar"><i style="width:${Math.round(((g.total - g.open) / g.total) * 100)}%"></i></div></td></tr>`).join('')}</tbody></table></div>
-        <div class="legend" style="margin-top:8px"><span>Zeile anklicken zeigt unten genau diese offenen Buchungen. Erledigt ist eine Buchung, wenn sie in einer Gruppe steckt, eine Labor-Regel greift oder du sie als „passt so“ markierst (Häkchen → „Passt so“ oder direkt in der Zeile).</span></div>`
+        <div class="legend" style="margin-top:8px"><span>Zeile anklicken zeigt genau diese offenen Buchungen (Reiter „Ergebnis“). Erledigt ist eine Buchung, wenn sie in einer Gruppe steckt, eine Labor-Regel greift oder du sie als „passt so“ markierst (Häkchen → „Passt so“ oder direkt in der Zeile).</span></div>`
         : '<div class="empty">Alles erledigt. 🎉</div>'}`;
   }
 
@@ -514,9 +547,10 @@ export async function lab(view, { params }) {
 
   // ---- Bedienung --------------------------------------------------------------
   view.addEventListener('click', (e) => {
-    const jump = e.target.closest('[data-jump]');
-    if (jump) {
-      view.querySelector(`#${jump.dataset.jump}`)?.closest('.card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const tabBtn = e.target.closest('.lab-tab');
+    if (tabBtn) {
+      setTab(tabBtn.dataset.labTab);
+      view.querySelector('.lab-tabs').scrollIntoView({ block: 'nearest' });
       return;
     }
     const auto = e.target.closest('[data-auto]');
@@ -593,7 +627,7 @@ export async function lab(view, { params }) {
       const results = compute();
       renderProgress(results);
       renderTx(results);
-      if (focus) $('l-tx').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (focus) reveal($('l-tx'));
       return;
     }
     if (e.target.closest('[data-unfocus]')) {
@@ -614,7 +648,7 @@ export async function lab(view, { params }) {
     if (tagBtn) {
       tagFilter = tagFilter === tagBtn.dataset.tag ? null : tagBtn.dataset.tag;
       render();
-      $('l-tx').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      reveal($('l-tx'));
       return;
     }
     if (e.target.closest('[data-untag]')) {

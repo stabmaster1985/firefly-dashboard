@@ -63,7 +63,7 @@ export function createGroupsPanel(ctx) {
     if (ctx.openGroup && !openId && data.groups.some((g) => g.id === ctx.openGroup)) {
       openId = ctx.openGroup; // z. B. frisch aus der Suche auf „Buchungen“ angelegt
       ctx.openGroup = null;
-      setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+      setTimeout(() => (ctx.reveal ? ctx.reveal(card) : card.scrollIntoView({ behavior: 'smooth', block: 'start' })), 50);
     }
     if (openId && !group()) openId = null; // z. B. auf einem anderen Gerät gelöscht
     render();
@@ -90,7 +90,8 @@ export function createGroupsPanel(ctx) {
     openId = g.id;
     similar = [];
     render();
-    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (ctx.reveal) ctx.reveal(card);
+    else card.scrollIntoView({ behavior: 'smooth', block: 'start' });
     return g;
   }
 
@@ -143,7 +144,7 @@ export function createGroupsPanel(ctx) {
     };
     return `${chips}${data.groups.length
       ? shown.length ? `<div class="list">${shown.map(row).join('')}</div>` : '<div class="empty">Keine Gruppen mit diesem Stand.</div>'
-      : `<div class="empty">Noch keine Gruppen. Hake in den Listen unten Buchungen an und wähle „Neue Gruppe“ – oder nutze bei einem Vorschlag „Als Gruppe bearbeiten“.</div>`}
+      : `<div class="empty">Noch keine Gruppen. Hake unter „Ergebnis“ oder bei Vorschlägen Buchungen an und wähle „Neue Gruppe“ – oder nutze bei einem Vorschlag „Als Gruppe bearbeiten“.</div>`}
       <div class="group-foot"><button class="link-btn" data-g-new>+ Leere Gruppe</button>${data.trash.length ? ` · <button class="link-btn" data-g-trash>Papierkorb (${data.trash.length})</button>` : ''}</div>
       ${showTrash && data.trash.length ? `<div class="list trash">${data.trash.map((g) => `<div class="row"><div class="avatar">🗑</div>
         <div style="min-width:0"><div class="title">${esc(g.name)}</div><div class="subtitle">${g.include.length} Buchungen · gelöscht ${fmtDate(g.deletedAt)} · wird nach 30 Tagen endgültig entfernt</div></div>
@@ -170,7 +171,7 @@ export function createGroupsPanel(ctx) {
       ${missing ? `<p class="muted small-text">${missing} weitere Buchung${missing === 1 ? '' : 'en'} gespeichert, aber nicht in dieser Ansicht (außerhalb der Einschränkung, älter als 24 Monate, in Firefly gelöscht oder ${g.basis === 'einnahmen' ? 'Ausgaben' : 'Einnahmen'}-Ansicht) – sie bleiben erhalten und zählen beim Übernehmen mit.</p>` : ''}
       ${members.length ? `<div class="table-wrap scroll group-table"><table><tbody>${members.map((t, k) => txRowHtml(t, `m:${k}`, {
         actions: `<button class="link-btn" data-g-remove="${esc(idOf(t))}" title="aus der Gruppe nehmen">entfernen</button><button class="link-btn" data-g-exclude="${esc(idOf(t))}" title="als Gegenbeispiel merken">gehört nicht dazu</button>`,
-      })).join('')}</tbody></table></div>` : '<div class="empty">Noch leer – hake unten Buchungen an.</div>'}
+      })).join('')}</tbody></table></div>` : '<div class="empty">Noch leer – hake unter „Ergebnis“ Buchungen an.</div>'}
 
       <h3>Ähnliche Buchungen ${members.length ? `<button class="btn small" data-g-find>${similar.length ? 'Neu suchen' : 'Ähnliche finden'}</button>` : ''}</h3>
       ${similar.length ? `<p class="muted small-text">Sehr ähnliche sind schon angehakt. Prüfe kurz, dann „Angehakte hinzufügen“. Was nicht passt, als „gehört nicht dazu“ markieren – das verbessert die nächste Suche.</p>
