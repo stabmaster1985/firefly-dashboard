@@ -11,6 +11,7 @@ import { lab } from './lab.js';
 import { check } from './check.js';
 import { csvSync } from './csvsync.js';
 import { cleanup } from './cleanup.js';
+import { merchants } from './merchants.js';
 import { partyDetail } from './party.js';
 import { openHelp, helpPage } from './helpui.js';
 import { applyCardFilter } from './common.js';
@@ -30,13 +31,14 @@ const ROUTES = {
   pruefen: { view: check, title: 'Prüfen', nav: 'check', noPeriod: true, help: 'check' },
   abgleich: { view: csvSync, title: 'CSV-Abgleich', nav: 'check', noPeriod: true, help: 'csvsync' },
   aufraeumen: { view: cleanup, title: 'Daten aufräumen', nav: 'check', noPeriod: true, help: 'cleanup' },
+  empfaenger: { view: merchants, title: 'Händler', nav: 'merchants', noPeriod: true, help: 'merchants' },
   hilfe: { view: helpPage, title: 'Hilfe', nav: 'help', noPeriod: true },
 };
 const DETAIL = {
   kategorien: { view: categoryDetail, title: 'Kategorie', nav: 'categories', help: 'detail' },
   tags: { view: tagDetail, title: 'Tag', nav: 'tags', help: 'detail' },
   konten: { view: accountDetail, title: 'Konto', nav: 'accounts', help: 'account' },
-  empfaenger: { view: partyDetail, title: 'Empfänger', nav: 'transactions', noPeriod: true, help: 'party' },
+  empfaenger: { view: partyDetail, title: 'Empfänger', nav: 'merchants', noPeriod: true, help: 'party' },
 };
 
 const viewEl = document.getElementById('view');

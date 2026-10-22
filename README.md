@@ -63,6 +63,11 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
 - **KI-Analyse mit Ollama** (im Labor, optional) – ein lokales Sprachmodell bewertet jeden
   Händler: Kategorie, Tags, Bedarf (notwendig / sinnvoll / verzichtbar) und Sicherheit; schlägt
   auch neue Kategorien/Tags vor (als „neu“ markiert) und kann ein eigenes Kategoriesystem entwerfen
+- **Händler** – Händler nach Ausgaben der letzten 12 Monate mit Vorjahresvergleich, Häufigkeit
+  („2,3× pro Woche“), Ø Betrag, Kategorie; Preisentwicklung (Ø Betrag letzte 6 Monate ggü. den 6
+  davor), neue Händler (60 Tage) und – mit KI-Bewertung aus dem Labor – **Sparpotenzial**: je
+  Monat notwendig / sinnvoll / verzichtbar und wo am meisten Verzichtbares anfällt. Händler werden
+  wie im Labor erkannt (bei „Kartenzahlung“ ohne Empfänger aus Beschreibung bzw. Notizen)
 - **Kategorien-Labor** – alle Buchungen (24 Monate) probeweise neu kategorisieren und taggen,
   ohne Firefly anzufassen: eigene Regeln („Empfänger enthält REWE → Lebensmittel“, Betrag
   zwischen …, Tags), automatische Tags (Abo, Online, Bargeld, Wochenende, große Ausgabe,

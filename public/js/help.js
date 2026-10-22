@@ -73,6 +73,14 @@ export const PAGES = {
     firefly: 'Nur lesen. Doppelte löschst du in Firefly selbst („In Firefly öffnen“ in den Details). Der Import-Knopf startet deinen n8n-Import-Workflow – was der in Firefly tut, bestimmt der Workflow.',
     cards: ['c-import', 'c-backup', 'c-dup'],
   },
+  merchants: {
+    title: 'Händler',
+    what: 'Wo du einkaufst: Händler nach Ausgaben der letzten 12 Monate, Vergleich mit den 12 davor, Häufigkeit, Ø Betrag, Preisentwicklung, neue Händler – und mit KI-Bewertung aus dem Labor das Sparpotenzial (notwendig / sinnvoll / verzichtbar je Monat).',
+    app: 'Grundlage sind die Ausgaben der letzten 24 Monate. Händler werden wie im Labor erkannt: der Empfänger, bei „Kartenzahlung“ ohne Empfänger oder PayPal & Co. aus Beschreibung bzw. Notizen. Preisentwicklung vergleicht den Ø Betrag der letzten 6 Monate mit den 6 davor (mindestens 4 Einkäufe je Halbjahr). Das Sparpotenzial nutzt die KI-Bewertung je Händler (abgelehnte zählen nicht).',
+    firefly: READ_ONLY,
+    tips: ['Nach dem CSV-Abgleich und dem Zusammenführen von Gegenkonten werden die Zahlen deutlich genauer.', 'Name anklicken öffnet die Händler-Seite mit Verlauf und allen Buchungen.'],
+    cards: ['m-list', 'm-price', 'm-fresh', 'm-needs'],
+  },
   cleanup: {
     title: 'Daten aufräumen',
     what: 'Vorschläge, die erst im Dashboard vorbereitet und angepasst und dann per Knopf nach Firefly übertragen werden. Pläne liegen auf dem Server und gelten auf allen Geräten und nach Updates.',
