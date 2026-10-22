@@ -289,6 +289,9 @@ button, input, select { font: inherit; color: inherit; }
 .chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
 
 .table-wrap { overflow-x: auto; }
+/* Raster-Spalten dürfen schmaler werden als ihr Inhalt (Diagramme, breite Tabellen) – sonst wird die Seite am Handy breiter als der Bildschirm */
+.grid > *, .dist-grid > *, .card { min-width: 0; }
+a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th {
   text-align: left; font-weight: 600; font-size: 12px; color: var(--text-muted);
@@ -537,7 +540,7 @@ td.heat.selected { outline: 2px solid var(--text-primary); outline-offset: -2px;
 .strip-item i { width: 10px; height: 10px; border-radius: 3px; }
 .strip-item > a, .strip-item > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .strip-item small { color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.dist-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 18px; }
+.dist-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; margin-top: 18px; }
 .sub-h { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: var(--text-secondary); }
 .chart-box.short { height: 200px; }
 
@@ -722,7 +725,7 @@ tbody tr.dup-head:first-child td { padding-top: 4px; }
   .ms-pop { width: min(300px, calc(100vw - 32px)); }
   .nav a span, .nav-more span { font-size: 10px; }
   .month-panel { padding: 12px; }
-  .dist-grid, .form-grid { grid-template-columns: 1fr; }
+  .dist-grid, .form-grid { grid-template-columns: minmax(0, 1fr); }
   .sankey-hint { display: flex; }
   .hdr-row { grid-template-columns: 1fr auto; }
   .hdr-row input[data-k=value] { grid-column: 1; }
@@ -878,6 +881,24 @@ button.cal-day { cursor: pointer; }
   .card { padding: 14px 12px; }
   /* Tabellen: kompakter, damit der Betrag sichtbar bleibt */
   table { font-size: 14px; }
+  td { padding: 9px 6px; }
+  th { padding-left: 6px; padding-right: 6px; }
+  td:first-child, th:first-child { padding-left: 2px; }
+  td:last-child, th:last-child { padding-right: 2px; }
+  /* breite Tabellen: Schatten am Rand zeigt, dass seitlich noch etwas kommt */
+  .table-wrap {
+    background:
+      linear-gradient(to right, var(--surface-1) 30%, transparent) left / 24px 100% no-repeat local,
+      linear-gradient(to left, var(--surface-1) 30%, transparent) right / 24px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--text-primary) 18%, transparent), transparent) left / 10px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--text-primary) 18%, transparent), transparent) right / 10px 100% no-repeat scroll;
+  }
+  /* lange Notizen (Bank-Verwendungszweck) auf zwei Zeilen kürzen */
+  td .flow.note { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  /* Hilfe-„?“ oben rechts neben dem Titel statt in einer eigenen Zeile */
+  .card-head { position: relative; padding-right: 36px; }
+  .card-head .help-btn { position: absolute; top: -5px; right: 0; }
+  .card-head h2 { line-height: 1.3; }
   th { white-space: normal; font-size: 11px; }
   td.date { font-size: 13px; }
   td .flow { overflow-wrap: anywhere; }
@@ -1083,3 +1104,10 @@ button.cal-day { cursor: pointer; }
 .job-actions .muted { font-size: 12px; }
 .job-log { margin-top: 10px; font-size: 12px; }
 .job-log div { padding: 2px 0; }
+
+/* sehr schmale Handys (z. B. iPhone SE): Suche und Zeitraum je eine ganze Zeile */
+@media (max-width: 380px) {
+  .topbar .search { flex: 1 1 100%; }
+  .topbar .period-wrap { flex: 1 1 100%; }
+  .topbar .period, .topbar .period select { width: 100%; max-width: none; }
+}

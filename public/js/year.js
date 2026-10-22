@@ -224,6 +224,13 @@ function calendar(el, items, year, end) {
       ${top ? `<span>Teuerster Tag <b>&nbsp;${fmtDate(top[0])}: ${money(top[1].sum, code)}</b></span>` : ''}
     </div>
     <div class="cal-detail" id="y-cal-day"></div>`;
+  // am Handy passt das Jahr nicht in die Breite – die jüngsten Wochen zeigen, nicht den Januar
+  const calWrap = el.querySelector('.cal-wrap');
+  const lastDay = [...el.querySelectorAll('button.cal-day')].pop();
+  if (calWrap && lastDay) {
+    const offset = lastDay.getBoundingClientRect().right - calWrap.getBoundingClientRect().left + calWrap.scrollLeft;
+    calWrap.scrollLeft = Math.max(0, offset - calWrap.clientWidth + 24);
+  }
 
   const detail = el.querySelector('#y-cal-day');
   let rows = [];

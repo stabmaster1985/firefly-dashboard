@@ -444,10 +444,27 @@ function isDark() {
   return matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
+/** Statusleiste (installierte App, Browser am Handy) in der Farbe der Seite – auch bei fest gewähltem Modus. */
+function syncThemeColor() {
+  const forced = document.documentElement.dataset.theme;
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
+    if (!m.dataset.media) m.dataset.media = m.getAttribute('media') || '';
+    if (forced) {
+      m.removeAttribute('media');
+      m.content = forced === 'dark' ? '#0d0d0d' : '#f6f6f3';
+    } else {
+      m.setAttribute('media', m.dataset.media);
+      m.content = m.dataset.media.includes('dark') ? '#0d0d0d' : '#f6f6f3';
+    }
+  });
+}
+syncThemeColor();
+
 themeBtn.addEventListener('click', () => {
   const next = isDark() ? 'light' : 'dark';
   document.documentElement.dataset.theme = next;
   store('ffd-theme', next);
+  syncThemeColor();
   render();
 });
 
