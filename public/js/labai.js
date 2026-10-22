@@ -93,6 +93,22 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
   };
 
 
+  const NEW_SHOWN = 5; // je Liste sofort sichtbar (nach Betrag) – der Rest aufklappbar
+  const moreOpen = new Set();
+  el.addEventListener('click', (e) => {
+    const sum = e.target.closest('.ai-more > summary');
+    if (!sum) return;
+    const kind = sum.parentElement.dataset.more;
+    if (sum.parentElement.open) moreOpen.delete(kind);
+    else moreOpen.add(kind);
+  });
+  let setupWanted = false; // selbst aufgeklappt – bleibt beim Neuzeichnen offen
+  // nur echte Klicks zählen – das Aufklappen beim Neuzeichnen löst auch ein toggle-Ereignis aus
+  el.addEventListener('click', (e) => {
+    const sum = e.target.closest('.ai-setup > summary');
+    if (sum) setupWanted = !sum.parentElement.open;
+  });
+
   function renderAi(results) {
     const st = aiData.settings || {};
     const job = aiData.job;
@@ -109,7 +125,11 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
     const testState = aiData.test; // { running } | { metrics } | { error } – läuft auf dem Server
     // während der Fortschrittsanzeige nicht unter den Fingern neu zeichnen, wenn gerade etwas eingetippt wird
     if (el.querySelector('#ai-settings, .ai-rename')?.contains(document.activeElement) && document.activeElement.matches('input')) return;
+    // Einstellungen zuklappen, sobald alles läuft – offen bei fehlendem Modell oder Verbindungs-/Testproblem
+    const problem = !st.model || models?.error || testState?.error;
+    const setupOpen = problem || setupWanted;
     el.innerHTML = `
+      <details class="ai-setup"${setupOpen ? ' open' : ''}><summary>Einstellungen <span class="muted">${esc(st.model || 'kein Modell gewählt')}${models?.error ? ' · nicht erreichbar' : models ? ' · verbunden' : ''}</span></summary>
       <form class="ai-settings" id="ai-settings">
         <label>Ollama-Adresse <input name="url" value="${esc(st.url || '')}" placeholder="http://ollama:11434"></label>
         <label>Modell <select name="model">${(models?.list?.length ? models.list.map((m) => m.name) : [st.model || ''])
@@ -119,7 +139,7 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
         <label>Wartezeit aufs Modell <select name="wait">${[5, 10, 20, 30].map((v) => `<option value="${v}"${Number(st.wait || 10) === v ? ' selected' : ''}>${v} Min.</option>`).join('')}</select></label>
         <button class="btn"${testState?.running ? ' disabled' : ''}>Speichern &amp; testen</button>
         <span class="muted" id="ai-conn">${models?.error ? `Ollama nicht erreichbar: ${esc(models.error)}` : models ? `verbunden · ${models.list.length} Modelle` : ''}</span>
-      </form>
+      </form></details>
       ${testState ? `<div class="ai-test ${testState.error ? 'bad' : ''}">${testState.running ? 'Teste Modell … (beim ersten Mal wird es geladen, das kann dauern) <button class="link-btn" data-ai-stop>Anhalten</button>'
         : testState.error ? `Test fehlgeschlagen: ${esc(testState.error)}` : `Test ok: ${verdict(testState.metrics)}`}</div>` : ''}
       <div class="ai-actions">
@@ -186,7 +206,9 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
     const block = (kind, title) => {
       const list = fresh(kind);
       return `<div class="ai-new-col"><h4>${title} <span class="muted">${list.length ? `${list.length} neu` : 'keine neuen'} · ${kept(kind).length} aus dem Bestand</span></h4>
-        ${list.length ? list.map((x) => row(kind, x)).join('') : '<div class="muted">Die KI nutzt nur, was es in Firefly schon gibt.</div>'}</div>`;
+        ${list.length ? list.slice(0, NEW_SHOWN).map((x) => row(kind, x)).join('') : '<div class="muted">Die KI nutzt nur, was es in Firefly schon gibt.</div>'}
+        ${list.length > NEW_SHOWN ? `<details class="ai-more" data-more="${kind}"${moreOpen.has(kind) ? ' open' : ''}><summary>${list.length - NEW_SHOWN} weitere anzeigen</summary>
+          ${list.slice(NEW_SHOWN).map((x) => row(kind, x)).join('')}</details>` : ''}</div>`;
     };
     const datalist = (kind) => `<datalist id="ai-pool-${kind}">${[...(aiData.pool?.[kind] || [])].map((x) => `<option value="${esc(x)}">`).join('')}</datalist>`;
     return `<div class="ai-new">

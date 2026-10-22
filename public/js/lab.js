@@ -44,6 +44,9 @@ export async function lab(view, { params }) {
       <span class="meta-line">Nur Probe – Firefly bleibt unverändert · Buchungen seit ${fmtDate(from)}</span>
     </div>
     <form class="lab-scope${scoped ? ' active' : ''}" id="lab-scope"></form>
+    <nav class="lab-jump" aria-label="Abschnitte">${[['l-progress', 'Fortschritt'], ['l-groups', 'Gruppen'], ['l-ai', 'KI'], ['l-rules', 'Regeln'], ['l-suggest', 'Vorschläge'],
+      ['l-struct', 'Struktur'], ['l-compare', 'Vorher/nachher'], ['l-tagtable', 'Tags'], ['l-tx', 'Buchungen']]
+      .map(([id, l]) => `<button type="button" class="chip small" data-jump="${id}">${l}</button>`).join('')}</nav>
     <div class="grid">
       <section class="card span-3" id="l-count"></section>
       <section class="card span-3" id="l-changed"></section>
@@ -511,6 +514,11 @@ export async function lab(view, { params }) {
 
   // ---- Bedienung --------------------------------------------------------------
   view.addEventListener('click', (e) => {
+    const jump = e.target.closest('[data-jump]');
+    if (jump) {
+      view.querySelector(`#${jump.dataset.jump}`)?.closest('.card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
     const auto = e.target.closest('[data-auto]');
     if (auto) {
       const k = auto.dataset.auto;
