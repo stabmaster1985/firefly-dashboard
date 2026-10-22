@@ -171,7 +171,13 @@
         1140,
         560
       ],
-      "notes": "Header-Auth-Zugangsdaten: Name „Authorization“, Wert „Bearer <Firefly-Token>“ – in allen HTTP-Knoten dieselben"
+      "notes": "Header-Auth-Zugangsdaten: Name „Authorization“, Wert „Bearer <Firefly-Token>“ – in allen HTTP-Knoten dieselben",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "firefly",
+          "name": "Firefly"
+        }
+      }
     },
     {
       "parameters": {
@@ -218,7 +224,13 @@
       "position": [
         920,
         260
-      ]
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "firefly",
+          "name": "Firefly"
+        }
+      }
     },
     {
       "parameters": {
@@ -299,7 +311,13 @@
       "position": [
         1580,
         160
-      ]
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "firefly",
+          "name": "Firefly"
+        }
+      }
     },
     {
       "parameters": {
@@ -367,7 +385,13 @@
       "position": [
         1800,
         440
-      ]
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "firefly",
+          "name": "Firefly"
+        }
+      }
     },
     {
       "parameters": {
@@ -412,7 +436,13 @@
       "position": [
         2240,
         260
-      ]
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "firefly",
+          "name": "Firefly"
+        }
+      }
     },
     {
       "parameters": {
@@ -460,7 +490,13 @@
       "position": [
         2680,
         260
-      ]
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "firefly",
+          "name": "Firefly"
+        }
+      }
     },
     {
       "parameters": {
@@ -539,7 +575,13 @@
       "position": [
         3340,
         160
-      ]
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "firefly",
+          "name": "Firefly"
+        }
+      }
     },
     {
       "parameters": {
@@ -668,7 +710,13 @@
         960
       ],
       "notes": "Gleiche Header-Auth-Zugangsdaten wie „In Firefly speichern“. Fehler einzelner Buchungen halten den Lauf nicht an – das Dashboard prüft hinterher, was angekommen ist.",
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "firefly",
+          "name": "Firefly"
+        }
+      }
     },
     {
       "parameters": {
@@ -751,7 +799,13 @@
         1240,
         1060
       ],
-      "notes": "Gleiche Header-Auth-Zugangsdaten wie die anderen Firefly-Knoten"
+      "notes": "Gleiche Header-Auth-Zugangsdaten wie die anderen Firefly-Knoten",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "firefly",
+          "name": "Firefly"
+        }
+      }
     },
     {
       "parameters": {

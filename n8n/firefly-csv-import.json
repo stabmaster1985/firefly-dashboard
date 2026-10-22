@@ -160,7 +160,13 @@
         900,
         400
       ],
-      "notes": "Header-Auth-Zugangsdaten: Name „Authorization“, Wert „Bearer <Firefly-Token>“ (derselbe Token wie in den anderen Workflows)"
+      "notes": "Header-Auth-Zugangsdaten: Name „Authorization“, Wert „Bearer <Firefly-Token>“ (derselbe Token wie in den anderen Workflows)",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "firefly",
+          "name": "Firefly"
+        }
+      }
     },
     {
       "parameters": {
