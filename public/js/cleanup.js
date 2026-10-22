@@ -7,7 +7,7 @@
 //     Firefly verschiebt alle Buchungen eines Kontos in einem Schritt)
 
 import * as api from './api.js';
-import { esc, fmtDate, debounce } from './util.js';
+import { esc, fmtDate, debounce, money } from './util.js';
 import { card, skeleton } from './common.js';
 import { actionFor, runAction } from './txedit.js';
 import { loadHistory } from './check.js';
@@ -306,6 +306,8 @@ export async function cleanup(view) {
   let accounts = [];
   let groups = [];
   let mergeFilter = 'offen';
+  let mergeSearch = '';
+  let stats = new Map(); // Kontoname (klein) → { n, sum, first, last } aus den Buchungen
 
   async function loadAccounts(fresh = false) {
     if (fresh) api.setFresh(true);
@@ -317,7 +319,18 @@ export async function cleanup(view) {
       if (fresh) api.setFresh(false);
     }
     const counts = new Map();
-    for (const t of txs) counts.set(lower(counterpartyOf(t)), (counts.get(lower(counterpartyOf(t))) || 0) + 1);
+    stats = new Map();
+    for (const t of txs) {
+      const k = lower(counterpartyOf(t));
+      counts.set(k, (counts.get(k) || 0) + 1);
+      const d = String(t.date).slice(0, 10);
+      const st = stats.get(k) || { n: 0, sum: 0, first: d, last: d };
+      st.n += 1;
+      st.sum += Math.abs(Number(t.amount)) || 0;
+      if (d < st.first) st.first = d;
+      if (d > st.last) st.last = d;
+      stats.set(k, st);
+    }
     groups = mergeGroups(accounts, counts);
   }
 
@@ -361,6 +374,8 @@ export async function cleanup(view) {
     counts.erledigt += Object.entries(mergePlan.groups).filter(([key, p]) => p.done && !groups.some((g) => g.key === key)).length;
     const shown = groups.filter((g) => statusOf(g) === mergeFilter || (mergeFilter === 'offen' && statusOf(g) === 'ausgewählt'));
     const selected = groups.filter((g) => statusOf(g) === 'ausgewählt');
+    const q = lower(mergeSearch);
+    const visible = q ? shown.filter((g) => g.accounts.some((a) => lower(a.name).includes(q))) : shown;
     // leere Konten aus dem Plan (auch wenn die Gruppe nicht mehr als Vorschlag auftaucht)
     const pending = Object.entries(mergePlan.groups).flatMap(([key, p]) => (p.emptied || []).map((id) => ({ g: { key }, id })));
     const history = Object.entries(mergePlan.groups).filter(([key, p]) => p.done && !groups.some((g) => g.key === key));
@@ -370,21 +385,40 @@ export async function cleanup(view) {
         Je Gruppe wählst du das Zielkonto und welche Konten hineinsollen. Beim Zusammenführen verschiebt Firefly alle Buchungen der anderen Konten
         auf das Zielkonto (Kategorien, Tags, Beträge bleiben); leere Konten lassen sich danach löschen.</p>
       <div class="chips" role="group" aria-label="Filter">${filters.map((f) => `<button class="chip small" data-m-filter="${f}" aria-pressed="${f === mergeFilter}">${f[0].toUpperCase() + f.slice(1)} <span class="muted">${counts[f]}</span></button>`).join('')}</div>
-      ${shown.length ? `<div class="merge-list">${shown.slice(0, 300).map((g) => {
+      ${groups.length > 6 ? `<div class="merge-tools"><input type="search" class="card-filter" id="a-m-search" placeholder="Gruppen durchsuchen …" value="${esc(mergeSearch)}" aria-label="Gruppen durchsuchen">
+        ${mergeFilter === 'offen' && visible.length ? `<button class="link-btn" data-m-all="1">alle ${visible.length} angezeigten auswählen</button> · <button class="link-btn" data-m-all="0">keine</button>` : ''}</div>` : ''}
+      ${visible.length ? `<div class="merge-list">${visible.slice(0, 300).map((g) => {
         const p = planOf(g);
         const st = statusOf(g);
-        const total = g.accounts.filter((a) => p.members.includes(a.id)).reduce((s, a) => s + a.n, 0);
+        const statOf = (a) => stats.get(lower(a.name)) || { n: a.n, sum: 0, first: null, last: null };
+        const inGroup = g.accounts.filter((a) => p.members.includes(a.id));
+        const total = inGroup.reduce((s, a) => s + statOf(a).n, 0);
+        const sum = inGroup.reduce((s, a) => s + statOf(a).sum, 0);
+        const target = g.accounts.find((a) => a.id === p.target);
+        // Ziel zuerst, dann nach Buchungen
+        const ordered = [target, ...g.accounts.filter((a) => a.id !== p.target).sort((a, b) => statOf(b).n - statOf(a).n)].filter(Boolean);
+        const row = (a) => {
+          const isTarget = a.id === p.target;
+          const on = p.members.includes(a.id);
+          const s2 = statOf(a);
+          return `<div class="mg-row${isTarget ? ' target' : ''}${on ? '' : ' off'}">
+            ${isTarget ? '<span class="mg-pin" aria-hidden="true">★</span>' : `<input type="checkbox" data-m-member="${esc(a.id)}" ${on ? 'checked' : ''} aria-label="${esc(a.name)} übernehmen"${st === 'erledigt' ? ' disabled' : ''}>`}
+            <div class="mg-name"><span>${esc(a.name)}</span>
+              <span class="mg-sub">${s2.n} Buchung${s2.n === 1 ? '' : 'en'}${s2.sum ? ` · ${money(s2.sum)}` : ''}${s2.first ? ` · ${fmtDate(s2.first, { month: 'short', year: '2-digit' })}${s2.last !== s2.first ? `–${fmtDate(s2.last, { month: 'short', year: '2-digit' })}` : ''}` : ''}${a.iban ? ` · ${esc(a.iban)}` : ''}</span></div>
+            ${isTarget ? '<span class="badge good">Ziel</span>' : st === 'erledigt' ? '' : `<button class="link-btn" data-m-target="${esc(a.id)}">als Ziel</button>`}
+          </div>`;
+        };
+        const moving = inGroup.length - 1;
         return `<div class="merge-group ${st}" data-key="${esc(g.key)}">
-          <div class="merge-head"><label class="check"><input type="checkbox" data-m-select ${p.selected ? 'checked' : ''} ${st === 'ignoriert' || st === 'erledigt' ? 'disabled' : ''}> <b>${esc(g.accounts.find((a) => a.id === p.target)?.name || '')}</b></label>
-            <span class="muted">${g.type === 'revenue' ? 'Einnahmenkonten' : 'Ausgabenkonten'} · ${p.members.length} von ${g.accounts.length} Konten · ${total} Buchungen (24 Monate)</span>
+          <div class="merge-head">
+            <input type="checkbox" data-m-select ${p.selected ? 'checked' : ''} ${st === 'ignoriert' || st === 'erledigt' ? 'disabled' : ''} aria-label="Gruppe auswählen">
+            <div class="mg-title"><b>${esc(p.rename || target?.name || '')}</b>
+              <span class="mg-sub">${g.type === 'revenue' ? 'Einnahmen' : 'Ausgaben'} · ${moving > 0 ? `${moving} ${moving === 1 ? 'Konto' : 'Konten'} ${moving === 1 ? 'wird' : 'werden'} übernommen` : 'nichts zu übernehmen'} · ${total} Buchungen${sum ? ` · ${money(sum)}` : ''} (24 Monate)</span></div>
             <span class="merge-btns">${st === 'erledigt' ? '<span class="badge good">zusammengeführt</span>'
-              : `<button class="link-btn" data-m-ignore>${p.ignored ? 'doch vorschlagen' : 'ignorieren'}</button>${editAction && !p.ignored ? ' · <button class="btn small" data-m-run>Zusammenführen</button>' : ''}`}</span></div>
-          ${st === 'erledigt' ? '' : `<table class="merge-table"><tbody>${g.accounts.map((a) => `<tr style="cursor:default" class="${p.members.includes(a.id) ? '' : 'off'}">
-            <td><input type="checkbox" data-m-member="${esc(a.id)}" ${p.members.includes(a.id) ? 'checked' : ''} ${a.id === p.target ? 'disabled' : ''} aria-label="gehört dazu"></td>
-            <td><label class="check"><input type="radio" name="t-${esc(g.key)}" data-m-target="${esc(a.id)}" ${a.id === p.target ? 'checked' : ''}> Ziel</label></td>
-            <td>${esc(a.name)}${a.iban ? `<div class="flow">${esc(a.iban)}</div>` : ''}</td>
-            <td class="num">${a.n} <span class="muted">Buchungen</span></td></tr>`).join('')}</tbody></table>
-          <label class="merge-rename">Zielkonto heißt danach <input data-m-rename value="${esc(p.rename)}"></label>`}
+              : `${editAction && !p.ignored ? `<button class="btn small" data-m-run${moving > 0 ? '' : ' disabled'}>Zusammenführen</button>` : ''}<button class="link-btn" data-m-ignore>${p.ignored ? 'doch vorschlagen' : 'ignorieren'}</button>`}</span>
+          </div>
+          ${st === 'erledigt' ? '' : `<div class="mg-rows">${ordered.map(row).join('')}</div>
+          <label class="merge-rename">Name danach <input data-m-rename value="${esc(p.rename)}" placeholder="${esc(target?.name || '')}"></label>`}
           ${(p.emptied || []).length ? `<div class="merge-empty">${p.emptied.length} leere${p.emptied.length === 1 ? 's' : ''} Konto/Konten übrig${editAction ? ' – <button class="link-btn" data-m-delete>löschen</button>' : ''}</div>` : ''}
         </div>`;
       }).join('')}</div>` : mergeFilter === 'erledigt' && history.length ? '' : `<div class="empty">${mergeFilter === 'offen' ? 'Keine (weiteren) ähnlichen Gegenkonten gefunden. 🎉' : 'Nichts in dieser Auswahl.'}</div>`}
@@ -483,12 +517,41 @@ export async function cleanup(view) {
     }
     const box = e.target.closest('.merge-group');
     const g = box && (groups.find((x) => x.key === box.dataset.key) || { key: box.dataset.key, accounts: [], target: null });
+    const all = e.target.closest('[data-m-all]');
+    if (all) {
+      const on = all.dataset.mAll === '1';
+      const q = lower(mergeSearch);
+      for (const x of groups.filter((x) => statusOf(x) === 'offen' || statusOf(x) === 'ausgewählt')) {
+        if (q && !x.accounts.some((a) => lower(a.name).includes(q))) continue;
+        mergePlan.groups[x.key] = { ...(mergePlan.groups[x.key] || {}), selected: on };
+        pendingGroups[x.key] = { ...(pendingGroups[x.key] || {}), selected: on };
+      }
+      flushGroups();
+      return renderMerge();
+    }
+    const tb = e.target.closest('[data-m-target]');
+    if (g && tb) {
+      const p = planOf(g);
+      const target = tb.dataset.mTarget;
+      const old = g.accounts.find((a) => a.id === p.target)?.name || '';
+      const name = g.accounts.find((a) => a.id === target)?.name || '';
+      // eigener Name bleibt, sonst wandert er mit dem Ziel
+      return patchGroup(g.key, { target, members: [...new Set([...p.members, target])], rename: !p.rename || p.rename === old ? name : p.rename });
+    }
     if (g && e.target.closest('[data-m-ignore]')) return patchGroup(g.key, { ignored: !planOf(g).ignored, selected: false });
     if (g && e.target.closest('[data-m-run]')) return runMerge([g]);
     if (g && e.target.closest('[data-m-delete]')) return deleteEmpty((mergePlan.groups[g.key]?.emptied || []).map((id) => ({ g, id })));
     if (e.target.id === 'a-m-run') return runMerge(groups.filter((x) => statusOf(x) === 'ausgewählt'));
     if (e.target.id === 'a-m-delete-all') return deleteEmpty(Object.entries(mergePlan.groups).flatMap(([key, p]) => (p.emptied || []).map((id) => ({ g: { key }, id }))));
   });
+  $('a-merge').addEventListener('input', debounce((e) => {
+    if (e.target.id !== 'a-m-search') return;
+    mergeSearch = e.target.value;
+    renderMerge();
+    const box = $('a-m-search');
+    box?.focus();
+    box?.setSelectionRange(box.value.length, box.value.length);
+  }, 250));
   $('a-merge').addEventListener('change', (e) => {
     const box = e.target.closest('.merge-group');
     const g = box && groups.find((x) => x.key === box.dataset.key);
@@ -499,11 +562,6 @@ export async function cleanup(view) {
       const id = e.target.dataset.mMember;
       const members = e.target.checked ? [...new Set([...p.members, id])] : p.members.filter((x) => x !== id);
       return patchGroup(g.key, { members, target: p.target });
-    }
-    if (e.target.matches('[data-m-target]')) {
-      const target = e.target.dataset.mTarget;
-      const name = g.accounts.find((a) => a.id === target)?.name || '';
-      return patchGroup(g.key, { target, members: [...new Set([...p.members, target])], rename: name });
     }
     if (e.target.matches('[data-m-rename]')) return patchGroup(g.key, { rename: e.target.value.trim() });
   });

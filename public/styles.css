@@ -1037,12 +1037,31 @@ button.cal-day { cursor: pointer; }
 .merge-list { display: grid; gap: 10px; margin-top: 12px; }
 .merge-group { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
 .merge-group.ignoriert, .merge-group.erledigt { opacity: .65; }
-.merge-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
-.merge-head .merge-btns { margin-left: auto; white-space: nowrap; }
-.merge-table { width: 100%; margin-top: 6px; }
-.merge-table tr.off td:nth-child(n+3) { opacity: .5; text-decoration: line-through; }
-.merge-rename { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; margin-top: 6px; }
+.merge-head { display: flex; gap: 10px; align-items: flex-start; }
+.merge-head > input { margin-top: 4px; }
+.mg-title { flex: 1; min-width: 0; display: grid; }
+.mg-title b { font-size: 15px; }
+.mg-sub { font-size: 12px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.merge-head .merge-btns { display: flex; gap: 10px; align-items: center; white-space: nowrap; }
+.merge-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; font-size: 13px; }
+.merge-tools .card-filter { flex: 1 1 220px; width: auto; }
+.mg-rows { margin: 8px 0 0 26px; border-left: 2px solid var(--grid); }
+.mg-row { display: flex; align-items: center; gap: 10px; padding: 6px 0 6px 10px; }
+.mg-row + .mg-row { border-top: 1px solid var(--grid); }
+.mg-row.target { background: color-mix(in srgb, var(--positive) 7%, transparent); border-radius: 0 8px 8px 0; }
+.mg-row.off .mg-name > span:first-child { text-decoration: line-through; color: var(--text-muted); }
+.mg-pin { width: 16px; text-align: center; color: var(--positive); }
+.mg-row > input { width: 16px; height: 16px; flex: none; }
+.mg-name { flex: 1; min-width: 0; display: grid; }
+.merge-rename { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; margin: 8px 0 0 26px; color: var(--text-secondary); }
 .merge-rename input { flex: 1 1 200px; }
+@media (max-width: 760px) {
+  .merge-head { flex-wrap: wrap; }
+  .merge-head .merge-btns { flex: 1 1 100%; justify-content: flex-end; }
+  .mg-rows, .merge-rename { margin-left: 0; }
+  .mg-row > input { width: 22px; height: 22px; }
+  .mg-row { padding: 8px 0 8px 10px; }
+}
 .merge-empty { font-size: 13px; margin-top: 6px; color: var(--text-secondary); }
 
 /* Fragen */
@@ -1110,4 +1129,11 @@ button.cal-day { cursor: pointer; }
   .topbar .search { flex: 1 1 100%; }
   .topbar .period-wrap { flex: 1 1 100%; }
   .topbar .period, .topbar .period select { width: 100%; max-width: none; }
+}
+/* Zusammenführen: Sammel-Knopf bleibt sichtbar, auch bei vielen Gruppen */
+#a-merge .sync-run { position: sticky; bottom: 0; z-index: 5; background: var(--surface-1); padding: 10px 0; margin-bottom: -10px; border-top: 1px solid var(--grid); }
+@media (max-width: 760px) {
+  #a-merge .sync-run { bottom: calc(58px + env(safe-area-inset-bottom)); }
+  #a-merge .sync-run > .muted { display: none; }
+  #a-merge .sync-run .btn { width: 100%; justify-content: center; }
 }
