@@ -573,7 +573,13 @@ function fakeOllama(req, res, url) {
   req.on('end', () => {
     const prompt = JSON.parse(body).messages.at(-1).content;
     let content;
-    if (prompt.includes('Kategoriesystem')) {
+    if (prompt.includes('Frage: „')) {
+      // Fragen-Seite: grobe Übersetzung wie ein kleines Modell
+      const q = prompt.split('Frage: „')[1].split('“')[0];
+      const who = (q.match(/(?:bei|für|fuer)\s+([A-Za-zÄÖÜäöüß]+)/) || [])[1];
+      content = { auswertung: /wie oft/i.test(q) ? 'anzahl' : 'summe', art: 'ausgaben', zeitraum: /letzten monat/i.test(q) ? 'letzter_monat' : 'letzte_n_monate', n: 12,
+        haendler: who ? [who.toLowerCase()] : [], kategorien: [], tags: [] };
+    } else if (prompt.includes('Kategoriesystem')) {
       content = { kategorien: [...new Set(FAKE_AI.map((x) => x[1]))].map((name) => ({ name, beschreibung: `Alles rund um ${name}` })) };
     } else {
       const lines = prompt.split('\n').filter((l) => /^\d+\. /.test(l));

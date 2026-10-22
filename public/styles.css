@@ -1011,3 +1011,24 @@ button.cal-day { cursor: pointer; }
 .merge-rename { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; margin-top: 6px; }
 .merge-rename input { flex: 1 1 200px; }
 .merge-empty { font-size: 13px; margin-top: 6px; color: var(--text-secondary); }
+
+/* Fragen */
+.ask-log { display: flex; flex-direction: column; gap: 10px; max-height: 60vh; overflow-y: auto; padding: 4px 2px 8px; }
+.ask-msg { max-width: 85%; padding: 10px 12px; border-radius: 12px; font-size: 14px; line-height: 1.5; }
+.ask-msg.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+.ask-msg.bot { align-self: flex-start; background: var(--surface-2); border-bottom-left-radius: 4px; width: 85%; }
+.ask-msg.bot.error { color: var(--negative); }
+.ask-msg.pending { color: var(--text-secondary); font-style: italic; }
+.ask-answer { font-size: 15px; }
+.ask-meta { margin-top: 6px; font-size: 12px; line-height: 1.9; }
+.ask-note { font-size: 12px; margin-top: 4px; }
+.ask-table { width: 100%; margin-top: 8px; font-size: 13px; }
+.ask-table td { padding: 4px 6px; vertical-align: top; }
+.ask-table .mini-bar { width: 100px; }
+.ask-hits { margin-top: 8px; font-size: 13px; }
+.ask-hits summary { cursor: pointer; color: var(--accent); }
+.ask-form { display: flex; gap: 8px; margin-top: 12px; }
+.ask-form input { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 16px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary); }
+.ask-foot { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 10px; font-size: 13px; }
+.ask-foot .chips { flex: 1 1 100%; }
+@media (max-width: 640px) { .ask-msg, .ask-msg.bot { max-width: 100%; width: auto; } }

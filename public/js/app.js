@@ -12,6 +12,7 @@ import { check } from './check.js';
 import { csvSync } from './csvsync.js';
 import { cleanup } from './cleanup.js';
 import { merchants } from './merchants.js';
+import { askPage } from './ask.js';
 import { partyDetail } from './party.js';
 import { openHelp, helpPage } from './helpui.js';
 import { applyCardFilter } from './common.js';
@@ -32,6 +33,7 @@ const ROUTES = {
   abgleich: { view: csvSync, title: 'CSV-Abgleich', nav: 'check', noPeriod: true, help: 'csvsync' },
   aufraeumen: { view: cleanup, title: 'Daten aufräumen', nav: 'check', noPeriod: true, help: 'cleanup' },
   empfaenger: { view: merchants, title: 'Händler', nav: 'merchants', noPeriod: true, help: 'merchants' },
+  fragen: { view: askPage, title: 'Fragen', nav: 'ask', noPeriod: true, help: 'ask' },
   hilfe: { view: helpPage, title: 'Hilfe', nav: 'help', noPeriod: true },
 };
 const DETAIL = {

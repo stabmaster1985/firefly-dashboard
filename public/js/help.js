@@ -73,6 +73,14 @@ export const PAGES = {
     firefly: 'Nur lesen. Doppelte löschst du in Firefly selbst („In Firefly öffnen“ in den Details). Der Import-Knopf startet deinen n8n-Import-Workflow – was der in Firefly tut, bestimmt der Workflow.',
     cards: ['c-import', 'c-backup', 'c-dup'],
   },
+  ask: {
+    title: 'Fragen',
+    what: 'Mit den eigenen Finanzdaten chatten: „Wie viel habe ich im letzten Monat bei Amazon ausgegeben?“, „Top 5 Händler der letzten 3 Monate“, „Lebensmittel dieses Jahr im Vergleich zum Vorjahr“, „Restaurant pro Monat“.',
+    app: 'Die Frage wird in eine Abfrage übersetzt (Zeitraum, Händler, Kategorie, Tag, Art der Auswertung) – häufige Fragen ohne KI, ungewöhnliche mit Ollama (wie im Labor eingestellt). Die Zahlen rechnet das Dashboard exakt aus den Firefly-Buchungen; eine KI rechnet nichts und erfindet keine Beträge. Jede Antwort zeigt, wie sie die Frage verstanden hat, und die Buchungen dahinter. Ohne Zeitangabe gelten die letzten 12 Monate. Der Verlauf bleibt nur in diesem Browser.',
+    firefly: READ_ONLY,
+    tips: ['„Verstehen: automatisch“ nutzt die KI nur, wenn die schnelle Erkennung unsicher ist – das spart Wartezeit bei langsamem Ollama.', 'Händler-, Kategorie- und Tag-Namen so schreiben, wie sie in Firefly heißen; Groß/klein ist egal.'],
+    cards: [],
+  },
   merchants: {
     title: 'Händler',
     what: 'Wo du einkaufst: Händler nach Ausgaben der letzten 12 Monate, Vergleich mit den 12 davor, Häufigkeit, Ø Betrag, Preisentwicklung, neue Händler – und mit KI-Bewertung aus dem Labor das Sparpotenzial (notwendig / sinnvoll / verzichtbar je Monat).',

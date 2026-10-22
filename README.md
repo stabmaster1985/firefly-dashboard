@@ -63,6 +63,15 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
 - **KI-Analyse mit Ollama** (im Labor, optional) – ein lokales Sprachmodell bewertet jeden
   Händler: Kategorie, Tags, Bedarf (notwendig / sinnvoll / verzichtbar) und Sicherheit; schlägt
   auch neue Kategorien/Tags vor (als „neu“ markiert) und kann ein eigenes Kategoriesystem entwerfen
+- **Fragen** – mit den eigenen Daten chatten: „Wie viel habe ich im letzten Monat bei Amazon
+  ausgegeben?“, „Top 5 Händler der letzten 3 Monate“, „Lebensmittel dieses Jahr im Vergleich zum
+  Vorjahr“, „Restaurant pro Monat“, „größte Ausgaben im September“, „wie oft bei REWE seit
+  Januar“. Die Frage wird in eine Abfrage übersetzt (Zeitraum inkl. Gehaltsmonat, Händler,
+  Kategorie, Tag, Einnahmen/Ausgaben, Summe/Anzahl/Liste/Top/Verlauf/Vergleich) – häufige Fragen
+  ohne KI, ungewöhnliche mit Ollama (Modell aus dem Labor; Einstellung „Verstehen“). **Die Zahlen
+  rechnet immer das Dashboard exakt aus den Firefly-Buchungen**, die KI rechnet nichts. Jede
+  Antwort zeigt, wie die Frage verstanden wurde, und die Buchungen dahinter; ohne Zeitangabe
+  gelten die letzten 12 Monate. Der Verlauf bleibt im Browser
 - **Händler** – Händler nach Ausgaben der letzten 12 Monate mit Vorjahresvergleich, Häufigkeit
   („2,3× pro Woche“), Ø Betrag, Kategorie; Preisentwicklung (Ø Betrag letzte 6 Monate ggü. den 6
   davor), neue Händler (60 Tage) und – mit KI-Bewertung aus dem Labor – **Sparpotenzial**: je
