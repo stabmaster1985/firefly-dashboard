@@ -392,6 +392,11 @@ zugeordnet, steht in Firefly als Empfänger nur „(no name)“ o. ä. – Händ
 kaum auswerten. Unter **Prüfen → CSV abgleichen** (`#/abgleich`) die Original-CSV-Dateien
 wählen (gern alle auf einmal, überlappende Zeilen zählen nur einmal):
 
+- **Übertragung im Hintergrund** läuft als Auftrag auf dem Server (`DATA_DIR/sync-job.json`):
+  Das Gerät darf danach aus sein, Stand und Anhalten/Fortsetzen/Verwerfen gibt es auf jedem
+  Gerät. Verbindungsabbrüche zu n8n oder Firefly überbrückt der Server mit neuen Versuchen
+  (1, 2, 5, 10, 15, dann alle 30 Minuten, bis zu 12 Stunden), nach Neustart/Update geht es
+  weiter; am Ende wird jede Buchung frisch in Firefly geprüft, Fehlendes bis zu dreimal geschickt.
 - **CSV-Archiv**: Alle Bank-CSV-Dateien einmal hochladen (auch einen ganzen Ordner); sie bleiben
   auf dem Server (`DATA_DIR/csv-archive`, gleiche Dateien nur einmal) und werden nach Konto
   sortiert – mit Zeitraum, Lücken ohne CSV und auf Knopfdruck dem Stand in Firefly (wie viele

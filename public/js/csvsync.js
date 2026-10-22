@@ -48,6 +48,7 @@ const MAX_ROWS = 600;
 export async function csvSync(view) {
   view.innerHTML = `
     <div class="grid">
+      ${card('s-job', 'Übertragung auf dem Server', { meta: '<span class="muted">Stand von jedem Gerät</span>' })}
       ${card('s-archive', 'CSV-Archiv: alle Dateien nach Konto', { meta: '<span class="muted">liegt auf dem Server</span>' })}
       ${card('s-files', 'Bank-CSV abgleichen', { meta: '<span class="muted">aus dem Archiv oder einzelne Dateien direkt</span>' })}
       ${card('s-open', 'Noch nicht umgestellt: Buchungen ohne Empfänger in Firefly', { meta: '<span id="s-open-meta"></span>' })}
@@ -231,11 +232,11 @@ export async function csvSync(view) {
       <div class="sync-run">
         ${action ? `<button class="btn primary" id="s-run"></button>
           <label class="sync-set">Art <select data-opt="mode">
-            <option value="hintergrund"${mode === 'hintergrund' ? ' selected' : ''}>im Hintergrund (n8n arbeitet allein)</option>
-            <option value="pakete"${mode === 'pakete' ? ' selected' : ''}>in Paketen (wartet auf n8n)</option></select></label>
+            <option value="hintergrund"${mode === 'hintergrund' ? ' selected' : ''}>im Hintergrund auf dem Server (Gerät darf aus sein)</option>
+            <option value="pakete"${mode === 'pakete' ? ' selected' : ''}>in Paketen im Browser (Seite muss offen bleiben)</option></select></label>
           ${mode === 'hintergrund' ? `<label class="sync-set">gleichzeitig <select data-opt="parallel">${PARALLEL.map((v) => `<option value="${v}"${Number(v) === parallel ? ' selected' : ''}>${v} Paket${v === '1' ? '' : 'e'}</option>`).join('')}</select></label>
             <label class="sync-set">Firefly je Paket gleichzeitig <select data-opt="portion">${PORTIONS.map((v) => `<option value="${v}"${Number(v) === portion ? ' selected' : ''}>${v} Buchungen</option>`).join('')}</select></label>
-            <span class="muted">n8n antwortet sofort und speichert danach in Portionen. Jedes Paket ist so bemessen, dass n8n es in rund 3 Minuten schafft; das nächste geht raus, sobald die letzte Buchung des vorigen in Firefly steht. Geprüft wird alles einmal am Ende; was fehlt, geht einmal erneut raus. Braucht die aktuelle Vorlage n8n/firefly-buchung-bearbeiten.json (Zweig „Hintergrund?“).</span>` : `
+            <span class="muted">Der Server übernimmt: Pakete à rund 3 Minuten n8n-Arbeit, das nächste, sobald die letzte Buchung des vorigen in Firefly steht. Am Ende wird jede Buchung geprüft, Fehlendes bis zu zweimal erneut geschickt; bei Verbindungsabbrüchen neue Versuche nach 1, 2, 5, 10, 15, dann alle 30 Minuten (bis zu 12 Stunden). Braucht die aktuelle Vorlage n8n/firefly-buchung-bearbeiten.json (Zweig „Hintergrund?“).</span>` : `
           <label class="sync-set">Paketgröße <select data-opt="size">${SIZES.map((v) => `<option value="${v}"${v === chunkSetting ? ' selected' : ''}>${v === 'auto' ? 'automatisch (~1 Min. je Paket)' : `${v} Buchungen`}</option>`).join('')}</select></label>
           <label class="sync-set">gleichzeitig <select data-opt="parallel">${PARALLEL.map((v) => `<option value="${v}"${Number(v) === parallel ? ' selected' : ''}>${v} Paket${v === '1' ? '' : 'e'}</option>`).join('')}</select></label>
           <span class="muted">über „${esc(action.name)}“ – Pakete ohne Antwort werden am Ende in Firefly geprüft und fehlende einmal erneut geschickt. Mehrere Pakete gleichzeitig sind meist am schnellsten; ein Paket sollte unter 5 Minuten bleiben.</span>`}`
@@ -322,132 +323,104 @@ export async function csvSync(view) {
     }
     return ok;
   }
-  let abortedFlag = null;
-
-  /**
-   * Hintergrund-Übertragung: erst alle Pakete an n8n schicken, dann einmal in Firefly prüfen.
-   * Beim Senden wird je Paket nur die letzte Buchung nachgesehen (n8n arbeitet der Reihe nach) –
-   * das gibt das Tempo vor, damit Firefly nicht überrannt wird, und misst die Paketgröße.
-   * Was bei der Prüfung fehlt, geht einmal erneut raus und wird danach noch einmal geprüft.
-   */
-  async function transferBackground(list) {
-    stopRequested = false;
-    abortedFlag = null;
-    const out = $('s-out');
-    const started = Date.now();
-    let size = BG_START;
-    let perItem = 0;
-    let sent = 0;
-    let toSend = list.length;
-    let done = 0;
-    let emptyInARow = 0;
-    const show = (msg, part = sent / Math.max(1, toSend)) => {
-      if (abortedFlag) return;
-      out.innerHTML = `<div class="progress"><span style="width:${Math.round(part * 100)}%"></span></div>
-        <span class="muted">${msg}${perItem ? ` · ${Math.round(60000 / perItem)} Buchungen/Min.` : ''} · Paketgröße ${size} · ${portion} je Paket gleichzeitig${parallel > 1 ? ` · ${parallel} Pakete parallel` : ''}</span>
-        <button class="link-btn" data-stop>Anhalten</button>`;
-    };
-    const settle = async (rs) => {
-      rs = rs.filter((r) => r.status !== 'erledigt');
-      for (const r of rs) {
-        r.status = 'erledigt';
-        picked.delete(results.indexOf(r));
-      }
-      done += rs.length;
-      if (rs.length) {
-        await memoryCall('POST', { items: rs.map((r) => ({ fp: r.fp, j: r.t.transaction_journal_id, name: r.row.name })) });
-        renderMemory();
-      }
-    };
-    /** Alle Pakete schicken; Rückgabe: geschickt / gar nicht geschickt. */
-    const sendAll = async (items, round) => {
-      const queue = [...items];
-      const sentList = [];
-      sent = 0;
-      toSend = items.length;
-      const sending = () => `${round > 1 ? 'Zweiter Versuch: ' : ''}${sent} von ${toSend} an n8n geschickt${perItem && queue.length ? ` · noch ca. ${Math.max(1, Math.round((perItem * queue.length) / parallel / 60000))} Min.` : ''} – geprüft wird danach`;
-      const worker = async () => {
-        while (queue.length && !stopRequested && !abortedFlag) {
-          const part = queue.splice(0, size);
-          show(sending());
-          const payload = { typ: 'gegenkonto_setzen', hintergrund: true, portion, aenderungen: part.map((r) => (r.sentPayload = payloadFor(r))) };
-          const sentAt = Date.now();
-          const res = await runAction(action, { ...payload, daten: payload }).catch((err) => ({ ok: false, response: err.message }));
-          if (!res.ok && res.status && res.status < 500 && res.status !== 408) {
-            abortedFlag = `n8n lehnt ab (HTTP ${res.status}): ${String(res.response || '').slice(0, 160)}`;
-            queue.unshift(...part);
-            break;
-          }
-          sentList.push(...part);
-          sent += part.length;
-          // Tempo: warten, bis n8n mit dem Paket durch ist. n8n arbeitet der Reihe nach – je Runde
-          // nur die letzte Buchung und die nächsten paar in der Reihenfolge nachsehen (Fortschritt,
-          // Hänger erkennen); die vollständige Prüfung kommt erst, wenn alles geschickt ist.
-          const last = part[part.length - 1];
-          let pos = 0;
-          let lastProgress = Date.now();
-          let through = false;
-          while (!abortedFlag && !stopRequested) {
-            show(sending());
-            await new Promise((r) => setTimeout(r, BG_POLL_MS));
-            if (await isSynced(last)) {
-              through = true;
-              break;
-            }
-            const before = pos;
-            for (let n = 0; n < 3 && pos < part.length - 1 && (await isSynced(part[pos])); n++) pos += 1;
-            if (pos > before) lastProgress = Date.now();
-            else if (Date.now() - lastProgress > BG_STALL_MS) break; // n8n hat aufgehört (z. B. Zeitlimit)
-          }
-          if (stopRequested) break;
-          const took = Date.now() - sentAt;
-          if (through) {
-            emptyInARow = 0;
-            perItem = took / part.length;
-            // Paketgröße: so viele, wie n8n + Firefly in ~3 Minuten schaffen
-            size = Math.max(BG_MIN, Math.min(BG_MAX, Math.round(BG_TARGET_MS / perItem)));
-            await settle([last]);
-          } else if (pos > 0) {
-            // angefangen, aber nicht fertig geworden (Zeitlimit) → kleiner, passend zum Geschafften
-            perItem = (lastProgress - sentAt) / pos;
-            size = Math.max(BG_MIN, Math.min(Math.floor(pos * 0.8), Math.round(BG_TARGET_MS / perItem)));
-          } else {
-            size = Math.max(BG_MIN, Math.floor(size / 2));
-            emptyInARow += 1;
-            if (emptyInARow >= 3) abortedFlag = `Von drei Paketen hintereinander kam nichts in Firefly an${res.ok ? '' : ` (${String(res.response || res.status || '').slice(0, 120)})`}.`;
-          }
-        }
+  /** Hintergrund: Auftrag an den Server übergeben – er arbeitet allein weiter (Gerät darf aus sein). */
+  async function startServerJob(list) {
+    const items = list.map((r) => {
+      const payload = (r.sentPayload = payloadFor(r));
+      return {
+        j: r.t.transaction_journal_id, g: r.t.groupId, fp: r.fp, name: r.row.name, payload,
+        check: { party: payload.gegenkonto !== false ? r.row.name : '', before: counterparty(r.t) || '', description: payload.beschreibung || '', tags: payload.tags || [] },
       };
-      await Promise.all(Array.from({ length: Math.max(1, parallel) }, worker));
-      return { sentList, rest: queue };
-    };
-    const check = async (items) => {
-      const open = items.filter((r) => r.status !== 'erledigt');
-      show(`Prüfe in Firefly: 0 von ${open.length} …`, 0);
-      const ok = await verify(open, (k) => show(`Prüfe in Firefly: ${k} von ${open.length} …`, k / Math.max(1, open.length)));
-      await settle(ok);
-      return open.filter((r) => !ok.includes(r));
-    };
-
-    const first = await sendAll(list, 1);
-    let missing = await check(first.sentList);
-    let unsent = first.rest;
-    if (missing.length && !stopRequested && !abortedFlag) {
-      const second = await sendAll(missing, 2);
-      unsent = [...unsent, ...second.rest];
-      missing = await check(second.sentList);
+    });
+    const res = await fetch('/local/syncjob', { method: 'POST', headers, body: JSON.stringify({ actionId: action.id, portion, parallel, items }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      $('s-out').innerHTML = `<span class="badge bad">Nicht gestartet</span> <span class="muted">${esc(body.message || `HTTP ${res.status}`)}</span>`;
+      render();
+      return;
     }
-    api.forget();
-    if (openScan && !openScan.loading) scanOpen();
+    job = body.job;
     render();
-    const left = unsent.length + missing.length;
-    const mins = Math.max(1, Math.round((Date.now() - started) / 60000));
-    $('s-out').innerHTML = abortedFlag
-      ? `<span class="badge bad">Abgebrochen</span> <span class="muted">${esc(abortedFlag)} ${done} sind umgestellt; die übrigen ${left} bleiben ausgewählt. In n8n unter „Executions“ nachsehen, was passiert ist.</span>`
-      : !left
-        ? `<span class="badge good">${done} in Firefly umgestellt ✓</span> <span class="muted">alle geprüft · ${mins} Min. · Danach im Labor: Regel-Vorschläge nach Empfänger und die KI-Analyse werden deutlich besser.</span>`
-        : `<span class="badge warn">${done} umgestellt, ${left} offen</span> <span class="muted">${stopRequested ? 'Angehalten – geschickte Pakete wurden noch geprüft. ' : ''}${missing.length ? `${missing.length} kamen nach zwei Versuchen nicht in Firefly an (in n8n unter „Executions“ nachsehen). ` : ''}Die offenen bleiben ausgewählt; ein neuer Klick macht dort weiter.</span>`;
+    renderJob();
+    $('s-job').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+
+  // ---- Auftrag auf dem Server: Stand von jedem Gerät aus sehen und steuern ----
+  let job = null;
+  let jobTimer = null;
+  let doneFps = new Set();
+  async function refreshJob(withFps = false) {
+    const res = await fetch(`/local/syncjob${withFps ? '?fps=1' : ''}`, { headers: { 'X-No-Cache': '1' } }).then((r) => r.json()).catch(() => null);
+    if (!res) return;
+    const before = job?.status;
+    job = res.job;
+    if (job?.fps) {
+      // erledigte Zeilen im Ergebnis als übertragen markieren
+      doneFps = new Set(job.fps);
+      let changed = false;
+      results.forEach((r, i) => {
+        if (doneFps.has(r.fp) && r.status !== 'erledigt' && r.status !== 'frueher') {
+          r.status = 'erledigt';
+          picked.delete(i);
+          changed = true;
+        }
+      });
+      if (changed) render();
+    }
+    if (before === 'laeuft' && job?.status === 'fertig') {
+      api.forget();
+      memoryCall('GET').then(renderMemory);
+      if (openScan && !openScan.loading) scanOpen();
+    }
+    renderJob();
+  }
+  function scheduleJob() {
+    clearTimeout(jobTimer);
+    if (!view.isConnected) return;
+    const ms = job?.status === 'laeuft' ? 5000 : 30000;
+    jobTimer = setTimeout(async () => {
+      await refreshJob(true);
+      scheduleJob();
+    }, ms);
+  }
+  function renderJob() {
+    const el = $('s-job');
+    const wrap = el?.closest('.card');
+    if (!el) return;
+    if (wrap) wrap.hidden = !job;
+    if (!job) return;
+    const pct = job.total ? Math.round(((job.ok + job.fehlt * (job.status === 'fertig' ? 1 : 0)) / job.total) * 100) : 0;
+    const label = { laeuft: ['läuft', 'good'], pausiert: ['angehalten', 'warn'], fertig: ['fertig', job.fehlt ? 'warn' : 'good'] }[job.status] || [job.status, ''];
+    const retry = job.retryAt ? Math.max(0, Math.round((Date.parse(job.retryAt) - Date.now()) / 60000)) : null;
+    el.innerHTML = `
+      <div class="job-head"><span class="badge ${label[1]}">${label[0]}</span>
+        <b>${job.ok} von ${job.total}</b> in Firefly umgestellt und geprüft
+        ${job.fehlt ? ` · <span class="bad">${job.fehlt} fehlen noch</span>` : ''}
+        ${job.offen + job.gesendet ? ` · ${job.offen} offen · ${job.gesendet} gesendet, Prüfung folgt` : ''}</div>
+      <div class="progress"><span style="width:${pct}%"></span></div>
+      <div class="muted job-msg">${esc(job.message || '')}${retry !== null && job.status === 'laeuft' ? ` <b>(noch ${retry} Min.)</b>` : ''}</div>
+      <div class="muted job-meta">Runde ${job.round} · Paketgröße ${job.size}${job.perMinute ? ` · ${job.perMinute} Buchungen/Min.` : ''} · ${job.portion} je Paket gleichzeitig${job.parallel > 1 ? ` · ${job.parallel} Pakete parallel` : ''} · über „${esc(job.actionName || '')}“ · gestartet ${fmtDate(job.createdAt)} ${new Date(job.createdAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</div>
+      <div class="job-actions">
+        ${job.status === 'laeuft' ? '<button class="btn" data-job="pause">Anhalten</button>' : ''}
+        ${job.status === 'pausiert' ? '<button class="btn primary" data-job="resume">Fortsetzen</button>' : ''}
+        <button class="link-btn" data-job="delete">${job.status === 'fertig' ? 'Ausblenden' : 'Auftrag verwerfen'}</button>
+        <span class="muted">Läuft auf dem Server – das Gerät darf aus sein; Stand und Knöpfe gibt es auf jedem Gerät.</span>
+      </div>
+      ${job.log?.length ? `<details class="job-log"><summary>Verlauf</summary>${job.log.map((l) => `<div><span class="muted">${new Date(l.at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span> ${esc(l.msg)}</div>`).join('')}</details>` : ''}`;
+    scheduleJob();
+  }
+  $('s-job').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-job]');
+    if (!b) return;
+    const what = b.dataset.job;
+    if (what === 'delete' && job?.status !== 'fertig' && !window.confirm('Auftrag verwerfen? Was schon in Firefly ist, bleibt; der Rest wird nicht mehr geschickt. Laufende Pakete arbeitet n8n noch ab.')) return;
+    b.disabled = true;
+    const res = await fetch(`/local/syncjob${what === 'delete' ? '' : `/${what}`}`, { method: what === 'delete' ? 'DELETE' : 'POST', headers }).then((r) => r.json()).catch(() => null);
+    if (res) job = res.job;
+    renderJob();
+  });
+  $('s-job').closest('.card').hidden = true;
+  refreshJob(true);
 
   let stopRequested = false;
   async function transfer(btn) {
@@ -455,10 +428,10 @@ export async function csvSync(view) {
       .filter((r) => r.t && (r.status === 'neu' || (r.status === 'abweichend' && overwrite) || (r.status === 'vorhanden' && hasExtras(r))));
     if (!list.length) return;
     if (!window.confirm(`Bei ${list.length} Buchungen den Empfänger in Firefly setzen?\n\nFirefly ordnet sie dem Gegenkonto mit diesem Namen${withIban ? ' bzw. dieser IBAN' : ''} zu und legt es an, falls es noch fehlt. Kategorien, Tags und Notizen bleiben unverändert.\n\n${mode === 'hintergrund'
-      ? 'Erst gehen alle Pakete an n8n, danach prüft das Dashboard einmal in Firefly, was angekommen ist. „Anhalten“ schickt nichts Neues mehr – n8n arbeitet laufende Pakete noch ab.'
+      ? 'Der Auftrag läuft auf dem Server – Handy oder PC dürfen danach aus sein. Erst gehen alle Pakete an n8n, dann wird jede Buchung in Firefly geprüft und Fehlendes erneut geschickt; bei Verbindungsabbrüchen versucht der Server es mit Pausen weiter. Stand und Anhalten/Verwerfen gibt es auf jedem Gerät.'
       : 'Es geht in kleinen Paketen; Pakete ohne Antwort werden am Ende in Firefly nachgeprüft. Du kannst jederzeit anhalten.'}`)) return;
     btn.disabled = true;
-    if (mode === 'hintergrund') return transferBackground(list);
+    if (mode === 'hintergrund') return startServerJob(list);
     stopRequested = false;
     const out = $('s-out');
     const queue = [...list];

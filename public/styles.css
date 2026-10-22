@@ -1075,3 +1075,11 @@ button.cal-day { cursor: pointer; }
 .arch-miss b { color: var(--text-primary); font-weight: 600; }
 .arch-files tr.arch-missing td { background: color-mix(in srgb, var(--negative) 7%, transparent); }
 .arch-files tr.arch-missing td:first-child { box-shadow: inset 3px 0 0 var(--negative); }
+/* Übertragung auf dem Server */
+.job-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.job-msg { margin-top: 8px; font-size: 13px; }
+.job-meta { font-size: 12px; margin-top: 4px; }
+.job-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.job-actions .muted { font-size: 12px; }
+.job-log { margin-top: 10px; font-size: 12px; }
+.job-log div { padding: 2px 0; }
