@@ -422,6 +422,15 @@ wählen (gern alle auf einmal, überlappende Zeilen zählen nur einmal):
   Konten (wahlweise nur Monate mit offenen), aufklappbar bis zur Buchung (mit Link nach Firefly),
   offene als CSV exportierbar. Ist eine CSV eingelesen, steht dabei, wie viele davon sie abdeckt; nach dem
   Übertragen wird die Prüfung automatisch wiederholt.
+- **Neue Zeilen importieren:** Zeilen, zu denen der Abgleich in Firefly keine Buchung findet,
+  schickt das Dashboard – und nur diese – als CSV (Original-Kopfzeile) samt Import-Konfiguration
+  an die Automation „CSV importieren (Data Importer)“ (`typ: csv_import`, `csv_base64`,
+  `konfiguration`, in Teilen zu 150 Zeilen). Der Workflow `n8n/firefly-csv-import.json` reicht
+  beides an `/autoupload` des Firefly Data Importers weiter (im Importer `CAN_POST_AUTOIMPORT=true`,
+  `CAN_POST_FILES=true` und `AUTO_IMPORT_SECRET` setzen; im Workflow Adresse und Secret eintragen).
+  Die Import-Konfiguration lädst du einmal im Dashboard hoch (liegt auf dem Server,
+  `DATA_DIR/import-config.json`); fehlt darin der Gegenkonto-Name, gibt es einen Hinweis. So ist
+  ein doppelter Import ausgeschlossen – auch wenn eine Datei sich mit früheren überschneidet.
 - **Optionen** neben „IBAN/BIC mitgeben“ (je Browser gemerkt): **nichtssagende Beschreibung
   ersetzen** – wo in Firefly nur „Kartenzahlung girocard“, „Basislastschrift“ o. ä. steht, kommt der
   bereinigte Verwendungszweck hinein, bei Kartenzahlungen „Kartenzahlung <Händler>“; **Zahlungsart

@@ -1,0 +1,250 @@
+{
+  "name": "Firefly: CSV aus dem Dashboard importieren (Data Importer)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "firefly-csv-import",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "id": "w1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "firefly-csv-import"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e1",
+              "name": "importer_url",
+              "value": "http://192.168.0.X:8081",
+              "type": "string"
+            },
+            {
+              "id": "e2",
+              "name": "secret",
+              "value": "HIER-AUTO_IMPORT_SECRET-DES-IMPORTERS",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "w2",
+      "name": "Einstellungen",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ],
+      "notes": "Adresse des Firefly Data Importers (ohne Pfad) und sein AUTO_IMPORT_SECRET. Im Importer müssen CAN_POST_AUTOIMPORT=true und CAN_POST_FILES=true gesetzt sein."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "t1c",
+              "leftValue": "={{ $('Webhook').first().json.body.test === true || $('Webhook').first().json.body.typ !== 'csv_import' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "w3",
+      "name": "Nur Test?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, test: true, empfangen: Object.keys($('Webhook').first().json.body || {}) } }}",
+        "options": {}
+      },
+      "id": "w4",
+      "name": "Antwort Test",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        680,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// CSV (nur die neuen Zeilen) und Import-Konfiguration als Dateien für den Data Importer\nconst b = $('Webhook').first().json.body || {};\nif (!b.csv_base64 || !b.konfiguration) throw new Error('csv_base64 oder konfiguration fehlt');\nconst csv = await this.helpers.prepareBinaryData(Buffer.from(b.csv_base64, 'base64'), b.dateiname || 'import.csv', 'text/csv');\nconst cfg = await this.helpers.prepareBinaryData(Buffer.from(JSON.stringify(b.konfiguration)), 'config.json', 'application/json');\nreturn [{ json: { dateiname: b.dateiname, zeilen: b.zeilen }, binary: { importable: csv, json: cfg } }];"
+      },
+      "id": "w5",
+      "name": "Dateien bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Einstellungen').first().json.importer_url }}/autoupload?secret={{ encodeURIComponent($('Einstellungen').first().json.secret) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "importable",
+              "inputDataFieldName": "importable"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "json",
+              "inputDataFieldName": "json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 280000,
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "w6",
+      "name": "An den Data Importer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        400
+      ],
+      "notes": "Header-Auth-Zugangsdaten: Name „Authorization“, Wert „Bearer <Firefly-Token>“ (derselbe Token wie in den anderen Workflows)"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, zeilen: $('Dateien bauen').first().json.zeilen, ausgabe: String($json.data || '').slice(-1500) } }}",
+        "options": {}
+      },
+      "id": "w7",
+      "name": "Antwort",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Einstellungen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Einstellungen": {
+      "main": [
+        [
+          {
+            "node": "Nur Test?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nur Test?": {
+      "main": [
+        [
+          {
+            "node": "Antwort Test",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Dateien bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dateien bauen": {
+      "main": [
+        [
+          {
+            "node": "An den Data Importer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "An den Data Importer": {
+      "main": [
+        [
+          {
+            "node": "Antwort",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 3600
+  },
+  "pinData": {}
+}

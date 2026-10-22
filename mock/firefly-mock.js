@@ -628,11 +628,11 @@ http
     const cat = key.match(/^categories\/(\d+)(\/transactions)?$/);
     const accRoute = key.match(/^accounts\/(\d+)(\/transactions)?$/);
     const acc = accRoute && ACCOUNTS.find((a) => a.id === accRoute[1]);
-    const ext = accRoute && !acc && !extById.get(accRoute[1])?.deleted && extById.get(accRoute[1]);
-    if (ext) {
+    const extAcc = accRoute && !acc && !extById.get(accRoute[1])?.deleted && extById.get(accRoute[1]);
+    if (extAcc) {
       handler = accRoute[2]
-        ? (q) => paginate(extJournals(ext), q, journalJson)
-        : () => ({ data: { type: 'accounts', id: accRoute[1], attributes: { name: ext.name, type: ext.type, active: true } } });
+        ? (q) => paginate(extJournals(extAcc), q, journalJson)
+        : () => ({ data: { type: 'accounts', id: accRoute[1], attributes: { name: extAcc.name, type: extAcc.type, active: true } } });
     }
     if (acc) {
       handler = accRoute[2]
@@ -679,6 +679,25 @@ http
         // wie der Workflow firefly-buchung-bearbeiten: Gegenkonto wirklich setzen (für den CSV-Abgleich).
         // /webhook/teilweise speichert nur die erste Hälfte und antwortet dann mit 504 (wie ein Abbruch)
         const data = body ? JSON.parse(body) : {};
+        if (data.typ === 'csv_import') {
+          // wie Data Importer (VR-Bank-Spalten): neue Buchungen anlegen
+          const text = Buffer.from(data.csv_base64 || '', 'base64').toString('utf8');
+          const lines = text.split(/\r?\n/).filter(Boolean).slice(1);
+          const cut = (l) => { const out = []; let f = ''; let q = false; for (const c of l) { if (q) { if (c === '"') q = false; else f += c; } else if (c === '"') q = true; else if (c === ';') { out.push(f); f = ''; } else f += c; } out.push(f); return out; };
+          let added = 0;
+          for (const l of lines) {
+            const r = cut(l);
+            const [dd, mm, yy] = String(r[5] || r[4]).split('.');
+            const amount = Number(String(r[11]).replace(/\./g, '').replace(',', '.'));
+            if (!yy || !amount) continue;
+            const date = new Date(Number(yy), Number(mm) - 1, Number(dd));
+            if (amount < 0) add(date, 'withdrawal', -amount, r[10] || r[9], giro, ext(r[6] || '(no name)'), { notes: r[9] });
+            else add(date, 'deposit', amount, r[10] || r[9], ext(r[6] || '(no name)'), giro, { notes: r[9] });
+            added += 1;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ ok: true, zeilen: added }));
+        }
         if (data.typ === 'konten_zusammenfuehren' || data.typ === 'konten_loeschen') {
           // wie der Zweig „Konten?“: Buchungen verschieben (Bulk), umbenennen, leere Konten löschen
           const rename = (e, to) => {

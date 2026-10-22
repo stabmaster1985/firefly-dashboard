@@ -8,7 +8,8 @@ import * as api from './api.js';
 import { money, esc, fmtDate, addDays, storage, store } from './util.js';
 import { card, counterparty, fireflyTxUrl, downloadCsv } from './common.js';
 import { actionFor, runAction } from './txedit.js';
-import { decodeCsv, readRows, matchRows, changeFor, statusFor, fingerprints, hasNoParty, betterDescription, paymentKind } from './csvmatch.js';
+import { decodeCsv, readRows, matchRows, changeFor, statusFor, fingerprints, hasNoParty, betterDescription, paymentKind, buildCsv } from './csvmatch.js';
+import { analyzeImportConfig } from './cleanupcore.js';
 
 const STATUS = {
   neu: ['Empfänger fehlt – wird ergänzt', 'good'],
@@ -48,6 +49,7 @@ export async function csvSync(view) {
       ${card('s-files', 'Bank-CSV abgleichen', { meta: '<span class="muted">Dateien bleiben in deinem Browser</span>' })}
       ${card('s-open', 'Noch nicht umgestellt: Buchungen ohne Empfänger in Firefly', { meta: '<span id="s-open-meta"></span>' })}
       ${card('s-result', 'Ergebnis', { filter: true, meta: '<span id="s-meta"></span>' })}
+      ${card('s-import', 'Neue Zeilen importieren', { meta: '<span class="muted">nur, was in Firefly noch fehlt</span>' })}
     </div>`;
   const $ = (id) => view.querySelector(`#${id}`);
   let results = [];
@@ -103,13 +105,17 @@ export async function csvSync(view) {
     <div id="s-info" class="sync-info"></div>`;
   renderMemory();
 
+  let lastFiles = [];
+  const fileHeaders = new Map(); // Datei → Kopfzeile (für den Import neuer Zeilen)
   const load = async (files) => {
+    lastFiles = files;
     const info = $('s-info');
     info.innerHTML = '<span class="muted">Lese Dateien …</span>';
     const rows = [];
     const notes = [];
     for (const f of files) {
       const parsed = readRows(decodeCsv(await f.arrayBuffer()), f.name);
+      fileHeaders.set(f.name, parsed.header);
       rows.push(...parsed.rows);
       notes.push(`${esc(f.name)}: ${parsed.rows.length} Zeilen${parsed.hasHeader ? '' : ' (ohne erkannte Kopfzeile – Spalten wie im VR-Bank-Export angenommen)'}${parsed.cols.name === undefined ? ' · <b>keine Spalte mit Namen gefunden</b>' : ''}`);
     }
@@ -170,6 +176,7 @@ export async function csvSync(view) {
     if (synced.length) memoryCall('POST', { items: synced.map((r) => ({ fp: r.fp, j: r.t.transaction_journal_id, name: r.row.name })) }).then(renderMemory);
     if (openScan && !openScan.loading) renderOpen(); // Abgleich mit „noch nicht umgestellt“
     render();
+    renderImport();
   };
 
   const count = (s) => results.filter((r) => r.status === s).length;
@@ -724,6 +731,112 @@ export async function csvSync(view) {
     }
   });
   renderOpen();
+
+  // ---- Neue Zeilen importieren (über den Firefly Data Importer) ------------------------
+  // Nur Zeilen, die das Dashboard in Firefly NICHT gefunden hat – so wird nichts doppelt importiert.
+  let importConfig = await fetch('/local/cleanup/importconfig').then((r) => r.json()).catch(() => ({ config: null }));
+  const importAction = await actionFor('csv-import');
+  const IMPORT_CHUNK = 150; // Zeilen je Aufruf (Grenze: Anfragegröße an den Dashboard-Server)
+  const toBase64 = (text) => {
+    const bytes = new TextEncoder().encode(text);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  };
+  function renderImport() {
+    const el = $('s-import');
+    const fresh = results.filter((r) => r.status === 'nicht-gefunden');
+    if (!results.length) {
+      el.innerHTML = '<div class="empty">Erst oben CSV-Dateien einlesen – dann stehen hier die Zeilen, die in Firefly noch fehlen.</div>';
+      return;
+    }
+    const cfg = importConfig?.config;
+    let warn = '';
+    if (cfg) {
+      try {
+        const a = analyzeImportConfig(cfg, []);
+        if (!cfg.roles.includes('opposing-name')) warn = 'Diese Konfiguration ordnet keinen Gegenkonto-Namen zu – neue Buchungen kämen wieder ohne Empfänger an. Besser die korrigierte Konfiguration hochladen.';
+        else if (a.columns.some((c) => c.role === 'category-name' && c.mapped > 30)) warn = 'Diese Konfiguration nutzt noch die Übersetzungstabelle als Kategorie.';
+      } catch (err) {
+        warn = err.message;
+      }
+    }
+    const byFile = new Map();
+    for (const r of fresh) byFile.set(r.row.file, (byFile.get(r.row.file) || 0) + 1);
+    el.innerHTML = `
+      <p class="sync-intro">Zeilen, zu denen das Dashboard in Firefly <b>keine</b> Buchung gefunden hat, lassen sich direkt importieren: Es schickt nur diese Zeilen
+        (als CSV mit der Original-Kopfzeile) samt Import-Konfiguration an den Firefly Data Importer. Was schon in Firefly ist, geht nicht noch einmal hin.</p>
+      <div class="sync-info">Import-Konfiguration: ${cfg ? `<b>${esc(importConfig.file || 'gespeichert')}</b> (seit ${fmtDate(importConfig.at)})` : '<b>noch keine</b>'}
+        · <label class="link-btn file-link">${cfg ? 'andere wählen' : 'JSON-Datei wählen'}<input type="file" accept=".json,application/json" id="s-cfg" hidden></label>
+        <span class="muted">– die Konfiguration des Data Importers, am besten die korrigierte (Gegenkonto-Name zugeordnet); liegt auf dem Server</span></div>
+      ${warn ? `<div class="ai-hint">${esc(warn)}</div>` : ''}
+      ${fresh.length ? `<p class="sync-top"><b>${fresh.length}</b> Zeile${fresh.length === 1 ? '' : 'n'} nicht in Firefly: ${[...byFile].map(([f, n]) => `${esc(f)} (${n})`).join(', ')}
+        · <button class="link-btn" data-filter-import>ansehen</button></p>` : '<div class="empty">Alle Zeilen der Dateien sind schon in Firefly. 🎉</div>'}
+      <div class="sync-run">
+        ${importAction ? `<button class="btn primary" id="s-import-run" ${fresh.length && cfg ? '' : 'disabled'}>${fresh.length} neue Zeilen importieren</button>
+          <span class="muted">über „${esc(importAction.name)}“ – in Teilen zu ${IMPORT_CHUNK} Zeilen</span>`
+        : '<span class="muted">Zum Importieren eine Automation mit Auslöser „CSV importieren (Data Importer)“ anlegen (Workflow n8n/firefly-csv-import.json).</span>'}
+        <div class="run-out" id="s-import-out"></div>
+      </div>`;
+  }
+  async function runImport(btn) {
+    const fresh = results.filter((r) => r.status === 'nicht-gefunden');
+    if (!fresh.length || !importConfig?.config) return;
+    if (!window.confirm(`${fresh.length} Zeilen an den Firefly Data Importer schicken?\n\nNur Zeilen, die in Firefly nicht gefunden wurden. Danach die Dateien erneut einlesen – dann sollten sie als „schon synchron“ erscheinen.`)) return;
+    btn.disabled = true;
+    const out = $('s-import-out');
+    const byFile = new Map();
+    for (const r of fresh) {
+      if (!byFile.has(r.row.file)) byFile.set(r.row.file, []);
+      byFile.get(r.row.file).push(r);
+    }
+    let sent = 0;
+    for (const [file, list] of byFile) {
+      for (let k = 0; k < list.length; k += IMPORT_CHUNK) {
+        const part = list.slice(k, k + IMPORT_CHUNK);
+        out.innerHTML = `<span class="muted">Importiere ${sent + 1}–${sent + part.length} von ${fresh.length} …</span>`;
+        const csv = buildCsv(fileHeaders.get(file), part.map((r) => r.row.raw));
+        const payload = {
+          typ: 'csv_import', dateiname: `${file.replace(/\.csv$/i, '')}-neu-${k / IMPORT_CHUNK + 1}.csv`, zeilen: part.length,
+          csv_base64: toBase64(csv), konfiguration: importConfig.config,
+        };
+        const res = await runAction(importAction, payload).catch((err) => ({ ok: false, response: err.message }));
+        if (!res.ok) {
+          out.innerHTML = `<span class="badge bad">Fehler ${esc(res.status || '')}</span> <span class="muted">nach ${sent} Zeilen: ${esc(String(res.response || '').slice(0, 300))}</span>`;
+          btn.disabled = false;
+          return;
+        }
+        sent += part.length;
+      }
+    }
+    api.forget();
+    out.innerHTML = `<span class="badge good">${sent} Zeilen an den Data Importer übergeben ✓</span>
+      <button class="link-btn" data-reload-files>Dateien jetzt erneut abgleichen</button> <span class="muted">– danach sollten sie als „schon synchron“ erscheinen.</span>`;
+  }
+  $('s-import').addEventListener('click', (e) => {
+    if (e.target.id === 's-import-run') return runImport(e.target);
+    if (e.target.closest('[data-reload-files]') && lastFiles.length) return load(lastFiles);
+    if (e.target.closest('[data-filter-import]')) {
+      filter = 'nicht-gefunden';
+      render();
+      $('s-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+  $('s-import').addEventListener('change', async (e) => {
+    if (e.target.id !== 's-cfg' || !e.target.files[0]) return;
+    try {
+      const file = e.target.files[0];
+      const config = JSON.parse(await file.text());
+      const res = await fetch('/local/cleanup/importconfig', { method: 'PUT', headers, body: JSON.stringify({ file: file.name, config }) });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.message || `HTTP ${res.status}`);
+      importConfig = body;
+    } catch (err) {
+      window.alert(`Konfiguration nicht übernommen: ${err.message}`);
+    }
+    renderImport();
+  });
+  renderImport();
 
   render();
 }

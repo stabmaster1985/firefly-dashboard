@@ -115,9 +115,10 @@ export function readRows(text, file = '') {
       file, line: i + (hasHeader ? 2 : 1), date, book: parseDay(get(r, 'book')) || date, amount,
       name: get(r, 'name'), iban: get(r, 'iban').replace(/\s+/g, ''), bic: get(r, 'bic'),
       text: get(r, 'text'), purpose: get(r, 'purpose'), own: get(r, 'own').replace(/\s+/g, ''),
+      raw: r, // Originalfelder – für den Import neuer Zeilen
     });
   });
-  return { rows: out, hasHeader, cols };
+  return { rows: out, hasHeader, cols, header: hasHeader ? rows[0] : null };
 }
 
 const norm = (s) => String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -216,6 +217,12 @@ export function matchRows(rows, txs) {
   // Kandidaten, die inzwischen anderen Zeilen zugeordnet sind, kennzeichnen
   for (const r of out) if (r.candidates) r.candidates = r.candidates.map((t) => ({ t, used: used.has(idOf(t)) }));
   return out;
+}
+
+/** CSV-Datei aus Kopfzeile und Originalfeldern bauen (Trennzeichen ;, Anführungszeichen nur wo nötig). */
+export function buildCsv(header, rows) {
+  const cell = (v) => (/[;"\r\n]/.test(String(v ?? '')) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? ''));
+  return [header, ...rows].filter(Boolean).map((r) => r.map(cell).join(';')).join('\r\n') + '\r\n';
 }
 
 /** Kurzer Hash (cyrb53) – auch ohne crypto.subtle (das fehlt bei http im LAN). */
