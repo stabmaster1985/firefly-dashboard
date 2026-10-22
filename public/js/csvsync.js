@@ -8,8 +8,9 @@ import * as api from './api.js';
 import { money, esc, fmtDate, addDays, storage, store } from './util.js';
 import { card, counterparty, fireflyTxUrl, downloadCsv } from './common.js';
 import { actionFor, runAction } from './txedit.js';
-import { decodeCsv, readRows, matchRows, changeFor, statusFor, fingerprints, hasNoParty, betterDescription, paymentKind, buildCsv } from './csvmatch.js';
+import { decodeCsv, readRows, uniqueRows, matchRows, changeFor, statusFor, fingerprints, hasNoParty, betterDescription, paymentKind, buildCsv } from './csvmatch.js';
 import { analyzeImportConfig } from './cleanupcore.js';
+import { csvArchive } from './csvarchive.js';
 
 const STATUS = {
   neu: ['Empfänger fehlt – wird ergänzt', 'good'],
@@ -47,7 +48,8 @@ const MAX_ROWS = 600;
 export async function csvSync(view) {
   view.innerHTML = `
     <div class="grid">
-      ${card('s-files', 'Bank-CSV abgleichen', { meta: '<span class="muted">Dateien bleiben in deinem Browser</span>' })}
+      ${card('s-archive', 'CSV-Archiv: alle Dateien nach Konto', { meta: '<span class="muted">liegt auf dem Server</span>' })}
+      ${card('s-files', 'Bank-CSV abgleichen', { meta: '<span class="muted">aus dem Archiv oder einzelne Dateien direkt</span>' })}
       ${card('s-open', 'Noch nicht umgestellt: Buchungen ohne Empfänger in Firefly', { meta: '<span id="s-open-meta"></span>' })}
       ${card('s-result', 'Ergebnis', { filter: true, meta: '<span id="s-meta"></span>' })}
       ${card('s-import', 'Neue Zeilen importieren', { meta: '<span class="muted">nur, was in Firefly noch fehlt</span>' })}
@@ -125,21 +127,7 @@ export async function csvSync(view) {
       info.innerHTML = `<div class="empty">Keine Buchungszeilen gefunden.</div>${notes.join('<br>')}`;
       return;
     }
-    // überlappende Dateien: eine Zeile so oft, wie sie in einer Datei höchstens vorkommt
-    // (zweimal 2,50 € beim Bäcker in derselben Datei bleiben zwei Zeilen)
-    const keyOf = (r) => [r.date, r.amount, r.name, r.purpose, r.text].join('|');
-    const max = new Map();
-    for (const f of new Set(rows.map((r) => r.file))) {
-      const perFile = new Map();
-      rows.filter((r) => r.file === f).forEach((r) => perFile.set(keyOf(r), (perFile.get(keyOf(r)) || 0) + 1));
-      perFile.forEach((n, k) => max.set(k, Math.max(max.get(k) || 0, n)));
-    }
-    const unique = rows.filter((r) => {
-      const k = keyOf(r);
-      if (!max.get(k)) return false;
-      max.set(k, max.get(k) - 1);
-      return true;
-    });
+    const unique = uniqueRows(rows);
     // schon früher übertragene Zeilen nicht noch einmal abgleichen
     const fps = fingerprints(unique);
     const known = [];
@@ -180,6 +168,15 @@ export async function csvSync(view) {
     render();
     renderImport();
   };
+
+  // Archiv: ausgewählte Dateien landen hier im Abgleich
+  csvArchive($('s-archive'), {
+    memory: () => memory,
+    load: async (files) => {
+      await load(files);
+      $('s-files').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+  });
 
   const count = (s) => results.filter((r) => r.status === s).length;
   /** Kurzansicht einer Firefly-Buchung: so steht sie heute dort. */

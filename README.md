@@ -392,6 +392,12 @@ zugeordnet, steht in Firefly als Empfänger nur „(no name)“ o. ä. – Händ
 kaum auswerten. Unter **Prüfen → CSV abgleichen** (`#/abgleich`) die Original-CSV-Dateien
 wählen (gern alle auf einmal, überlappende Zeilen zählen nur einmal):
 
+- **CSV-Archiv**: Alle Bank-CSV-Dateien einmal hochladen (auch einen ganzen Ordner); sie bleiben
+  auf dem Server (`DATA_DIR/csv-archive`, gleiche Dateien nur einmal) und werden nach Konto
+  sortiert – mit Zeitraum, Lücken ohne CSV und auf Knopfdruck dem Stand in Firefly (wie viele
+  Zeilen dort sind, wie viele ohne Empfänger, welche fehlen). Ausgewählte Konten oder Dateien
+  gehen per „Ausgewählte abgleichen“ in den Abgleich.
+
 - Die Dateien werden **nur im Browser** gelesen (UTF-8 oder Windows-1252, `;` oder `,`), Spalten
   an der Kopfzeile erkannt (VR-Banken: „Name Zahlungsbeteiligter“, „IBAN Zahlungsbeteiligter“,
   „Buchungstext“, „Verwendungszweck“ …; Sparkassen u. a. ähnlich).

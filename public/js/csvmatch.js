@@ -121,6 +121,26 @@ export function readRows(text, file = '') {
   return { rows: out, hasHeader, cols, header: hasHeader ? rows[0] : null };
 }
 
+/**
+ * Zeilen aus überlappenden Dateien zusammenführen: eine Zeile so oft, wie sie in einer Datei
+ * höchstens vorkommt (zweimal 2,50 € beim Bäcker in derselben Datei bleiben zwei Zeilen).
+ */
+export function uniqueRows(rows) {
+  const keyOf = (r) => [r.date, r.amount, r.name, r.purpose, r.text].join('|');
+  const max = new Map();
+  for (const f of new Set(rows.map((r) => r.file))) {
+    const perFile = new Map();
+    rows.filter((r) => r.file === f).forEach((r) => perFile.set(keyOf(r), (perFile.get(keyOf(r)) || 0) + 1));
+    perFile.forEach((n, k) => max.set(k, Math.max(max.get(k) || 0, n)));
+  }
+  return rows.filter((r) => {
+    const k = keyOf(r);
+    if (!max.get(k)) return false;
+    max.set(k, max.get(k) - 1);
+    return true;
+  });
+}
+
 const norm = (s) => String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
 const cents = (x) => Math.round(Math.abs(Number(x)) * 100);
 const dayNum = (iso) => Math.round(Date.parse(`${String(iso).slice(0, 10)}T12:00:00Z`) / 86400000);

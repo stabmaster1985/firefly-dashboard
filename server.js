@@ -16,6 +16,7 @@ import { createVersion } from './lib/version.js';
 import { createGroups } from './lib/groups.js';
 import { createAi } from './lib/ai.js';
 import { createCsvSync } from './lib/csvsync.js';
+import { createCsvArchive } from './lib/csvarchive.js';
 import { createCleanup } from './lib/cleanup.js';
 import { createAuth } from './lib/auth.js';
 
@@ -93,6 +94,7 @@ const handleGroups = createGroups(DATA_DIR);
 
 // CSV-Abgleich: welche CSV-Zeilen schon übertragen wurden
 const handleCsvSync = createCsvSync(DATA_DIR);
+const handleCsvArchive = createCsvArchive(DATA_DIR);
 
 // Daten aufräumen: vorbereitete Pläne (Regeln aus der Import-Konfiguration, Konten zusammenführen)
 const handleCleanup = createCleanup(DATA_DIR);
@@ -198,6 +200,7 @@ const server = http.createServer(async (req, res) => {
   if (['/local/settings', '/local/goals', '/local/alerts', '/local/rules', '/local/dismissed'].includes(url.pathname)) return handleAutomation(req, res, url);
   if (url.pathname.startsWith('/local/ai/')) return handleAi(req, res, url);
   if (url.pathname === '/local/csvsync') return handleCsvSync(req, res);
+  if (url.pathname === '/local/csvarchive' || url.pathname.startsWith('/local/csvarchive/')) return handleCsvArchive(req, res, url);
   if (url.pathname.startsWith('/local/cleanup/')) return handleCleanup(req, res, url);
   if (url.pathname === '/local/groups' || url.pathname.startsWith('/local/groups/')) return handleGroups(req, res, url);
   if (url.pathname === '/local/version') {

@@ -1049,3 +1049,25 @@ button.cal-day { cursor: pointer; }
 .ask-table th { text-align: left; font-weight: 600; font-size: 12px; color: var(--text-secondary, inherit); padding: 4px 6px; }
 .ask-table th.num { text-align: right; }
 .ask-table td.num, .ask-table th.num { white-space: nowrap; }
+/* CSV-Archiv */
+.arch-drop { display: flex; gap: 10px; align-items: stretch; flex-wrap: wrap; }
+.arch-drop .drop { flex: 1 1 260px; }
+.arch-drop > .btn { align-self: center; }
+.arch-busy, .arch-note { margin: 10px 0 0; font-size: 13px; }
+.arch-list { display: grid; gap: 10px; margin-top: 14px; }
+.arch-acc { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+.arch-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.arch-toggle { border: 0; background: none; font: inherit; color: var(--text-primary); cursor: pointer; padding: 2px 0; text-align: left; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.arch-toggle::before { content: '▸'; color: var(--text-secondary); }
+.arch-toggle[aria-expanded="true"]::before { content: '▾'; }
+.arch-meta { color: var(--text-secondary); font-size: 13px; margin-left: auto; }
+.arch-status { font-size: 13px; margin: 6px 0 0 26px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.arch-gaps { font-size: 12px; color: var(--text-secondary); margin: 4px 0 0 26px; }
+.arch-files { width: 100%; margin-top: 8px; font-size: 13px; border-collapse: collapse; }
+.arch-files td { padding: 4px 6px; border-top: 1px solid var(--border); vertical-align: top; }
+.arch-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+.arch-actions .muted { font-size: 12px; flex: 1 1 260px; }
+@media (max-width: 760px) {
+  .arch-meta { margin-left: 26px; width: 100%; }
+  .arch-files td:nth-child(5) { display: none; }
+}

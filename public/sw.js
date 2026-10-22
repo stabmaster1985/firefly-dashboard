@@ -1,7 +1,7 @@
 // Service Worker: App sofort starten (auch offline) und zuletzt geladene
 // Daten zeigen, wenn der Server nicht erreichbar ist.
 
-const VERSION = 'ffd-25';
+const VERSION = 'ffd-26';
 const SHELL = `${VERSION}-shell`;
 const DATA = `${VERSION}-data`;
 const MAX_DATA_ENTRIES = 400;
@@ -61,6 +61,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
   if (url.pathname === '/login' || url.pathname === '/logout') return; // Anmeldung immer direkt vom Server
+  if (url.pathname.startsWith('/local/csvarchive/file/')) return; // große Dateien: nur Browser-Cache (unveränderlich)
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/local/')) {
     if (url.pathname === '/local/stats') return;
     event.respondWith(networkFirst(request));
