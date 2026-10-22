@@ -79,6 +79,20 @@ function add(date, type, amount, description, source, destination, extra = {}) {
   });
 }
 
+// Gegenkonten (Ausgaben-/Einnahmenkonten) mit festen Kennungen – wie in Firefly
+const extIds = new Map(); // "type|name" → id
+const extById = new Map(); // id → { type, name }
+function extId(type, name) {
+  const k = `${type}|${name}`;
+  if (!extIds.has(k)) {
+    const id = String(1000 + extIds.size);
+    extIds.set(k, id);
+    extById.set(id, { type, name });
+  }
+  return extIds.get(k);
+}
+const extJournals = (e) => journals.filter((j) => (e.type === 'expense' ? j.type === 'withdrawal' && j.destination.name === e.name : j.type === 'deposit' && j.source.name === e.name));
+
 const giro = ACCOUNTS[0];
 const tagesgeld = ACCOUNTS[1];
 const kk = ACCOUNTS[2];
@@ -136,6 +150,9 @@ for (let m = new Date(firstDay); m <= today; m = new Date(m.getFullYear(), m.get
   if (rand() < 0.4) add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(10, 90), pick(['Apotheke', 'Zahnarzt Zuzahlung', 'Physiotherapie']), giro, ext('Praxis / Apotheke'), { category: 'Gesundheit' });
   if (mo === 6) add(day(14), 'withdrawal', 1240, 'Sommerurlaub Ostsee', kk, ext('Booking.com'), { category: 'Urlaub', tags: ['Urlaub'] });
   if (rand() < 0.3) add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(20, 60), 'Geschenk', kk, ext(pick(['Thalia', 'Blumen Meyer', 'Amazon'])), { category: 'Geschenke' });
+  // Schreibvarianten desselben Händlers (für „Gegenkonten zusammenführen“)
+  if (rand() < 0.5) add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(12, 60), 'Einkauf REWE', giro, ext(pick(['REWE SAGT DANKE 4711', 'REWE Markt GmbH'])), { category: 'Lebensmittel' });
+  if (rand() < 0.4) add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(9, 40), 'Einkauf Lidl', giro, ext('LIDL SAGT DANKE'), { category: 'Lebensmittel' });
   // Import ohne „Name Zahlungsbeteiligter“: kein Empfänger, Beschreibung nur Bank-Standardtext,
   // der Händler steht nur in den Notizen (Verwendungszweck) – für die Händlererkennung
   for (let i = 0; i < 3; i++) {
@@ -361,8 +378,10 @@ const routes = {
     const type = q.get('type') || 'all';
     if (type === 'expense' || type === 'revenue') {
       const want = type === 'expense' ? 'withdrawal' : 'deposit';
-      const names = [...new Set(journals.filter((j) => j.type === want).map((j) => (want === 'withdrawal' ? j.destination.name : j.source.name)))].sort();
-      return paginate(names, q, (name, i) => ({ type: 'accounts', id: String(100 + i), attributes: { name, type, active: true } }));
+      // wie Firefly: leere Konten bleiben bestehen, bis sie gelöscht werden
+      const names = [...new Set([...journals.filter((j) => j.type === want).map((j) => (want === 'withdrawal' ? j.destination.name : j.source.name)),
+        ...[...extById.values()].filter((e) => e.type === type && !e.deleted).map((e) => e.name)])].sort();
+      return paginate(names, q, (name) => ({ type: 'accounts', id: extId(type, name), attributes: { name, type, active: true, iban: null } }));
     }
     const list = ['asset', 'all'].includes(type) ? ACCOUNTS : [];
     return paginate(list, q, (a) => ({
@@ -609,6 +628,12 @@ http
     const cat = key.match(/^categories\/(\d+)(\/transactions)?$/);
     const accRoute = key.match(/^accounts\/(\d+)(\/transactions)?$/);
     const acc = accRoute && ACCOUNTS.find((a) => a.id === accRoute[1]);
+    const ext = accRoute && !acc && !extById.get(accRoute[1])?.deleted && extById.get(accRoute[1]);
+    if (ext) {
+      handler = accRoute[2]
+        ? (q) => paginate(extJournals(ext), q, journalJson)
+        : () => ({ data: { type: 'accounts', id: accRoute[1], attributes: { name: ext.name, type: ext.type, active: true } } });
+    }
     if (acc) {
       handler = accRoute[2]
         ? (q) => {
@@ -654,6 +679,34 @@ http
         // wie der Workflow firefly-buchung-bearbeiten: Gegenkonto wirklich setzen (für den CSV-Abgleich).
         // /webhook/teilweise speichert nur die erste Hälfte und antwortet dann mit 504 (wie ein Abbruch)
         const data = body ? JSON.parse(body) : {};
+        if (data.typ === 'konten_zusammenfuehren' || data.typ === 'konten_loeschen') {
+          // wie der Zweig „Konten?“: Buchungen verschieben (Bulk), umbenennen, leere Konten löschen
+          const rename = (e, to) => {
+            for (const j of extJournals(e)) {
+              if (e.type === 'expense') j.destination = { id: null, name: to };
+              else j.source = { id: null, name: to };
+            }
+          };
+          for (const p of data.paare || []) {
+            const from = extById.get(String(p.von));
+            const to = extById.get(String(p.nach));
+            if (from && to && from.type === to.type) rename(from, to.name);
+          }
+          for (const r of data.umbenennen || []) {
+            const e = extById.get(String(r.id));
+            if (!e) continue;
+            rename(e, r.name);
+            extIds.delete(`${e.type}|${e.name}`);
+            e.name = r.name;
+            extIds.set(`${e.type}|${e.name}`, String(r.id));
+          }
+          for (const id of data.ids || []) {
+            const e = extById.get(String(id));
+            if (e && !extJournals(e).length) e.deleted = true;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ ok: true, anzahl: (data.paare || data.ids || []).length }));
+        }
         if (data.typ === 'gegenkonto_setzen') {
           const list = data.aenderungen || [];
           const apply = (a) => {

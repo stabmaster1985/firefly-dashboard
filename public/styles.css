@@ -989,3 +989,25 @@ button.cal-day { cursor: pointer; }
 .sync-total { margin: 4px 0 12px; display: grid; gap: 6px; }
 .sync-total-num { font-size: 14px; }
 .sync-total .progress { height: 10px; }
+
+/* Daten aufräumen */
+.imp-tools { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 12px 0 8px; }
+.imp-tools .input { flex: 1 1 220px; min-width: 0; }
+.imp-table td { vertical-align: top; }
+.imp-table tr.off td:not(:first-child) { opacity: .5; }
+.imp-table .imp-cat td { background: var(--surface-2); }
+.imp-cond { display: flex; flex-wrap: wrap; gap: 4px; }
+.imp-table select, .imp-table input:not([type=checkbox]), .merge-rename input { font: inherit; font-size: 13px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary); min-width: 0; }
+.imp-cond input { flex: 1 1 160px; }
+.imp-table td > input[data-f="category"] { width: 100%; box-sizing: border-box; }
+.file-link { cursor: pointer; }
+.merge-list { display: grid; gap: 10px; margin-top: 12px; }
+.merge-group { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.merge-group.ignoriert, .merge-group.erledigt { opacity: .65; }
+.merge-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+.merge-head .merge-btns { margin-left: auto; white-space: nowrap; }
+.merge-table { width: 100%; margin-top: 6px; }
+.merge-table tr.off td:nth-child(n+3) { opacity: .5; text-decoration: line-through; }
+.merge-rename { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; margin-top: 6px; }
+.merge-rename input { flex: 1 1 200px; }
+.merge-empty { font-size: 13px; margin-top: 6px; color: var(--text-secondary); }

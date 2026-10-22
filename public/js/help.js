@@ -73,6 +73,14 @@ export const PAGES = {
     firefly: 'Nur lesen. Doppelte löschst du in Firefly selbst („In Firefly öffnen“ in den Details). Der Import-Knopf startet deinen n8n-Import-Workflow – was der in Firefly tut, bestimmt der Workflow.',
     cards: ['c-import', 'c-backup', 'c-dup'],
   },
+  cleanup: {
+    title: 'Daten aufräumen',
+    what: 'Vorschläge, die erst im Dashboard vorbereitet und angepasst und dann per Knopf nach Firefly übertragen werden. Pläne liegen auf dem Server und gelten auf allen Geräten und nach Updates.',
+    app: 'Regeln aus der Import-Konfiguration: die JSON-Datei des Firefly Data Importers hochladen – das Dashboard zeigt die Spaltenzuordnung mit Hinweisen und macht aus der Übersetzungstabelle „Händler → Kategorie“ Regelvorschläge (gleichartige Namen wie Filialnummern zusammengefasst zu „enthält …“). Jede Regel lässt sich ein-/ausschalten, Vergleich, Name, Kategorie und Richtung (Empfänger/Zahler) ändern; Treffer und „würde ändern“ beziehen sich auf die letzten 24 Monate. Gegenkonten zusammenführen: ähnliche Namen (Filialnummern, „sagt Danke“, Groß/klein) oder gleiche IBAN werden gruppiert; je Gruppe Zielkonto, Mitglieder und neuen Namen wählen, ignorieren oder auswählen.',
+    firefly: 'Erst die Knöpfe ändern etwas: „Regeln in Firefly anlegen“ legt die aktiven Regeln in der Regelgruppe „Dashboard: Händler → Kategorie (Import)“ an bzw. gleicht sie ab (Automation „Firefly-Regeln anlegen“), auf Wunsch auch auf vorhandene Buchungen angewendet. „Zusammenführen“ lässt Firefly alle Buchungen der gewählten Konten auf das Zielkonto verschieben (Automation „Kategorie übernehmen“, Zweig „Konten?“) – Kategorien, Tags, Beträge bleiben; leere Konten werden danach nur auf ausdrücklichen Klick gelöscht. ' + VIA_N8N,
+    tips: ['Reihenfolge: erst CSV-Abgleich (Empfänger nachtragen), dann Gegenkonten zusammenführen, dann die Regeln übertragen – so passen Treffer und Namen.', 'Eine erneut hochgeladene Datei ersetzt nur die Vorschläge; deine Anpassungen bleiben.'],
+    cards: ['a-import', 'a-merge'],
+  },
   csvsync: {
     title: 'CSV-Abgleich',
     what: 'Fehlende Empfänger aus den Original-CSV-Dateien der Bank nachtragen – z. B. wenn „Name Zahlungsbeteiligter“ beim Import nicht als Gegenkonto zugeordnet war und in Firefly nur „(no name)“ bzw. „Kartenzahlung“ steht.',

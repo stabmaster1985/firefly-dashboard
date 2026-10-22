@@ -322,6 +322,8 @@ export function describeRule(rule) {
 export function toFireflyRules(rules) {
   const TRIGGER = {
     party: { contains: 'destination_account_contains', equals: 'destination_account_is', startsWith: 'destination_account_starts' },
+    // Einnahmen: der Zahler ist in Firefly das Quellkonto
+    payer: { contains: 'source_account_contains', equals: 'source_account_is', startsWith: 'source_account_starts' },
     description: { contains: 'description_contains', equals: 'description_is', startsWith: 'description_starts' },
     notes: { contains: 'notes_contains', equals: 'notes_is', startsWith: 'notes_starts' },
     amount: { gt: 'amount_more', lt: 'amount_less', equals: 'amount_exactly' },
@@ -347,7 +349,7 @@ export function toFireflyRules(rules) {
         triggers.push({ type: 'date_after', value: shift(c.value, -1) }, { type: 'date_before', value: shift(c.value2, 1) });
         continue;
       }
-      const type = TRIGGER[c.field]?.[c.op];
+      const type = TRIGGER[c.field === 'party' && r.direction === 'deposit' ? 'payer' : c.field]?.[c.op];
       if (type) triggers.push({ type, value: String(c.value) });
       else unsupported = true;
     }

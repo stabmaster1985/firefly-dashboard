@@ -430,6 +430,36 @@ zuordnen. Achtung: Mit geänderter Zuordnung erkennt die „klassische“ Dublet
 importierte Zeilen nicht mehr – alte Dateien also nicht erneut importieren, und die erste neue
 Datei erst ab dem Tag nach dem letzten Import beginnen lassen.
 
+### Daten aufräumen (Prüfen → Aufräumen)
+
+Alles wird erst im Dashboard vorbereitet und angepasst; gespeichert auf dem Server
+(`DATA_DIR/cleanup-import.json`, `cleanup-merge.json`, mit Sicherung) – gilt also auf allen
+Geräten und nach Updates. Nach Firefly geht erst etwas per Knopf.
+
+- **Regeln aus der Import-Konfiguration:** Die JSON-Datei des Firefly Data Importers hochladen.
+  Das Dashboard zeigt die Spaltenzuordnung (bei VR-Bank-Exporten mit Spaltennamen) samt Hinweisen
+  (z. B. „Name Zahlungsbeteiligter ist als Kategorie zugeordnet“) und macht aus der
+  Übersetzungstabelle „Händler → Kategorie“ Regelvorschläge: Kategorie-Nummern werden über
+  Firefly in Namen übersetzt, gleichartige Namen (Filialnummern, „sagt Danke“, Schreibweisen) zu
+  „Empfänger enthält …“ zusammengefasst, Einnahmen (z. B. Arbeitgeber) als „Zahler“ erkannt.
+  Jede Regel lässt sich ein-/ausschalten und in Richtung, Vergleich, Name und Kategorie ändern;
+  Treffer und „würden geändert“ gelten für die letzten 24 Monate. Eine erneut hochgeladene Datei
+  ersetzt nur die Vorschläge, deine Anpassungen bleiben. **Regeln in Firefly anlegen** nutzt die
+  Automation „Firefly-Regeln anlegen“ (Regelgruppe „Dashboard: Händler → Kategorie (Import)“,
+  gleicht ab, ausgeschaltete werden entfernt), auf Wunsch auch auf vorhandene Buchungen.
+- **Ähnliche Gegenkonten zusammenführen:** Ausgaben- und Einnahmenkonten mit ähnlichem Namen
+  (Filialnummern, Rechtsformen, „sagt Danke“, Groß/klein) oder gleicher IBAN werden gruppiert.
+  Je Gruppe Zielkonto, Mitglieder und neuen Namen wählen, ignorieren oder für die
+  Sammelübertragung auswählen. **Zusammenführen** schickt `typ: konten_zusammenfuehren` an die
+  Automation „Kategorie übernehmen“; der Workflow (Zweig „Konten?“) lässt Firefly mit
+  `/api/v1/data/bulk/transactions` alle Buchungen eines Kontos auf das Zielkonto verschieben
+  (Kategorien, Tags, Beträge bleiben) und benennt das Ziel ggf. um. Danach prüft das Dashboard,
+  welche Konten leer sind; **leere Konten löschen** (`typ: konten_loeschen`) erst auf
+  ausdrücklichen Klick und nur, was gerade als leer bestätigt wurde.
+
+Empfohlene Reihenfolge: CSV-Abgleich (Empfänger nachtragen) → Gegenkonten zusammenführen →
+Regeln aus der Import-Konfiguration übertragen.
+
 ### Datensicherung von Firefly per n8n
 
 Die Firefly-API kann keine Datenbank-Sicherung auslösen (sie kennt nur CSV-Exporte, die sich

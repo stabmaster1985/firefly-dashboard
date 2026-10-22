@@ -17,6 +17,7 @@ import { createVersion } from './lib/version.js';
 import { createGroups } from './lib/groups.js';
 import { createAi } from './lib/ai.js';
 import { createCsvSync } from './lib/csvsync.js';
+import { createCleanup } from './lib/cleanup.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
@@ -92,6 +93,9 @@ const handleGroups = createGroups(DATA_DIR);
 
 // CSV-Abgleich: welche CSV-Zeilen schon übertragen wurden
 const handleCsvSync = createCsvSync(DATA_DIR);
+
+// Daten aufräumen: vorbereitete Pläne (Regeln aus der Import-Konfiguration, Konten zusammenführen)
+const handleCleanup = createCleanup(DATA_DIR);
 
 // KI-Analyse mit einem lokalen Ollama (optional, Labor)
 const handleAi = createAi({ dataDir: DATA_DIR, firefly });
@@ -213,6 +217,7 @@ const server = http.createServer((req, res) => {
   if (['/local/settings', '/local/goals', '/local/alerts', '/local/rules', '/local/dismissed'].includes(url.pathname)) return handleAutomation(req, res, url);
   if (url.pathname.startsWith('/local/ai/')) return handleAi(req, res, url);
   if (url.pathname === '/local/csvsync') return handleCsvSync(req, res);
+  if (url.pathname.startsWith('/local/cleanup/')) return handleCleanup(req, res, url);
   if (url.pathname === '/local/groups' || url.pathname.startsWith('/local/groups/')) return handleGroups(req, res, url);
   if (url.pathname === '/local/version') {
     return version.get({ force: url.searchParams.get('refresh') === '1' }).then((v) =>

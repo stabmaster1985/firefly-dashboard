@@ -669,6 +669,104 @@
       ],
       "notes": "Gleiche Header-Auth-Zugangsdaten wie „In Firefly speichern“. Fehler einzelner Buchungen halten den Lauf nicht an – das Dashboard prüft hinterher, was angekommen ist.",
       "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "k1c",
+              "leftValue": "={{ ['konten_zusammenfuehren', 'konten_loeschen'].includes($('Webhook').first().json.body.typ) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "k1",
+      "name": "Konten?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        800,
+        1060
+      ],
+      "notes": "„Daten aufräumen“ im Dashboard: Gegenkonten zusammenführen (Firefly-Sammelfunktion) und leere Konten löschen"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gegenkonten zusammenführen: Firefly verschiebt mit /data/bulk/transactions ALLE Buchungen\n// eines Kontos auf ein anderes (Kategorien, Tags, Beträge bleiben). Leere Konten löschen\n// kommt als eigener Aufruf – das Dashboard prüft vorher, dass sie wirklich leer sind.\nconst b = $('Webhook').first().json.body || {};\nconst base = $('Einstellungen').first().json.firefly_url + '/api/v1';\nconst items = [];\nif (b.typ === 'konten_zusammenfuehren') {\n  for (const p of b.paare || []) {\n    const query = JSON.stringify({ where: { account_id: Number(p.von) }, update: { account_id: Number(p.nach) } });\n    items.push({ json: { method: 'POST', url: base + '/data/bulk/transactions?query=' + encodeURIComponent(query), body: { query } } });\n  }\n  for (const r of b.umbenennen || []) items.push({ json: { method: 'PUT', url: base + '/accounts/' + r.id, body: { name: String(r.name) } } });\n}\nif (b.typ === 'konten_loeschen') {\n  for (const id of b.ids || []) items.push({ json: { method: 'DELETE', url: base + '/accounts/' + id, body: {} } });\n}\nif (!items.length) throw new Error('Nichts zu tun.');\nreturn items;"
+      },
+      "id": "k2",
+      "name": "Konten-Anfragen bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        1060
+      ]
+    },
+    {
+      "parameters": {
+        "method": "={{ $json.method }}",
+        "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.api+json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body || {}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "k3",
+      "name": "Konto-Anfrage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1240,
+        1060
+      ],
+      "notes": "Gleiche Header-Auth-Zugangsdaten wie die anderen Firefly-Knoten"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, anzahl: $input.all().length } }}",
+        "options": {}
+      },
+      "id": "k4",
+      "name": "Antwort Konten",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1460,
+        1060
+      ]
     }
   ],
   "connections": {
@@ -723,7 +821,7 @@
         ],
         [
           {
-            "node": "Hintergrund?",
+            "node": "Konten?",
             "type": "main",
             "index": 0
           }
@@ -973,6 +1071,46 @@
         [
           {
             "node": "In Portionen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Konten?": {
+      "main": [
+        [
+          {
+            "node": "Konten-Anfragen bauen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Hintergrund?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Konten-Anfragen bauen": {
+      "main": [
+        [
+          {
+            "node": "Konto-Anfrage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Konto-Anfrage": {
+      "main": [
+        [
+          {
+            "node": "Antwort Konten",
             "type": "main",
             "index": 0
           }

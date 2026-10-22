@@ -123,6 +123,12 @@ export async function check(view) {
           lassen sich die Namen nachtragen – mit Vorschau, Kategorien bleiben unverändert.</p></div>
         <a class="btn primary" href="#/abgleich">CSV-Dateien abgleichen →</a>
       </section>
+      <section class="card span-12 csv-teaser">
+        <div><h2>Daten aufräumen: Regeln aus der Import-Konfiguration, Gegenkonten zusammenführen</h2>
+          <p class="muted">Übersetzungstabelle „Händler → Kategorie“ aus der Data-Importer-JSON in Firefly-Regeln umwandeln und gleiche Händler unter
+          verschiedenen Namen zusammenführen – erst vorbereiten und anpassen, dann per Knopf übertragen.</p></div>
+        <a class="btn" href="#/aufraeumen">Aufräumen →</a>
+      </section>
       ${card('c-backup', 'Datensicherung (Firefly)', { meta: '<span id="c-backup-meta"></span>' })}
       ${card('c-dup', 'Mögliche doppelte Buchungen', { filter: true, meta: '<span id="c-dup-meta">letzte 24 Monate · Ausgaben & Einnahmen</span>' })}
     </div>`;
