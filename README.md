@@ -544,7 +544,7 @@ auf <http://localhost:8080>.
 | `DASHBOARD_USER` / `DASHBOARD_PASSWORD` | nein | Passwortschutz mit Anmeldeseite – **empfohlen**, sobald das Dashboard nicht nur lokal läuft. „Angemeldet bleiben“ hält 180 Tage je Gerät und verlängert sich bei Benutzung; Neustarts und Updates melden niemanden ab (Schlüssel in `DATA_DIR/session-secret`). Passwort ändern meldet alle Geräte ab. Für Skripte geht weiterhin HTTP Basic Auth. |
 | `FIREFLY_PUBLIC_URL` | nein | Basis für „In Firefly öffnen“-Links |
 | `CACHE_SECONDS` | nein | Gültigkeit für Daten des laufenden Zeitraums (Standard 60 s; danach wird sofort die letzte Antwort gezeigt und im Hintergrund erneuert) |
-| `CACHE_HISTORY_HOURS` | nein | Gültigkeit für abgeschlossene Zeiträume (Standard 12 h) |
+| `CACHE_HISTORY_HOURS` | nein | Gültigkeit für abgeschlossene Zeiträume (Standard 12 h). Buchungslisten über mehrere Monate werden je Kalendermonat abgefragt; abgeschlossene Monate liegen zusätzlich in `DATA_DIR/cache` und überstehen Neustarts und Updates (nach Änderungen per n8n wird alles verworfen) |
 | `WARM_MINUTES` | nein | Vorwärmen alle N Minuten (Standard 10, `0` = aus) |
 | `FIREFLY_CONCURRENCY` | nein | Höchstzahl gleichzeitiger Anfragen an Firefly (Standard 4) |
 | `OLLAMA_URL` / `OLLAMA_MODEL` | nein | Vorgabe für die KI-Analyse im Labor (Standard `http://ollama:11434`, Modell im Labor wählbar) |

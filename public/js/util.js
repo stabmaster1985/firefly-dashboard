@@ -38,9 +38,15 @@ export function parseDate(value) {
 // Auf dem Handy zweistellige Jahreszahl (spart in Tabellen Platz für den Betrag)
 const narrow = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 760px)') : null;
 
+// Formatierer wiederverwenden – toLocaleDateString baut bei jedem Aufruf einen neuen (spürbar bei Tausenden Buchungen)
+const dateFormats = new Map();
 export function fmtDate(value, opts = { day: '2-digit', month: '2-digit', year: narrow?.matches ? '2-digit' : 'numeric' }) {
   const d = parseDate(value);
-  return d ? d.toLocaleDateString(LOCALE, opts) : '–';
+  if (!d) return '–';
+  const key = JSON.stringify(opts);
+  let f = dateFormats.get(key);
+  if (!f) dateFormats.set(key, (f = new Intl.DateTimeFormat(LOCALE, opts)));
+  return f.format(d);
 }
 
 export const fmtDateShort = (value) => fmtDate(value, { day: 'numeric', month: 'short' });

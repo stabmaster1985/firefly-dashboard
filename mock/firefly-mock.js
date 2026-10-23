@@ -58,7 +58,10 @@ const PIGGIES = [
 // --- Buchungen erzeugen ----------------------------------------------------
 const today = new Date();
 today.setHours(0, 0, 0, 0);
-const firstDay = new Date(today.getFullYear(), today.getMonth() - 17, 1);
+// MOCK_MONTHS: Länge der Historie, MOCK_SCALE: Vielfaches der Alltagsbuchungen (Last-Tests mit vielen Daten)
+const MONTHS = Number(process.env.MOCK_MONTHS || 17);
+const SCALE = Math.max(1, Number(process.env.MOCK_SCALE || 1));
+const firstDay = new Date(today.getFullYear(), today.getMonth() - MONTHS, 1);
 const journals = [];
 let nextId = 1;
 
@@ -123,26 +126,26 @@ for (let m = new Date(firstDay); m <= today; m = new Date(m.getFullYear(), m.get
   add(day(5), 'transfer', 100, 'Bargeld', giro, cash);
 
   const shops = ['REWE', 'EDEKA', 'Aldi Süd', 'Lidl', 'dm-Drogerie', 'Wochenmarkt'];
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < 9 * SCALE; i++) {
     const shop = pick(shops);
     add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(14, 96), `Einkauf ${shop}`, shop === 'Wochenmarkt' ? cash : giro, ext(shop), { category: 'Lebensmittel', budget: 'Lebensmittel' });
   }
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 3 * SCALE; i++) {
     const place = pick(['Pizzeria Bella', 'Sushi Bar Koi', 'Café Central', 'Biergarten am See', 'Thai Orchid']);
     add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(18, 74), place, kk, ext(place), { category: 'Restaurant', budget: 'Freizeit' });
   }
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 2 * SCALE; i++) {
     const what = pick(['Kino', 'Konzertkarten', 'Kletterhalle', 'Museum', 'Schwimmbad']);
     add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(9, 65), what, kk, ext(what), { category: 'Freizeit', budget: 'Freizeit' });
   }
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 2 * SCALE; i++) {
     add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(48, 82), 'Tanken', giro, ext(pick(['Aral', 'Shell', 'JET'])), { category: 'Mobilität', budget: 'Mobilität' });
   }
   // Zahlungen über PayPal: ein Abo zwischen zufälligen Einkäufen (testet die Erkennung)
   add(day(9 + Math.floor(rand() * 3)), 'withdrawal', 9.99, `PayPal *DisneyPlus ${100000 + Math.floor(rand() * 899999)}`, giro, ext('PayPal Europe S.a.r.l.'), { category: 'Abos' });
   if (rand() < 0.6) add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(12, 140), `PayPal *${pick(['Etsy', 'eBay', 'Steam', 'Vinted'])} ${100000 + Math.floor(rand() * 899999)}`, giro, ext('PayPal Europe S.a.r.l.'), { category: 'Shopping' });
   add(day(1), 'withdrawal', 49, 'Deutschlandticket', giro, ext('Deutsche Bahn'), { category: 'Mobilität', budget: 'Mobilität', tags: ['Fixkosten'] });
-  const shoppingCount = 1 + Math.floor(rand() * 3);
+  const shoppingCount = (1 + Math.floor(rand() * 3)) * SCALE;
   for (let i = 0; i < shoppingCount; i++) {
     const what = pick(['Amazon', 'Zalando', 'IKEA', 'MediaMarkt', 'Thalia']);
     add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(15, 160), `Bestellung ${what}`, kk, ext(what), { category: 'Shopping', budget: 'Shopping' });
@@ -155,7 +158,7 @@ for (let m = new Date(firstDay); m <= today; m = new Date(m.getFullYear(), m.get
   if (rand() < 0.4) add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(9, 40), 'Einkauf Lidl', giro, ext('LIDL SAGT DANKE'), { category: 'Lebensmittel' });
   // Import ohne „Name Zahlungsbeteiligter“: kein Empfänger, Beschreibung nur Bank-Standardtext,
   // der Händler steht nur in den Notizen (Verwendungszweck) – für die Händlererkennung
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 3 * SCALE; i++) {
     const d = day(1 + Math.floor(rand() * 28));
     const [shop, city, cat] = pick([['NETTO MARKEN-DISCOUNT', 'MUENCHEN', 'Lebensmittel'], ['BAECKEREI RIEDMAIER', 'MUENCHEN', 'Lebensmittel'],
       ['ROSSMANN 2231', 'PASING', null], ['HORNBACH BAUMARKT', 'GERMERING', null], ['TANKSTELLE ESSO', 'MUENCHEN', 'Mobilität']]);
@@ -790,10 +793,13 @@ http
       return res.end(JSON.stringify({ message: `Not mocked: ${key}` }));
     }
     // MOCK_DELAY simuliert eine echte Firefly-Instanz (PHP braucht pro Abfrage Zeit)
-    const delay = Number(process.env.MOCK_DELAY || 0) * (key === 'summary/basic' ? 4 : 1);
+    // MOCK_DELAY_PER_ITEM: zusätzlich je gelieferter Buchung (große Seiten brauchen in Firefly länger)
+    const body = handler(url.searchParams);
+    const items = Array.isArray(body?.data) ? body.data.length : 0;
+    const delay = Number(process.env.MOCK_DELAY || 0) * (key === 'summary/basic' ? 4 : 1) + Number(process.env.MOCK_DELAY_PER_ITEM || 0) * items;
     worker(delay, () => {
       res.writeHead(200, { 'Content-Type': 'application/vnd.api+json' });
-      res.end(JSON.stringify(handler(url.searchParams)));
+      res.end(JSON.stringify(body));
     });
   })
   .listen(PORT, () => console.log(`Firefly-III-Demo-API auf http://localhost:${PORT} (Token: demo)`));

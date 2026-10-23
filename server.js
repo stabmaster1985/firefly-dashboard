@@ -84,6 +84,7 @@ const firefly = createFirefly({
   ttl: CACHE_SECONDS,
   historyTtl: CACHE_HISTORY_HOURS * 3600,
   concurrency: Math.max(1, FIREFLY_CONCURRENCY),
+  persistDir: path.join(DATA_DIR, 'cache'), // abgeschlossene Monate überstehen Neustarts und Updates
 });
 
 // Automationen (Webhooks) – eigene, lokal gespeicherte Konfiguration.

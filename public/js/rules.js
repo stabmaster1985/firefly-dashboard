@@ -112,7 +112,19 @@ export const textKey = (t) => keyWords(textSource(t).text).join(' ');
  * Zahlungsdiensten (PayPal …) oder nichtssagendem Empfänger („Kartenzahlung“)
  * das Kennwort aus Beschreibung bzw. Notizen.
  */
+const merchantMemo = new WeakMap(); // Buchung → { sig, value } – merchantOf ist teuer (viele Regex), die Seiten fragen oft
 export function merchantOf(t) {
+  if (t && typeof t === 'object') {
+    const sig = `${t.type}|${t.source_name}|${t.destination_name}|${t.description}|${t.notes}`;
+    const hit = merchantMemo.get(t);
+    if (hit && hit.sig === sig) return hit.value;
+    const value = computeMerchant(t);
+    merchantMemo.set(t, { sig, value });
+    return value;
+  }
+  return computeMerchant(t);
+}
+function computeMerchant(t) {
   const party = counterpartyOf(t);
   const via = isIntermediary(party);
   if (!via && !isGenericParty(party)) return { key: normParty(party), name: party, via: null, cond: { field: 'party', op: 'equals', value: party } };
@@ -277,13 +289,16 @@ export function suggestRules(txs, existingRules = [], knownCategories = []) {
   const known = new Map(knownCategories.map((c) => [lower(c), c]));
   const findKnown = (category) => known.get(lower(category))
     || [...known.values()].find((c) => (SYNONYMS[category] || [lower(category)]).some((syn) => lower(c).includes(syn)));
+  // einmal vorab: offene Buchungen und ihre Felder in Kleinschrift (statt je Stichwort neu)
+  const open = expenses.filter((t) => !used.has(partyKey(t))).map((t) => ({
+    t, party: isIntermediary(counterpartyOf(t)) ? '' : lower(fieldValue(t, 'party')), description: lower(fieldValue(t, 'description')), notes: lower(fieldValue(t, 'notes')),
+  }));
   for (const [category, words] of MERCHANTS) {
     const target = findKnown(category) || category;
     for (const w of words) {
       // Feld, in dem das Stichwort am häufigsten vorkommt (Empfänger, Beschreibung oder Notizen)
-      const open = expenses.filter((t) => !used.has(partyKey(t)));
       const field = ['party', 'description', 'notes']
-        .map((f) => [f, open.filter((t) => (f !== 'party' || !isIntermediary(counterpartyOf(t))) && lower(fieldValue(t, f)).includes(w))])
+        .map((f) => [f, open.filter((o) => o[f].includes(w)).map((o) => o.t)])
         .sort((a, b) => b[1].length - a[1].length)[0];
       const hits = field[1];
       const changes = hits.filter((t) => t.category_name !== target).length;

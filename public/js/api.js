@@ -1,6 +1,7 @@
 // Zugriff auf die Firefly-III-API über den lokalen Proxy (/api/...).
 
 import { isoDate } from './util.js';
+import { monthChunks, isTxList } from './chunks.js';
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -86,6 +87,18 @@ const PAGE_SIZE = 250;
 
 /** Holt alle Seiten eines paginierten Endpunkts. */
 export async function getAll(path, params = {}) {
+  // Buchungen über mehrere Monate: je Monat einzeln – abgeschlossene Monate hält der Server lange
+  if (isTxList(path) && params.start && params.end) {
+    const chunks = monthChunks(params.start, params.end);
+    if (chunks.length > 1) {
+      const parts = await Promise.all(chunks.map(([start, end]) => getAllPages(path, { ...params, start, end })));
+      return parts.flat();
+    }
+  }
+  return getAllPages(path, params);
+}
+
+async function getAllPages(path, params) {
   const first = await get(path, { ...params, limit: PAGE_SIZE, page: 1 });
   const pages = first?.meta?.pagination?.total_pages || 1;
   const rest = await Promise.all(
