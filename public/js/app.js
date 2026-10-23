@@ -16,7 +16,7 @@ import { merchants } from './merchants.js';
 import { askPage } from './ask.js';
 import { partyDetail } from './party.js';
 import { openHelp, helpPage } from './helpui.js';
-import { applyCardFilter } from './common.js';
+import { applyCardFilter, setFolded } from './common.js';
 import { destroyCharts } from './charts.js';
 import { PERIODS, SALARY_PERIODS, periodById, customPeriodId, parseDate, isoDate, debounce, storage, store, esc, payday } from './util.js';
 
@@ -221,6 +221,19 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') setNavOpen(false);
+});
+// Karten ein-/ausklappen: Pfeil bzw. Titel – und „alle“ in der Kopfzeile
+document.addEventListener('click', (e) => {
+  const fold = e.target.closest('.card-fold');
+  if (fold) {
+    const section = fold.closest('[data-fold]');
+    if (section) setFolded(section, !section.classList.contains('folded'));
+  }
+});
+document.getElementById('fold-btn').addEventListener('click', () => {
+  const cards = [...document.querySelectorAll('.page [data-fold]')].filter((c) => !c.hidden);
+  const fold = cards.some((c) => !c.classList.contains('folded'));
+  cards.forEach((c) => setFolded(c, fold));
 });
 window.addEventListener('hashchange', render);
 

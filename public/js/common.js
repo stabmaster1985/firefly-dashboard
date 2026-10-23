@@ -1,6 +1,6 @@
 // Gemeinsame Bausteine für alle Seiten.
 
-import { money, esc, initials, fmtDate, fmtDateShort } from './util.js';
+import { money, esc, initials, fmtDate, fmtDateShort, storage, store } from './util.js';
 import { enhanceTxEdit } from './txedit.js';
 import { CARDS } from './help.js';
 
@@ -27,13 +27,37 @@ export async function fill(slot, loader, render, placeholder = skeleton()) {
   }
 }
 
-export const card = (id, title, { span = 'span-12', link = '', meta = '', filter = false } = {}) => `
-  <section class="card ${span}">
-    <div class="card-head"><h2>${esc(title)}</h2>
+// Eingeklappte Karten – je Seite und Gerät gemerkt (Schlüssel: Seite ohne Parameter + Karten-ID)
+const FOLD_KEY = 'ffd-folded';
+const foldedSet = () => {
+  try {
+    return new Set(JSON.parse(storage(FOLD_KEY, '[]')));
+  } catch {
+    return new Set();
+  }
+};
+export const foldKey = (id) => `${(location.hash || '#/').split('?')[0].replace(/\/\d+$/, '/:id')}|${id}`;
+export function setFolded(section, folded) {
+  const id = section.dataset.fold;
+  if (!id) return;
+  section.classList.toggle('folded', folded);
+  section.querySelector('.card-fold')?.setAttribute('aria-expanded', String(!folded));
+  const set = foldedSet();
+  if (folded) set.add(foldKey(id));
+  else set.delete(foldKey(id));
+  store(FOLD_KEY, JSON.stringify([...set].slice(-300)));
+}
+
+export const card = (id, title, { span = 'span-12', link = '', meta = '', filter = false } = {}) => {
+  const folded = foldedSet().has(foldKey(id));
+  return `
+  <section class="card ${span}${folded ? ' folded' : ''}" data-fold="${esc(id)}">
+    <div class="card-head"><h2><button type="button" class="card-fold" aria-expanded="${!folded}" aria-controls="${esc(id)}" title="Ein-/ausklappen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg><span>${esc(title)}</span></button></h2>
       <div class="card-tools">${filter ? `<input class="card-filter" type="search" placeholder="Filtern …" aria-label="${esc(title)} filtern" data-target="${id}">` : ''}${link}${meta ? `<span class="meta">${meta}</span>` : ''}${CARDS[id] ? `<button class="help-btn" data-help="card:${id}" aria-label="Hilfe zu „${esc(title)}“" title="Was ist das?">?</button>` : ''}</div>
     </div>
     <div id="${id}"></div>
   </section>`;
+};
 
 /** Suchbegriffe: mehrere durch Komma getrennt, ein Treffer reicht (ODER). */
 export function termsMatcher(text) {

@@ -1286,3 +1286,17 @@ a.card:hover, .link-tile:hover { box-shadow: 0 6px 22px color-mix(in srgb, var(-
   .nav-group { padding: 12px 10px 3px; }
   .sidebar { gap: 18px; }
 }
+
+/* Karten ein-/ausklappen */
+.card-fold { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 0; margin: 0 0 0 -4px; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+.card-fold svg { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--text-muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s; }
+.card-fold:hover svg { stroke: var(--accent); }
+.card.folded .card-fold svg { transform: rotate(-90deg); }
+.card.folded > :not(.card-head) { display: none !important; }
+.card.folded > .card-head { margin-bottom: 0; }
+.card.folded .card-filter { display: none; }
+.card.folded { padding-top: 14px; padding-bottom: 14px; }
+@media (max-width: 760px) {
+  #fold-btn { display: none; }
+  .card-fold { min-height: 32px; }
+}
