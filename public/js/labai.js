@@ -77,13 +77,16 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
     const d = aiData.decisions?.[kind] || {};
     return Object.hasOwn(d, name) ? d[name] : name;
   };
+  /** Rohe Zuordnung je Händler: eigene Korrekturen (Kategorie verschoben, Tags dazu/weg) vor der KI. */
+  const ownCategory = (l) => (l.manual !== undefined ? l.manual : l.kategorie) || '';
+  const ownTags = (l) => [...new Set([...(l.tags || []).filter((x) => !(l.tagsDrop || []).includes(x)), ...(l.tagsAdd || [])])];
   const effLabel = (l) => ({
     ...l,
-    kategorie: resolve('categories', l.kategorie),
-    tags: [...new Set((l.tags || []).map((x) => resolve('tags', x)).filter(Boolean))],
+    kategorie: ownCategory(l) ? resolve('categories', ownCategory(l)) : null,
+    tags: [...new Set(ownTags(l).map((x) => resolve('tags', x)).filter(Boolean))],
   });
-  /** Wird das Ergebnis angewendet? Angenommen immer, abgelehnt nie, sonst ab Mindest-Sicherheit. */
-  const aiActive = (l) => l.status === 'ok' || (l.status !== 'nein' && l.sicherheit >= aiLayer.min);
+  /** Wird das Ergebnis angewendet? Angenommen oder selbst korrigiert immer, abgelehnt nie, sonst ab Mindest-Sicherheit. */
+  const aiActive = (l) => l.status === 'ok' || (l.status !== 'nein' && (l.manual !== undefined || l.tagsAdd?.length || l.sicherheit >= aiLayer.min));
 
   /** KI-Ergebnis zu einer Buchung (nur wenn die Ebene an ist und es greift). */
   const aiFor = (t) => {
@@ -95,10 +98,87 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
 
   // „x Händler“ aufgeklappt: welche Händler die KI in diese Kategorie bzw. diesen Tag einordnet
   const whoOpen = new Set();
-  const whoList = (items) => `<div class="ai-who">${[...items].sort((a, b) => (b.sum || 0) - (a.sum || 0)).map((l) => `<div class="ai-who-row">
-      <span class="ai-who-name">${esc(l.name || '–')}</span>
-      <span class="muted">${l.n ? `${l.n}× · ` : ''}${money(l.sum || 0, code)} · ${Math.round(l.sicherheit || 0)} %</span>
-      ${l.grund ? `<span class="ai-who-why">${esc(l.grund)}</span>` : ''}</div>`).join('')}</div>`;
+  let moving = null; // Händler-Schlüssel, dessen Kategorie gerade gewählt wird
+  const whoList = (kind, name, g, labels) => {
+    const sorted = (list) => [...list].sort((a, b) => (b.sum || 0) - (a.sum || 0));
+    const facts = (l) => `${l.n ? `${l.n}× · ` : ''}${money(l.sum || 0, code)}${l.manual !== undefined || (l.tagsAdd || []).includes(name) ? ' · von dir' : ` · ${Math.round(l.sicherheit || 0)} %`}`;
+    const rows = sorted(g.items).map((l) => `<div class="ai-who-row" data-key="${esc(l.key)}">
+        <span class="ai-who-name">${esc(l.name || '–')}</span>
+        <span class="muted">${facts(l)}</span>
+        <span class="ai-who-acts">${kind === 'categories'
+          ? (moving === l.key
+            ? `<form class="ai-move" data-ai-move="${esc(l.key)}"><input name="cat" list="ai-cat-choices" placeholder="Kategorie wählen …" aria-label="Neue Kategorie für ${esc(l.name)}" autofocus>
+                <button class="btn small primary">OK</button><button type="button" class="btn small" data-ai-move-none="${esc(l.key)}" title="Keine Kategorie – Tags bleiben">keine</button><button type="button" class="link-btn" data-ai-move-cancel>Abbrechen</button></form>`
+            : `<button class="link-btn" data-ai-move-start="${esc(l.key)}">verschieben</button> · <button class="link-btn" data-ai-reject="${esc(l.key)}" title="KI-Ergebnis für diesen Händler nicht anwenden">nicht anwenden</button>${l.manual !== undefined ? ` · <button class="link-btn" data-ai-unmove="${esc(l.key)}">wie KI</button>` : ''}`)
+          : `<button class="link-btn" data-ai-tag-drop="${esc(l.key)}">Tag entfernen</button>`}</span>
+        ${l.grund && l.manual === undefined ? `<span class="ai-who-why">${esc(l.grund)}</span>` : ''}</div>`).join('');
+    const removed = sorted(g.removed).map((l) => `<div class="ai-who-row removed" data-key="${esc(l.key)}">
+        <span class="ai-who-name">${esc(l.name || '–')}</span>
+        <span class="muted">${l.status === 'nein' ? 'nicht angewendet' : kind === 'categories' ? `→ ${esc(ownCategory(l) || 'keine Kategorie')}` : 'Tag entfernt'}</span>
+        <span class="ai-who-acts"><button class="link-btn" data-ai-restore="${esc(l.key)}">zurückholen</button></span></div>`).join('');
+    return `<div class="ai-who" data-ai-group="${esc(kind)}" data-ai-gname="${esc(name)}">${rows || '<div class="muted">Keine Händler mehr in dieser Gruppe.</div>'}${removed}
+      <form class="ai-add" data-ai-add><input name="who" list="ai-merchants" placeholder="Händler hinzufügen …" aria-label="Händler zu ${esc(name)} hinzufügen">
+        <button class="btn small">Hinzufügen</button></form></div>`;
+  };
+  // Händler einzeln korrigieren (Kategorie verschieben, nicht anwenden, Tags) – gespeichert auf dem Server
+  const labelOf = (key) => aiData.labels?.[key];
+  const setTags = (key, add, drop) => review({ labelTags: { [key]: { add, drop } } });
+  el.addEventListener('click', (e) => {
+    const b2 = e.target.closest('[data-ai-move-start],[data-ai-move-cancel],[data-ai-move-none],[data-ai-reject],[data-ai-unmove],[data-ai-tag-drop],[data-ai-restore]');
+    if (!b2) return;
+    const ds = b2.dataset;
+    const box = b2.closest('[data-ai-group]');
+    const kind = box?.dataset.aiGroup;
+    const gname = box?.dataset.aiGname;
+    if (ds.aiMoveStart) {
+      moving = ds.aiMoveStart;
+      return refreshAi().then(() => el.querySelector('[data-ai-move] input')?.focus());
+    }
+    if (ds.aiMoveCancel !== undefined) {
+      moving = null;
+      return refreshAi();
+    }
+    if (ds.aiMoveNone) {
+      moving = null;
+      return review({ manual: { [ds.aiMoveNone]: '' } });
+    }
+    if (ds.aiReject) return review({ status: { [ds.aiReject]: 'nein' } });
+    if (ds.aiUnmove) return review({ manual: { [ds.aiUnmove]: null } });
+    if (ds.aiTagDrop) {
+      const l = labelOf(ds.aiTagDrop);
+      return setTags(ds.aiTagDrop, (l.tagsAdd || []).filter((x) => x !== gname), (l.tagsAdd || []).includes(gname) ? l.tagsDrop || [] : [...new Set([...(l.tagsDrop || []), gname])]);
+    }
+    if (ds.aiRestore) {
+      const l = labelOf(ds.aiRestore);
+      if (l.status === 'nein') return review({ status: { [ds.aiRestore]: null } });
+      if (kind === 'categories') return review({ manual: { [ds.aiRestore]: null } });
+      return setTags(ds.aiRestore, l.tagsAdd || [], (l.tagsDrop || []).filter((x) => x !== gname));
+    }
+  });
+  el.addEventListener('submit', (e) => {
+    const move = e.target.closest('[data-ai-move]');
+    const add = e.target.closest('[data-ai-add]');
+    if (!move && !add) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (move) {
+      const cat = new FormData(move).get('cat')?.toString().trim();
+      if (!cat) return;
+      moving = null;
+      review({ manual: { [move.dataset.aiMove]: cat } });
+      return;
+    }
+    const box = add.closest('[data-ai-group]');
+    const who = new FormData(add).get('who')?.toString().trim().toLowerCase();
+    const entry = Object.entries(aiData.labels || {}).find(([, l]) => String(l.name || '').toLowerCase() === who);
+    if (!entry) return window.alert('Diesen Händler hat die KI noch nicht bewertet – bitte einen Namen aus der Liste wählen.');
+    const [key, l] = entry;
+    if (box.dataset.aiGroup === 'categories') {
+      review({ manual: { [key]: box.dataset.aiGname }, status: { [key]: null } });
+    } else {
+      setTags(key, [...new Set([...(l.tagsAdd || []), box.dataset.aiGname])], (l.tagsDrop || []).filter((x) => x !== box.dataset.aiGname));
+    }
+  }, true);
   el.addEventListener('click', (e) => {
     const b = e.target.closest('[data-ai-who]');
     if (!b) return;
@@ -138,7 +218,7 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
     const scheme = aiData.scheme?.kategorien || [];
     const testState = aiData.test; // { running } | { metrics } | { error } – läuft auf dem Server
     // während der Fortschrittsanzeige nicht unter den Fingern neu zeichnen, wenn gerade etwas eingetippt wird
-    if (el.querySelector('#ai-settings, .ai-rename')?.contains(document.activeElement) && document.activeElement.matches('input')) return;
+    if ([...el.querySelectorAll('#ai-settings, .ai-rename, .ai-move, .ai-add')].some((f) => f.contains(document.activeElement)) && document.activeElement.matches('input')) return;
     // Einstellungen zuklappen, sobald alles läuft – offen bei fehlendem Modell oder Verbindungs-/Testproblem
     const problem = !st.model || models?.error || testState?.error;
     const setupOpen = problem || setupWanted;
@@ -186,19 +266,28 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
   /** Neue Kategorien/Tags der KI: übernehmen, umbenennen/zusammenlegen oder ignorieren. */
   function renderNewNames(labels) {
     const used = { categories: new Map(), tags: new Map() };
+    const group = (kind, name) => {
+      if (!used[kind].has(name)) used[kind].set(name, { n: 0, sum: 0, items: [], removed: [] });
+      return used[kind].get(name);
+    };
     for (const l of labels) {
-      if (l.status === 'nein') continue;
       const add = (kind, name) => {
-        const g = used[kind].get(name) || { n: 0, sum: 0, items: [] };
+        const g = group(kind, name);
         g.n += 1;
         g.sum += l.sum || 0;
         g.items.push(l);
-        used[kind].set(name, g);
       };
-      if (l.kategorie) add('categories', l.kategorie);
-      (l.tags || []).forEach((x) => add('tags', x));
+      if (l.status === 'nein') {
+        if (l.kategorie) group('categories', l.kategorie).removed.push(l); // abgelehnt: zum Zurückholen zeigen
+        continue;
+      }
+      if (ownCategory(l)) add('categories', ownCategory(l));
+      ownTags(l).forEach((x) => add('tags', x));
+      // selbst herausgenommen: bei der ursprünglichen Gruppe zum Zurückholen zeigen
+      if (l.manual !== undefined && l.kategorie && l.manual !== l.kategorie) group('categories', l.kategorie).removed.push(l);
+      (l.tagsDrop || []).forEach((x) => group('tags', x).removed.push(l));
     }
-    const fresh = (kind) => [...used[kind]].filter(([name]) => isNew(kind, name)).sort((x, y) => y[1].sum - x[1].sum);
+    const fresh = (kind) => [...used[kind]].filter(([name, g]) => isNew(kind, name) && (g.n || g.removed.length)).sort((x, y) => y[1].sum - x[1].sum);
     const kept = (kind) => [...used[kind].keys()].filter((name) => !isNew(kind, name));
     const row = (kind, [name, g]) => {
       const d = aiData.decisions?.[kind] || {};
@@ -216,7 +305,7 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
         <span class="ai-new-btns">${decided
           ? `<button class="link-btn" data-ai-name="${esc(name)}" data-ai-kind="${kind}" data-ai-do="reset">${target === null ? 'doch verwenden' : 'zurücksetzen'}</button>`
           : `<button class="link-btn" data-ai-name="${esc(name)}" data-ai-kind="${kind}" data-ai-do="edit" title="Neuen Namen eingeben oder eine vorhandene Kategorie/einen vorhandenen Tag wählen">umbenennen</button> · <button class="link-btn" data-ai-name="${esc(name)}" data-ai-kind="${kind}" data-ai-do="ignore">ignorieren</button>`}</span>
-      </div>${whoOpen.has(id) ? whoList(g.items) : ''}`;
+      </div>${whoOpen.has(id) ? whoList(kind, name, g, labels) : ''}`;
     };
     const block = (kind, title) => {
       const list = fresh(kind);
@@ -226,7 +315,11 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
           ${list.slice(NEW_SHOWN).map((x) => row(kind, x)).join('')}</details>` : ''}</div>`;
     };
     const datalist = (kind) => `<datalist id="ai-pool-${kind}">${[...(aiData.pool?.[kind] || [])].map((x) => `<option value="${esc(x)}">`).join('')}</datalist>`;
-    return `<div class="ai-new">
+    // Auswahl fürs Verschieben: vorhandene Kategorien und die neuen Vorschläge
+    const catChoices = [...new Set([...(aiData.pool?.categories || []), ...[...used.categories.keys()].filter(Boolean)])].sort((a, b) => a.localeCompare(b, 'de'));
+    const merchantList = `<datalist id="ai-merchants">${labels.map((l) => `<option value="${esc(l.name)}">`).join('')}</datalist>
+      <datalist id="ai-cat-choices">${catChoices.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>`;
+    return `<div class="ai-new">${merchantList}
       <div class="ai-new-head"><h3 class="sub-h">Vorschläge prüfen</h3>
         <span class="legend"><span><span class="tag">vorhanden</span> aus deinem Bestand</span><span><span class="tag new">neu</span> noch nicht in Firefly</span></span></div>
       <div class="ai-new-grid">${block('categories', 'Kategorien')}${block('tags', 'Tags')}</div>${datalist('categories')}${datalist('tags')}
