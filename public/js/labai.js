@@ -93,6 +93,20 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
   };
 
 
+  // „x Händler“ aufgeklappt: welche Händler die KI in diese Kategorie bzw. diesen Tag einordnet
+  const whoOpen = new Set();
+  const whoList = (items) => `<div class="ai-who">${[...items].sort((a, b) => (b.sum || 0) - (a.sum || 0)).map((l) => `<div class="ai-who-row">
+      <span class="ai-who-name">${esc(l.name || '–')}</span>
+      <span class="muted">${l.n ? `${l.n}× · ` : ''}${money(l.sum || 0, code)} · ${Math.round(l.sicherheit || 0)} %</span>
+      ${l.grund ? `<span class="ai-who-why">${esc(l.grund)}</span>` : ''}</div>`).join('')}</div>`;
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-ai-who]');
+    if (!b) return;
+    const id = b.dataset.aiWho;
+    if (whoOpen.has(id)) whoOpen.delete(id);
+    else whoOpen.add(id);
+    refreshAi();
+  });
   const NEW_SHOWN = 5; // je Liste sofort sichtbar (nach Betrag) – der Rest aufklappbar
   const moreOpen = new Set();
   el.addEventListener('click', (e) => {
@@ -175,9 +189,10 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
     for (const l of labels) {
       if (l.status === 'nein') continue;
       const add = (kind, name) => {
-        const g = used[kind].get(name) || { n: 0, sum: 0 };
+        const g = used[kind].get(name) || { n: 0, sum: 0, items: [] };
         g.n += 1;
         g.sum += l.sum || 0;
+        g.items.push(l);
         used[kind].set(name, g);
       };
       if (l.kategorie) add('categories', l.kategorie);
@@ -197,11 +212,11 @@ export function createAiPanel({ el, txs, knownCategories, code, from, onChange }
       }
       return `<div class="ai-new-row${decided && target === null ? ' ignored' : ''}">
         ${nameTag(kind, name)}${decided && target ? ` <span class="muted">→</span> ${nameTag(kind, target)}` : ''}
-        <span class="muted">${g.n} Händler · ${money(g.sum, code)}</span>
+        <button type="button" class="link-btn ai-who-btn" data-ai-who="${esc(id)}" aria-expanded="${whoOpen.has(id)}">${g.n} Händler</button><span class="muted"> · ${money(g.sum, code)}</span>
         <span class="ai-new-btns">${decided
           ? `<button class="link-btn" data-ai-name="${esc(name)}" data-ai-kind="${kind}" data-ai-do="reset">${target === null ? 'doch verwenden' : 'zurücksetzen'}</button>`
           : `<button class="link-btn" data-ai-name="${esc(name)}" data-ai-kind="${kind}" data-ai-do="edit" title="Neuen Namen eingeben oder eine vorhandene Kategorie/einen vorhandenen Tag wählen">umbenennen</button> · <button class="link-btn" data-ai-name="${esc(name)}" data-ai-kind="${kind}" data-ai-do="ignore">ignorieren</button>`}</span>
-      </div>`;
+      </div>${whoOpen.has(id) ? whoList(g.items) : ''}`;
     };
     const block = (kind, title) => {
       const list = fresh(kind);

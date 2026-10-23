@@ -1300,3 +1300,10 @@ a.card:hover, .link-tile:hover { box-shadow: 0 6px 22px color-mix(in srgb, var(-
   #fold-btn { display: none; }
   .card-fold { min-height: 32px; }
 }
+/* KI „Vorschläge prüfen“: Händler hinter einer vorgeschlagenen Kategorie */
+.ai-who-btn { color: var(--accent); font-size: 13px; padding: 0; }
+.ai-who-btn[aria-expanded="true"] { font-weight: 600; }
+.ai-who { margin: 2px 0 10px 12px; padding-left: 10px; border-left: 2px solid color-mix(in srgb, var(--accent) 35%, transparent); display: grid; gap: 6px; }
+.ai-who-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; font-size: 13px; }
+.ai-who-name { font-weight: 500; overflow-wrap: anywhere; }
+.ai-who-why { grid-column: 1 / -1; color: var(--text-muted); font-size: 12px; }
