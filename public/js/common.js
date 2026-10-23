@@ -68,8 +68,22 @@ export function applyCardFilter(input) {
   } else note?.remove();
 }
 
-export const stat = (label, value, sub = '') => `
-  <div class="stat"><span class="label">${esc(label)}</span><span class="value">${value}</span><span class="sub">${sub}</span></div>`;
+// Kennzahl-Kacheln: Symbol und Bedeutungsfarbe ergeben sich aus der Beschriftung – überall gleich
+const STAT_KINDS = [
+  [/einnahm|eingäng|eingang/i, 'income', '<path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>'],
+  [/vermögen|gespart|kontostand/i, 'wealth', '<path d="M4 9h16v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M4 9l2-4h12l2 4M15 14h2"/>'],
+  [/ausgab|ausgäng|verzichtbar/i, 'expense', '<path d="M12 15V4m0 0L8 8m4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>'],
+  [/saldo|veränder/i, 'balance', '<path d="M12 4v16M5 8h14M5 8l-2 6a3 3 0 0 0 4 0zm14 0-2 6a3 3 0 0 0 4 0z"/>'],
+  [/ohne kategorie|offen/i, 'warn', '<path d="M12 9v4m0 3h.01"/><path d="M10.3 4.3 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0z"/>'],
+  [/kategorisiert|getaggt|tags|erkannt/i, 'tag', '<path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1.5"/>'],
+  [/händler|top/i, 'merchant', '<path d="M4 9l1.5-5h13L20 9M4 9h16M4 9v1a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0V9M5 12v8h14v-8"/>'],
+  [/monat|jahr|tage|zuletzt|neu/i, 'time', '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4m6-4v4"/>'],
+  [/./, 'count', '<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>'],
+];
+export const stat = (label, value, sub = '') => {
+  const [, kind, icon] = STAT_KINDS.find(([re]) => re.test(label));
+  return `<div class="stat stat-${kind}"><span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24">${icon}</svg></span><span class="label">${esc(label)}</span><span class="value">${value}</span><span class="sub">${sub}</span></div>`;
+};
 
 export function counterparty(t) {
   if (t.type === 'deposit') return t.source_name;

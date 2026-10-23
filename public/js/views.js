@@ -2,6 +2,13 @@
 
 import * as api from './api.js';
 import { barChart, lineChart, legend, seriesColor, cssVar } from './charts.js';
+
+/** Feste Farbe je Name (Kategorie-Kürzel): gleicher Name → gleiche Farbe auf allen Seiten. */
+const nameColor = (name) => {
+  let h = 0;
+  for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return seriesColor(h % 8);
+};
 import { money, percent, esc, fmtDate, fmtMonth, initials, isoDate, today, debounce, parseDate, addDays, CALENDAR, storage, store } from './util.js';
 import { skeleton, fill, card, stat, signedAmount, txRow, txAttrs, bindTxDetails, mainCurrency, sum } from './common.js';
 import { categoryTotals, compareRange, delta, forecastActive, forecastTotal, forecastRemainder } from './categories.js';
@@ -106,9 +113,9 @@ export async function overview(view, { period }) {
     const list = accounts.filter((a) => a.attributes.active !== false);
     if (!list.length) return (el.innerHTML = '<div class="empty">Keine Konten gefunden.</div>');
     el.innerHTML = `<div class="list">${list
-      .map((a) => {
+      .map((a, i) => {
         const at = a.attributes;
-        return `<a class="row plain" href="#/konten/${encodeURIComponent(a.id)}"><div class="avatar">${esc(initials(at.name))}</div>
+        return `<a class="row plain" href="#/konten/${encodeURIComponent(a.id)}"><div class="avatar" style="--av:${seriesColor(i)}">${esc(initials(at.name))}</div>
           <div style="min-width:0"><div class="title">${esc(at.name)}</div><div class="subtitle">${esc(ROLE[at.account_role] || 'Konto')}</div></div>
           <div class="amount">${money(at.current_balance, at.currency_code)}</div></a>`;
       })
@@ -188,7 +195,7 @@ export async function overview(view, { period }) {
     if (!items.length) return (el.innerHTML = '<div class="empty">Keine Vergleichsdaten.</div>');
     el.innerHTML = `<div class="list">${items
       .map((c) => `<a class="row plain" href="#/kategorien/${encodeURIComponent(c.id)}">
-        <div class="avatar">${esc(initials(c.name))}</div>
+        <div class="avatar" style="--av:${nameColor(c.name)}">${esc(initials(c.name))}</div>
         <div style="min-width:0"><div class="title">${esc(c.name)}</div><div class="subtitle">${money(c.value, code)} statt ${money(c.prev, code)}</div></div>
         <div class="amount">${money(c.value - c.prev, code, { signed: true })}<div>${delta(c.value, c.prev, 'expense', code)}</div></div></a>`)
       .join('')}</div>`;
@@ -242,7 +249,7 @@ export async function overview(view, { period }) {
               : '<div class="empty">Keine festen Termine mehr im Zeitraum.</div>'}</div>
           <div><h3 class="sub-h">Geschätzte weitere Ausgaben <span class="muted">(typischer Rest je Kategorie)</span></h3>
             ${variable.length ? `<div class="list">${variable.map((v) => `<a class="row plain" href="#/kategorien/${encodeURIComponent(v.id)}">
-              <div class="avatar">${esc(initials(v.name))}</div>
+              <div class="avatar" style="--av:${nameColor(v.name)}">${esc(initials(v.name))}</div>
               <div style="min-width:0"><div class="title">${esc(v.name)}</div><div class="subtitle">Ø der letzten Perioden im selben Zeitraum</div></div>
               <div class="amount forecast">≈ ${money(-v.value, code)}</div></a>`).join('')}</div>`
               : '<div class="empty">Keine weiteren Ausgaben zu erwarten.</div>'}</div>

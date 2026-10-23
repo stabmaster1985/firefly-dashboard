@@ -46,6 +46,12 @@ const DETAIL = {
 
 const viewEl = document.getElementById('view');
 const titleEl = document.getElementById('page-title');
+// Bereiche mit eigener Farbe: Auswerten (blau), Daten pflegen (türkis), Labor (violett), Einstellungen (grau)
+const AREA = {
+  overview: 'auswerten', categories: 'auswerten', tags: 'auswerten', merchants: 'auswerten', recurring: 'auswerten', transactions: 'auswerten',
+  accounts: 'auswerten', year: 'auswerten', ask: 'auswerten', check: 'pflegen', csvsync: 'pflegen', cleanup: 'pflegen', lab: 'labor', actions: 'system', help: 'system',
+};
+document.querySelectorAll('.nav a[data-route]').forEach((a) => (a.dataset.area = AREA[a.dataset.route] || 'auswerten'));
 const periodSelect = document.getElementById('period-select');
 const refreshBtn = document.getElementById('refresh-btn');
 const themeBtn = document.getElementById('theme-btn');
@@ -83,6 +89,10 @@ async function render() {
   const route = (id && DETAIL[section]) || ROUTES[path] || ROUTES[''];
   destroyCharts();
   titleEl.textContent = route.title;
+  // Bereichsfarbe und Seitensymbol (aus dem Menü übernommen)
+  document.body.dataset.area = AREA[route.nav] || 'auswerten';
+  const navIcon = document.querySelector(`.nav a[data-route="${route.nav}"] svg`);
+  document.getElementById('page-icon').innerHTML = navIcon ? navIcon.outerHTML : '';
   document.title = `${route.title} · Firefly Dashboard`;
   document.querySelectorAll('.nav a').forEach((a) => a.classList.toggle('active', a.dataset.route === route.nav));
   // Handy: „Mehr“ markieren, wenn die aktuelle Seite nur im ausgeklappten Menü steht; Menü schließen
