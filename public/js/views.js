@@ -45,9 +45,23 @@ export async function overview(view, { period }) {
     </div>`;
   const $ = (id) => view.querySelector(`#${id}`);
 
-  // summary/basic ist Fireflys teuerste Abfrage – nur noch einmal für den Zeitraum
-  // (Nettovermögen); Vergleich und Monatsverlauf über die leichten Summen-Endpunkte.
-  const summary = api.get('summary/basic', { start, end });
+  // summary/basic ist Fireflys teuerste Abfrage (rechnet über den ganzen Zeitraum) – nur noch für das
+  // Nettovermögen, und das ist ein Stand am Ende: also nur über dessen Monat. Einnahmen, Ausgaben und
+  // Saldo kommen aus den Summen je Monat (lange zwischengespeichert), wie schon der Vergleich.
+  const endRef = end > today() ? today() : end;
+  const sameMonth = start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth();
+  const netRange = sameMonth ? { start, end } : { start: new Date(endRef.getFullYear(), endRef.getMonth(), 1), end: new Date(endRef.getFullYear(), endRef.getMonth() + 1, 0) };
+  const summary = Promise.all([api.get('summary/basic', netRange), totalsOf('income', start, end), totalsOf('expense', start, end)]).then(([net, inc, exp]) => {
+    const s = Object.fromEntries(Object.entries(net || {}).filter(([k]) => k.startsWith('net-worth-in-')));
+    for (const code of new Set([...inc.keys(), ...exp.keys()])) {
+      const i = inc.get(code) || 0;
+      const o = exp.get(code) || 0;
+      s[`earned-in-${code}`] = { monetary_value: i, currency_code: code };
+      s[`spent-in-${code}`] = { monetary_value: -o, currency_code: code };
+      s[`balance-in-${code}`] = { monetary_value: i - o, currency_code: code };
+    }
+    return s;
+  });
   const prevSummary = Promise.all([totalsOf('income', prevStart, prevEnd), totalsOf('expense', prevStart, prevEnd)]).catch(() => null);
   const showForecast = forecastActive(period);
   const both = Promise.all([

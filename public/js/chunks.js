@@ -26,5 +26,13 @@ export function monthChunks(start, end) {
   return out.reverse();
 }
 
+/** Wie monthChunks, aber ohne Monate, die erst nach heute beginnen (dort gibt es noch nichts). */
+export function pastMonthChunks(start, end, now = new Date()) {
+  const today = iso(now);
+  const list = monthChunks(start, end);
+  const past = list.filter(([s]) => s <= today);
+  return past.length ? past : list.slice(-1);
+}
+
 /** Buchungslisten, die zerlegt werden: /transactions und /accounts/{id}/transactions. */
 export const isTxList = (path) => /^(accounts\/\d+\/)?transactions$/.test(path);

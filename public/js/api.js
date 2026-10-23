@@ -1,7 +1,7 @@
 // Zugriff auf die Firefly-III-API über den lokalen Proxy (/api/...).
 
 import { isoDate } from './util.js';
-import { monthChunks, isTxList } from './chunks.js';
+import { pastMonthChunks, isTxList } from './chunks.js';
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -45,7 +45,35 @@ function query(params = {}) {
 const memo = new Map();
 const MEMO_MS = 3 * 60 * 1000;
 
+/** Summen-Abfragen (insight/…) über mehrere Monate: je Monat holen und addieren – Firefly rechnet
+ *  Summen bei jeder Abfrage über alle Buchungen des Zeitraums neu, Monatssummen hält der Server lange. */
+function mergeInsight(lists) {
+  const out = new Map();
+  for (const list of lists) {
+    for (const x of Array.isArray(list) ? list : []) {
+      const key = `${x.id ?? x.name ?? x.tag ?? ''}|${x.currency_code ?? ''}`;
+      const v = Number(x.difference_float ?? x.difference) || 0;
+      const cur = out.get(key);
+      if (cur) cur.difference_float += v;
+      else out.set(key, { ...x, difference_float: v });
+    }
+  }
+  return [...out.values()].map((x) => ({ ...x, difference: String(Math.round(x.difference_float * 100) / 100) }));
+}
+
 export function get(path, params) {
+  if (/^insight\//.test(path) && params?.start && params?.end) {
+    const chunks = pastMonthChunks(params.start, params.end);
+    if (chunks.length > 1) {
+      const url = `/api/${path}${query(params)}#monate`;
+      const hit = memo.get(url);
+      if (!fresh && hit && Date.now() - hit.at < MEMO_MS) return hit.promise;
+      const promise = Promise.all(chunks.map(([start, end]) => get(path, { ...params, start, end }))).then(mergeInsight);
+      memo.set(url, { promise, at: Date.now() });
+      promise.catch(() => memo.delete(url));
+      return promise;
+    }
+  }
   const url = `/api/${path}${query(params)}`;
   const hit = memo.get(url);
   if (!fresh && hit && Date.now() - hit.at < MEMO_MS) return hit.promise;
@@ -89,7 +117,7 @@ const PAGE_SIZE = 250;
 export async function getAll(path, params = {}) {
   // Buchungen über mehrere Monate: je Monat einzeln – abgeschlossene Monate hält der Server lange
   if (isTxList(path) && params.start && params.end) {
-    const chunks = monthChunks(params.start, params.end);
+    const chunks = pastMonthChunks(params.start, params.end);
     if (chunks.length > 1) {
       const parts = await Promise.all(chunks.map(([start, end]) => getAllPages(path, { ...params, start, end })));
       return parts.flat();

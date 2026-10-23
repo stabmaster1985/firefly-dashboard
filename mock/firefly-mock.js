@@ -796,7 +796,15 @@ http
     // MOCK_DELAY_PER_ITEM: zusätzlich je gelieferter Buchung (große Seiten brauchen in Firefly länger)
     const body = handler(url.searchParams);
     const items = Array.isArray(body?.data) ? body.data.length : 0;
-    const delay = Number(process.env.MOCK_DELAY || 0) * (key === 'summary/basic' ? 4 : 1) + Number(process.env.MOCK_DELAY_PER_ITEM || 0) * items;
+    // Auswertungen (insight, summary, chart) rechnet Firefly über alle Buchungen im Zeitraum –
+    // je länger der Zeitraum, desto teurer: MOCK_DELAY_PER_TX je Buchung im Zeitraum
+    let txInRange = 0;
+    if (/^(insight|summary|chart)\//.test(key) && url.searchParams.get('start')) {
+      const [s0, e0] = range(url.searchParams);
+      txInRange = journals.filter((j) => j.date >= s0 && j.date <= e0).length;
+    }
+    const delay = Number(process.env.MOCK_DELAY || 0) * (key === 'summary/basic' ? 4 : 1) + Number(process.env.MOCK_DELAY_PER_ITEM || 0) * items
+      + Number(process.env.MOCK_DELAY_PER_TX || 0) * txInRange;
     worker(delay, () => {
       res.writeHead(200, { 'Content-Type': 'application/vnd.api+json' });
       res.end(JSON.stringify(body));
