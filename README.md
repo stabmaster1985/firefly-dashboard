@@ -3,6 +3,31 @@
 Ein modernes, schreibgeschütztes Web-Dashboard für [Firefly III](https://www.firefly-iii.org/) –
 als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfach nur **anschauen** willst.
 
+![Übersicht: Nettovermögen, Einnahmen, Ausgaben, Saldo, Hinweise, Cashflow und Konten](docs/screenshots/uebersicht.png)
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/kategorien.png" alt="Kategorien: Vergleich mit Vorperiode, Anteil, Veränderung und Verlauf je Kategorie"><br><b>Kategorien</b> – Vergleich, Anteile, Verlauf</td>
+    <td width="50%"><img src="docs/screenshots/haendler.png" alt="Händler: Ausgaben je Händler mit Vorjahr, Häufigkeit und Ø Betrag"><br><b>Händler</b> – wo das Geld hingeht</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/fragen.png" alt="Fragen: Chat mit den eigenen Finanzdaten, z. B. Top-Händler und Monatsvergleich"><br><b>Fragen</b> – mit den eigenen Daten chatten</td>
+    <td><img src="docs/screenshots/jahresrueckblick.png" alt="Jahresrückblick: Einnahmen, Ausgaben, Gespart, Monat für Monat, Highlights und Ausgaben-Kalender"><br><b>Jahresrückblick</b> – Monate, Highlights, Kalender</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/labor.png" alt="Kategorien-Labor: Probe-Kategorisierung mit Fortschritt je Kategorie"><br><b>Labor</b> – Regeln ausprobieren, ohne Firefly zu ändern</td>
+    <td><img src="docs/screenshots/labor-ki.png" alt="Labor mit KI: vorgeschlagene Kategorien und die Händler dahinter"><br><b>KI im Labor</b> – Vorschläge prüfen und korrigieren</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/csv-abgleich.png" alt="CSV-Abgleich: Archiv nach Konto mit Abgleich gegen Firefly"><br><b>CSV-Abgleich</b> – Bank-CSVs nach Konto, fehlende Einträge markiert</td>
+    <td><img src="docs/screenshots/aufraeumen.png" alt="Daten aufräumen: ähnliche Gegenkonten zusammenführen"><br><b>Aufräumen</b> – doppelte Gegenkonten zusammenführen</td>
+  </tr>
+</table>
+
+<p align="center"><img src="docs/screenshots/handy.png" width="600" alt="Am Handy: Übersicht hell und Labor dunkel"><br><b>Am Handy</b> – hell und dunkel, installierbar als App</p>
+
+<sub>Alle Bilder zeigen die Demo-Daten (<code>npm run demo</code>), keine echten Finanzen.</sub>
+
 - **Übersicht** – Nettovermögen, Einnahmen und Ausgaben mit Vergleich zur Vorperiode, Saldo &
   Sparquote, Cashflow der letzten 12 Monate, **Geldfluss-Diagramm** (Einnahmen → Ausgaben →
   Gespart; Klick auf einen Block oder ein Band zeigt die Buchungen dazu, mit Sprung zur Analyse
