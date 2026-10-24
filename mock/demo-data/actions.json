@@ -1,0 +1,111 @@
+[
+  {
+    "id": "f47aee19-4eb7-401d-9b4e-2d0c096bac46",
+    "name": "Kategorie setzen",
+    "description": "",
+    "url": "http://localhost:8090/webhook/kategorie",
+    "method": "POST",
+    "headers": [],
+    "body": "",
+    "confirm": false,
+    "color": "1",
+    "trigger": "categorize",
+    "createdAt": "2026-10-19T22:54:22.963Z"
+  },
+  {
+    "id": "69103efa-7c17-4162-a4d9-c58f5d1c4323",
+    "name": "Warnungen aufs Handy",
+    "description": "",
+    "url": "http://localhost:8090/webhook/warnung",
+    "method": "POST",
+    "headers": [],
+    "body": "",
+    "confirm": false,
+    "color": "1",
+    "trigger": "alerts",
+    "createdAt": "2026-10-19T22:54:22.974Z"
+  },
+  {
+    "id": "abf79d91-a679-4b8e-b470-d609b4015e13",
+    "name": "Monatsabschluss",
+    "description": "Bericht per Mail am Gehaltstag",
+    "url": "http://localhost:8090/webhook/abschluss",
+    "method": "POST",
+    "headers": [],
+    "body": "",
+    "confirm": false,
+    "color": "1",
+    "trigger": "report-salary",
+    "createdAt": "2026-10-19T22:54:22.985Z"
+  },
+  {
+    "id": "621af856-a501-4e12-a666-44e7df543df0",
+    "name": "Belege abholen",
+    "description": "",
+    "url": "http://localhost:8090/webhook/belege",
+    "method": "POST",
+    "headers": [],
+    "body": "",
+    "confirm": false,
+    "color": "1",
+    "trigger": "manual",
+    "createdAt": "2026-10-19T22:54:22.995Z"
+  },
+  {
+    "id": "2b99bcb6-63d6-461e-9845-4d454cb7cdbe",
+    "name": "Monatsbericht erstellen",
+    "description": "Erstellt den PDF-Bericht und schickt ihn per Mail",
+    "url": "http://localhost:8090/webhook/monatsbericht",
+    "method": "POST",
+    "headers": [
+      {
+        "name": "X-Auth",
+        "value": "geheim"
+      }
+    ],
+    "body": "{\n  \"quelle\": \"firefly-dashboard\",\n  \"zeitraum\": \"{{period}}\",\n  \"von\": \"{{start}}\",\n  \"bis\": \"{{end}}\",\n  \"ausgeloest\": \"{{now}}\"\n}",
+    "confirm": false,
+    "color": "1",
+    "trigger": "manual",
+    "createdAt": "2026-10-19T22:59:17.302Z"
+  },
+  {
+    "id": "b5a0aa0e-a189-40a2-a089-fae4f0fa4bd7",
+    "name": "Belege nach Paperless",
+    "description": "",
+    "url": "http://localhost:8090/webhook/fehler",
+    "method": "POST",
+    "headers": [],
+    "body": "{\n  \"quelle\": \"firefly-dashboard\",\n  \"zeitraum\": \"{{period}}\",\n  \"von\": \"{{start}}\",\n  \"bis\": \"{{end}}\",\n  \"ausgeloest\": \"{{now}}\"\n}",
+    "confirm": false,
+    "color": "3",
+    "trigger": "manual",
+    "createdAt": "2026-10-19T22:59:19.103Z"
+  },
+  {
+    "id": "rules-demo",
+    "name": "Regeln anlegen",
+    "description": "",
+    "url": "http://localhost:8090/webhook/regeln",
+    "method": "POST",
+    "headers": [],
+    "body": "",
+    "confirm": false,
+    "color": "1",
+    "trigger": "rules",
+    "createdAt": "2026-10-19T22:54:22.963Z"
+  },
+  {
+    "id": "csvimp-demo",
+    "name": "CSV importieren",
+    "description": "",
+    "url": "http://localhost:8090/webhook/csvimport",
+    "method": "POST",
+    "headers": [],
+    "body": "",
+    "confirm": false,
+    "color": "1",
+    "trigger": "csv-import",
+    "createdAt": "2026-10-19T22:54:22.963Z"
+  }
+]

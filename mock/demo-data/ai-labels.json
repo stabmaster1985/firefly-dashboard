@@ -1,0 +1,1215 @@
+{
+  "labels": {
+    "hausverwaltung schmidt": {
+      "name": "Hausverwaltung Schmidt",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Hausverwaltung Schmidt"
+      },
+      "n": 18,
+      "sum": 20700,
+      "nr": 1,
+      "kategorie": "Wohnen",
+      "tags": [
+        "Fixkosten"
+      ],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:26.127Z"
+    },
+    "booking com": {
+      "name": "Booking.com",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Booking.com"
+      },
+      "n": 2,
+      "sum": 2480,
+      "nr": 2,
+      "kategorie": "Urlaub",
+      "tags": [
+        "Reisen"
+      ],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:26.127Z",
+      "status": "nein"
+    },
+    "edeka": {
+      "name": "EDEKA",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "EDEKA"
+      },
+      "n": 36,
+      "sum": 2319.43,
+      "nr": 3,
+      "kategorie": "Lebensmittel",
+      "tags": [],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:26.127Z"
+    },
+    "geldautomat": {
+      "name": "Geldautomat",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Geldautomat"
+      },
+      "n": 18,
+      "sum": 1800,
+      "nr": 4,
+      "kategorie": "Bargeld",
+      "tags": [],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:26.127Z"
+    },
+    "lidl": {
+      "name": "Lidl",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Lidl"
+      },
+      "n": 33,
+      "sum": 1654.16,
+      "nr": 5,
+      "kategorie": "Lebensmittel",
+      "tags": [],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:26.127Z"
+    },
+    "dm drogerie": {
+      "name": "dm-Drogerie",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "dm-Drogerie"
+      },
+      "n": 26,
+      "sum": 1572.92,
+      "nr": 6,
+      "kategorie": "Lebensmittel",
+      "tags": [],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:26.127Z"
+    },
+    "stadtwerke": {
+      "name": "Stadtwerke",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Stadtwerke"
+      },
+      "n": 18,
+      "sum": 1542.23,
+      "nr": 7,
+      "kategorie": "Nebenkosten",
+      "tags": [
+        "Fixkosten"
+      ],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:26.127Z"
+    },
+    "aldi süd": {
+      "name": "Aldi Süd",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Aldi Süd"
+      },
+      "n": 24,
+      "sum": 1265.24,
+      "nr": 8,
+      "kategorie": "Lebensmittel",
+      "tags": [],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:26.127Z"
+    },
+    "mediamarkt": {
+      "name": "MediaMarkt",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "MediaMarkt"
+      },
+      "n": 8,
+      "sum": 1225.27,
+      "nr": 1,
+      "kategorie": "Shopping",
+      "tags": [
+        "Online"
+      ],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:26.583Z"
+    },
+    "rewe": {
+      "name": "REWE",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "REWE"
+      },
+      "n": 20,
+      "sum": 1203.47,
+      "nr": 2,
+      "kategorie": "Lebensmittel",
+      "tags": [],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:26.584Z"
+    },
+    "stadt musterstadt": {
+      "name": "Stadt Musterstadt",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Stadt Musterstadt"
+      },
+      "n": 18,
+      "sum": 1116,
+      "nr": 3,
+      "kategorie": "Sonstiges",
+      "tags": [],
+      "bedarf": "sinnvoll",
+      "sicherheit": 40,
+      "grund": "Unklarer Empfänger",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:26.584Z",
+      "status": "ok"
+    },
+    "amazon": {
+      "name": "Amazon",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Amazon"
+      },
+      "n": 13,
+      "sum": 1060.19,
+      "nr": 4,
+      "kategorie": "Shopping",
+      "tags": [
+        "Online"
+      ],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:26.584Z"
+    },
+    "wochenmarkt": {
+      "name": "Wochenmarkt",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Wochenmarkt"
+      },
+      "n": 21,
+      "sum": 950.98,
+      "nr": 5,
+      "kategorie": "Lebensmittel",
+      "tags": [],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:26.584Z"
+    },
+    "jet": {
+      "name": "JET",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "JET"
+      },
+      "n": 13,
+      "sum": 889.72,
+      "nr": 6,
+      "kategorie": "Auto & Tanken",
+      "tags": [
+        "Auto"
+      ],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:26.584Z"
+    },
+    "aral": {
+      "name": "Aral",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Aral"
+      },
+      "n": 14,
+      "sum": 883.87,
+      "nr": 7,
+      "kategorie": "Auto & Tanken",
+      "tags": [
+        "Auto"
+      ],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:26.584Z"
+    },
+    "deutsche bahn": {
+      "name": "Deutsche Bahn",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Deutsche Bahn"
+      },
+      "n": 18,
+      "sum": 882,
+      "nr": 8,
+      "kategorie": "Mobilität",
+      "tags": [
+        "Pendeln"
+      ],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:26.584Z"
+    },
+    "text:hornbach baumarkt": {
+      "name": "HORNBACH BAUMARKT GERMERING",
+      "via": null,
+      "match": {
+        "field": "notes",
+        "op": "contains",
+        "value": "hornbach baumarkt"
+      },
+      "n": 16,
+      "sum": 823.95,
+      "nr": 1,
+      "kategorie": "Haus & Garten",
+      "tags": [
+        "Haushalt"
+      ],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.052Z"
+    },
+    "thalia": {
+      "name": "Thalia",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Thalia"
+      },
+      "n": 10,
+      "sum": 735.87,
+      "nr": 2,
+      "kategorie": "Shopping",
+      "tags": [
+        "Online"
+      ],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.052Z"
+    },
+    "thai orchid": {
+      "name": "Thai Orchid",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Thai Orchid"
+      },
+      "n": 14,
+      "sum": 726.13,
+      "nr": 3,
+      "kategorie": "Essen gehen",
+      "tags": [
+        "Ausgehen"
+      ],
+      "bedarf": "verzichtbar",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.052Z"
+    },
+    "telekom": {
+      "name": "Telekom",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Telekom"
+      },
+      "n": 18,
+      "sum": 719.82,
+      "nr": 4,
+      "kategorie": "Nebenkosten",
+      "tags": [
+        "Fixkosten"
+      ],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.052Z"
+    },
+    "biergarten am see": {
+      "name": "Biergarten am See",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Biergarten am See"
+      },
+      "n": 12,
+      "sum": 681.35,
+      "nr": 5,
+      "kategorie": "Essen gehen",
+      "tags": [
+        "Ausgehen"
+      ],
+      "bedarf": "verzichtbar",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.052Z"
+    },
+    "zalando": {
+      "name": "Zalando",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Zalando"
+      },
+      "n": 7,
+      "sum": 666.08,
+      "nr": 6,
+      "kategorie": "Shopping",
+      "tags": [
+        "Online"
+      ],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.052Z"
+    },
+    "shell": {
+      "name": "Shell",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Shell"
+      },
+      "n": 9,
+      "sum": 607.56,
+      "nr": 7,
+      "kategorie": "Auto & Tanken",
+      "tags": [
+        "Auto"
+      ],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.052Z"
+    },
+    "café central": {
+      "name": "Café Central",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Café Central"
+      },
+      "n": 14,
+      "sum": 598.54,
+      "nr": 8,
+      "kategorie": "Essen gehen",
+      "tags": [
+        "Ausgehen"
+      ],
+      "bedarf": "verzichtbar",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.052Z"
+    },
+    "ikea": {
+      "name": "IKEA",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "IKEA"
+      },
+      "n": 7,
+      "sum": 588.74,
+      "nr": 1,
+      "kategorie": "Shopping",
+      "tags": [
+        "Online"
+      ],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.529Z"
+    },
+    "text:netto marken": {
+      "name": "NETTO MARKEN-DISCOUNT MUENCHEN",
+      "via": null,
+      "match": {
+        "field": "notes",
+        "op": "contains",
+        "value": "netto marken"
+      },
+      "n": 12,
+      "sum": 571.81,
+      "nr": 2,
+      "kategorie": "Lebensmittel",
+      "tags": [],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.529Z"
+    },
+    "huk coburg": {
+      "name": "HUK-Coburg",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "HUK-Coburg"
+      },
+      "n": 2,
+      "sum": 509.2,
+      "nr": 3,
+      "kategorie": "Versicherung",
+      "tags": [
+        "Fixkosten"
+      ],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.529Z"
+    },
+    "text:steam": {
+      "name": "Steam",
+      "via": "PayPal Europe S.a.r.l.",
+      "match": {
+        "field": "description",
+        "op": "contains",
+        "value": "steam"
+      },
+      "n": 6,
+      "sum": 474.75,
+      "nr": 4,
+      "kategorie": "Shopping",
+      "tags": [
+        "Online"
+      ],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.529Z"
+    },
+    "text:rossmann pasing": {
+      "name": "ROSSMANN PASING DE",
+      "via": null,
+      "match": {
+        "field": "notes",
+        "op": "contains",
+        "value": "rossmann"
+      },
+      "n": 11,
+      "sum": 445.16,
+      "nr": 5,
+      "kategorie": "Drogerie",
+      "tags": [
+        "Haushalt"
+      ],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.529Z"
+    },
+    "pizzeria bella": {
+      "name": "Pizzeria Bella",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Pizzeria Bella"
+      },
+      "n": 9,
+      "sum": 435.57,
+      "nr": 6,
+      "kategorie": "Essen gehen",
+      "tags": [
+        "Ausgehen"
+      ],
+      "bedarf": "verzichtbar",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.529Z"
+    },
+    "vodafone": {
+      "name": "Vodafone",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Vodafone"
+      },
+      "n": 17,
+      "sum": 424.83,
+      "nr": 7,
+      "kategorie": "Nebenkosten",
+      "tags": [
+        "Fixkosten"
+      ],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.529Z"
+    },
+    "hotel lago": {
+      "name": "Hotel Lago",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Hotel Lago"
+      },
+      "n": 1,
+      "sum": 412,
+      "nr": 8,
+      "kategorie": "Sonstiges",
+      "tags": [],
+      "bedarf": "sinnvoll",
+      "sicherheit": 40,
+      "grund": "Unklarer Empfänger",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.529Z"
+    },
+    "autohaus becker": {
+      "name": "Autohaus Becker",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Autohaus Becker"
+      },
+      "n": 1,
+      "sum": 389,
+      "nr": 1,
+      "kategorie": "Sonstiges",
+      "tags": [],
+      "bedarf": "sinnvoll",
+      "sicherheit": 40,
+      "grund": "Unklarer Empfänger",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.980Z"
+    },
+    "praxis apotheke": {
+      "name": "Praxis / Apotheke",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Praxis / Apotheke"
+      },
+      "n": 7,
+      "sum": 385.46,
+      "nr": 2,
+      "kategorie": "Gesundheit",
+      "tags": [],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.980Z"
+    },
+    "text:vodafone kabel": {
+      "name": "Vodafone Kabel Deutschland",
+      "via": null,
+      "match": {
+        "field": "notes",
+        "op": "contains",
+        "value": "vodafone kabel"
+      },
+      "n": 9,
+      "sum": 359.91,
+      "nr": 3,
+      "kategorie": "Nebenkosten",
+      "tags": [
+        "Fixkosten"
+      ],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.980Z"
+    },
+    "text:baeckerei riedmaier": {
+      "name": "BAECKEREI RIEDMAIER MUENCHEN",
+      "via": null,
+      "match": {
+        "field": "notes",
+        "op": "contains",
+        "value": "baeckerei riedmaier"
+      },
+      "n": 8,
+      "sum": 322.57,
+      "nr": 4,
+      "kategorie": "Lebensmittel",
+      "tags": [],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.980Z"
+    },
+    "schwimmbad": {
+      "name": "Schwimmbad",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Schwimmbad"
+      },
+      "n": 7,
+      "sum": 288.3,
+      "nr": 5,
+      "kategorie": "Freizeit",
+      "tags": [
+        "Hobby"
+      ],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.980Z"
+    },
+    "tüv süd": {
+      "name": "TÜV Süd",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "TÜV Süd"
+      },
+      "n": 2,
+      "sum": 282,
+      "nr": 6,
+      "kategorie": "Sonstiges",
+      "tags": [],
+      "bedarf": "sinnvoll",
+      "sicherheit": 40,
+      "grund": "Unklarer Empfänger",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.980Z"
+    },
+    "text:tankstelle esso": {
+      "name": "TANKSTELLE ESSO MUENCHEN",
+      "via": null,
+      "match": {
+        "field": "notes",
+        "op": "contains",
+        "value": "tankstelle esso"
+      },
+      "n": 6,
+      "sum": 271.05,
+      "nr": 7,
+      "kategorie": "Auto & Tanken",
+      "tags": [
+        "Auto"
+      ],
+      "bedarf": "notwendig",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.980Z"
+    },
+    "kletterhalle": {
+      "name": "Kletterhalle",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Kletterhalle"
+      },
+      "n": 8,
+      "sum": 269.53,
+      "nr": 8,
+      "kategorie": "Freizeit",
+      "tags": [
+        "Hobby"
+      ],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:27.980Z"
+    },
+    "kino": {
+      "name": "Kino",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Kino"
+      },
+      "n": 8,
+      "sum": 265.04,
+      "nr": 1,
+      "kategorie": "Freizeit",
+      "tags": [
+        "Hobby"
+      ],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:28.437Z"
+    },
+    "museum": {
+      "name": "Museum",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Museum"
+      },
+      "n": 7,
+      "sum": 254.66,
+      "nr": 2,
+      "kategorie": "Freizeit",
+      "tags": [
+        "Hobby"
+      ],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:28.437Z"
+    },
+    "netflix": {
+      "name": "Netflix",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Netflix"
+      },
+      "n": 18,
+      "sum": 251.82,
+      "nr": 3,
+      "kategorie": "Streaming",
+      "tags": [
+        "Abo",
+        "Online"
+      ],
+      "bedarf": "verzichtbar",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:28.437Z"
+    },
+    "spotify": {
+      "name": "Spotify",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Spotify"
+      },
+      "n": 18,
+      "sum": 197.82,
+      "nr": 4,
+      "kategorie": "Streaming",
+      "tags": [
+        "Abo",
+        "Online"
+      ],
+      "bedarf": "verzichtbar",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:28.437Z"
+    },
+    "text:etsy": {
+      "name": "Etsy",
+      "via": "PayPal Europe S.a.r.l.",
+      "match": {
+        "field": "description",
+        "op": "contains",
+        "value": "etsy"
+      },
+      "n": 2,
+      "sum": 187.85,
+      "nr": 5,
+      "kategorie": "Shopping",
+      "tags": [
+        "Online"
+      ],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:28.437Z"
+    },
+    "sushi bar koi": {
+      "name": "Sushi Bar Koi",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Sushi Bar Koi"
+      },
+      "n": 4,
+      "sum": 181.38,
+      "nr": 6,
+      "kategorie": "Essen gehen",
+      "tags": [
+        "Ausgehen"
+      ],
+      "bedarf": "verzichtbar",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:28.437Z"
+    },
+    "förderverein sonnenschein e v": {
+      "name": "Förderverein Sonnenschein e.V.",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Förderverein Sonnenschein e.V."
+      },
+      "n": 6,
+      "sum": 180,
+      "nr": 7,
+      "kategorie": "Sonstiges",
+      "tags": [],
+      "bedarf": "sinnvoll",
+      "sicherheit": 40,
+      "grund": "Unklarer Empfänger",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:28.437Z"
+    },
+    "text:disneyplus": {
+      "name": "DisneyPlus",
+      "via": "PayPal Europe S.a.r.l.",
+      "match": {
+        "field": "description",
+        "op": "contains",
+        "value": "disneyplus"
+      },
+      "n": 18,
+      "sum": 179.82,
+      "nr": 8,
+      "kategorie": "Streaming",
+      "tags": [
+        "Abo",
+        "Online"
+      ],
+      "bedarf": "verzichtbar",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:28.437Z"
+    },
+    "text:ebay": {
+      "name": "eBay",
+      "via": "PayPal Europe S.a.r.l.",
+      "match": {
+        "field": "description",
+        "op": "contains",
+        "value": "ebay"
+      },
+      "n": 2,
+      "sum": 177.5,
+      "nr": 1,
+      "kategorie": "Shopping",
+      "tags": [
+        "Online"
+      ],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:28.889Z"
+    },
+    "text:vinted": {
+      "name": "Vinted",
+      "via": "PayPal Europe S.a.r.l.",
+      "match": {
+        "field": "description",
+        "op": "contains",
+        "value": "vinted"
+      },
+      "n": 2,
+      "sum": 164.55,
+      "nr": 2,
+      "kategorie": "Shopping",
+      "tags": [
+        "Online"
+      ],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:28.889Z"
+    },
+    "konzertkarten": {
+      "name": "Konzertkarten",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Konzertkarten"
+      },
+      "n": 4,
+      "sum": 138.46,
+      "nr": 3,
+      "kategorie": "Freizeit",
+      "tags": [
+        "Hobby"
+      ],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:28.889Z"
+    },
+    "waschpark nord": {
+      "name": "Waschpark Nord",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Waschpark Nord"
+      },
+      "n": 9,
+      "sum": 110.43,
+      "nr": 4,
+      "kategorie": "Sonstiges",
+      "tags": [],
+      "bedarf": "sinnvoll",
+      "sicherheit": 40,
+      "grund": "Unklarer Empfänger",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:28.889Z"
+    },
+    "blumen meyer": {
+      "name": "Blumen Meyer",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Blumen Meyer"
+      },
+      "n": 3,
+      "sum": 102.46,
+      "nr": 5,
+      "kategorie": "Geschenke",
+      "tags": [
+        "Familie"
+      ],
+      "bedarf": "sinnvoll",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:28.889Z"
+    },
+    "busreisen meyer": {
+      "name": "Busreisen Meyer",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Busreisen Meyer"
+      },
+      "n": 4,
+      "sum": 72,
+      "nr": 6,
+      "kategorie": "Sonstiges",
+      "tags": [],
+      "bedarf": "sinnvoll",
+      "sicherheit": 40,
+      "grund": "Unklarer Empfänger",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:28.889Z"
+    },
+    "al porto": {
+      "name": "Al Porto",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Al Porto"
+      },
+      "n": 1,
+      "sum": 71,
+      "nr": 7,
+      "kategorie": "Sonstiges",
+      "tags": [],
+      "bedarf": "sinnvoll",
+      "sicherheit": 40,
+      "grund": "Unklarer Empfänger",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:28.889Z"
+    },
+    "conad": {
+      "name": "Conad",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Conad"
+      },
+      "n": 1,
+      "sum": 54.2,
+      "nr": 8,
+      "kategorie": "Sonstiges",
+      "tags": [],
+      "bedarf": "sinnvoll",
+      "sicherheit": 40,
+      "grund": "Unklarer Empfänger",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:28.889Z"
+    },
+    "da mario": {
+      "name": "Da Mario",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Da Mario"
+      },
+      "n": 1,
+      "sum": 46.5,
+      "nr": 1,
+      "kategorie": "Essen gehen",
+      "tags": [
+        "Ausgehen"
+      ],
+      "bedarf": "verzichtbar",
+      "sicherheit": 85,
+      "grund": "Anhand von Name und Buchungstext",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:29.105Z"
+    },
+    "navigazione laghi": {
+      "name": "Navigazione Laghi",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Navigazione Laghi"
+      },
+      "n": 1,
+      "sum": 38,
+      "nr": 2,
+      "kategorie": "Sonstiges",
+      "tags": [],
+      "bedarf": "sinnvoll",
+      "sicherheit": 40,
+      "grund": "Unklarer Empfänger",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:29.105Z"
+    },
+    "gelateria fiore": {
+      "name": "Gelateria Fiore",
+      "via": null,
+      "match": {
+        "field": "party",
+        "op": "equals",
+        "value": "Gelateria Fiore"
+      },
+      "n": 1,
+      "sum": 9.8,
+      "nr": 3,
+      "kategorie": "Sonstiges",
+      "tags": [],
+      "bedarf": "sinnvoll",
+      "sicherheit": 40,
+      "grund": "Unklarer Empfänger",
+      "model": "demo-llama:8b",
+      "at": "2026-10-21T12:16:29.105Z"
+    }
+  },
+  "scheme": null,
+  "decisions": {
+    "categories": {
+      "Essen gehen": "Restaurant"
+    },
+    "tags": {
+      "Pendeln": null
+    }
+  }
+}

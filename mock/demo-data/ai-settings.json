@@ -1,0 +1,10 @@
+{
+  "url": "http://localhost:8090/ollama",
+  "model": "demo-llama:8b",
+  "freedom": "sinnvoll",
+  "wait": 10,
+  "layer": {
+    "on": true,
+    "min": 80
+  }
+}
