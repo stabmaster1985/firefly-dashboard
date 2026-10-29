@@ -1313,3 +1313,11 @@ a.card:hover, .link-tile:hover { box-shadow: 0 6px 22px color-mix(in srgb, var(-
 .ai-move, .ai-add { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .ai-move input, .ai-add input { font: inherit; font-size: 13px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary); flex: 1 1 160px; min-width: 0; }
 .ai-add { margin-top: 4px; }
+
+/* Ausgeblendete Buchungen: in der Buchungsliste sichtbar, aber zurückgenommen */
+tr.tx-hidden td { opacity: 0.6; }
+tr.tx-hidden td.num { text-decoration: line-through; }
+.excl-list .row { cursor: default; }
+.excl-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.excl-form input { flex: 1 1 200px; min-width: 0; }
+.excl-list .subtitle { white-space: normal; }

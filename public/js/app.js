@@ -236,6 +236,11 @@ document.getElementById('fold-btn').addEventListener('click', () => {
   cards.forEach((c) => setFolded(c, fold));
 });
 window.addEventListener('hashchange', render);
+// Buchung aus- oder eingeblendet: Summen und Listen der Seite neu berechnen
+window.addEventListener('ffd-excluded', () => {
+  const y = scrollY;
+  render().then(() => setTimeout(() => scrollTo(0, y), 300));
+});
 
 const rangeForm = document.getElementById('custom-range');
 const rangeFrom = document.getElementById('cr-from');

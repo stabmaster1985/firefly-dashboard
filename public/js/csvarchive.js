@@ -137,7 +137,7 @@ export function csvArchive(el, { load, memory }) {
       const end = isoOf(day(dates.at(-1)) + 4 * DAY);
       busy = `${g.label}: lade Firefly-Buchungen ${fmtDate(dates[0])} – ${fmtDate(dates.at(-1))} …`;
       render();
-      const groupsData = g.acc ? await api.getAll(`accounts/${g.acc.id}/transactions`, { start, end }) : await api.getAll('transactions', { start, end });
+      const groupsData = g.acc ? await api.getAll(`accounts/${g.acc.id}/transactions`, { start, end, _alle: true }) : await api.getAll('transactions', { start, end, _alle: true });
       const txs = api.flattenTransactions(groupsData);
       for (const r of matchRows(fresh, txs)) {
         counts[r.status] = (counts[r.status] || 0) + 1;

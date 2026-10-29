@@ -336,9 +336,9 @@ export async function transactions(view, { period, params }) {
       if (state.q.trim()) {
         const parts = [state.q.trim(), `date_after:${isoDate(start)}`, `date_before:${isoDate(end)}`];
         if (state.type !== 'all') parts.push(`type:${state.type}`);
-        res = await api.get('search/transactions', { query: parts.join(' '), page: state.page, limit: 50 });
+        res = await api.get('search/transactions', { query: parts.join(' '), page: state.page, limit: 50, _alle: true });
       } else {
-        res = await api.get('transactions', { start, end, type: state.type, page: state.page, limit: 50 });
+        res = await api.get('transactions', { start, end, type: state.type, page: state.page, limit: 50, _alle: true });
       }
       if (my !== token || !body.isConnected) return;
       const pag = res.meta?.pagination || {};
@@ -357,17 +357,21 @@ export async function transactions(view, { period, params }) {
       return;
     }
     const code = mainCurrency(state.rows);
-    const out = sum(state.rows.filter((r) => r.type === 'withdrawal' && r.currency_code === code), (r) => r.amount);
-    const inc = sum(state.rows.filter((r) => r.type === 'deposit' && r.currency_code === code), (r) => r.amount);
+    // ausgeblendete Buchungen stehen in der Liste (markiert), zählen aber nicht mit
+    const counted = state.rows.filter((r) => !r.ffd_ausgeblendet && r.currency_code === code);
+    const out = sum(counted.filter((r) => r.type === 'withdrawal'), (r) => r.amount);
+    const inc = sum(counted.filter((r) => r.type === 'deposit'), (r) => r.amount);
+    const hidden = state.rows.filter((r) => r.ffd_ausgeblendet).length;
     summaryEl.innerHTML = `<span><b>${state.total}</b>&nbsp;Buchungen · ${esc(period.label)}</span>
       ${inc ? `<span>Einnahmen <b class="pos">&nbsp;${money(inc, code)}</b></span>` : ''}
       ${out ? `<span>Ausgaben <b>&nbsp;${money(out, code)}</b></span>` : ''}
-      ${hasMore ? `<span>(Summen der ${state.rows.length} geladenen)</span>` : ''}`;
+      ${hasMore ? `<span>(Summen der ${state.rows.length} geladenen)</span>` : ''}
+      ${hidden ? `<span class="muted">${hidden} ausgeblendet (zählen nicht mit)</span>` : ''}`;
     body.innerHTML = state.rows
-      .map((t, i) => `<tr ${txAttrs(i)}>
+      .map((t, i) => `<tr ${txAttrs(i)}${t.ffd_ausgeblendet ? ' class="tx-hidden" title="Ausgeblendet – zählt nicht in Auswertungen"' : ''}>
         <td class="pick-cell"><input type="checkbox" data-txpick="${i}" ${picked.has(jid(t)) ? 'checked' : ''} aria-label="auswählen"></td>
         <td class="date hide-sm">${fmtDate(t.date)}</td>
-        <td><div class="desc">${esc(t.description)}</div><div class="flow"><span class="show-sm">${fmtDate(t.date)} · </span>${esc(t.source_name)} → ${esc(t.destination_name)}</div>${t.notes ? `<div class="flow note">${esc(t.notes)}</div>` : ''}</td>
+        <td><div class="desc">${esc(t.description)}${t.ffd_ausgeblendet ? ' <span class="badge warn">ausgeblendet</span>' : ''}</div><div class="flow"><span class="show-sm">${fmtDate(t.date)} · </span>${esc(t.source_name)} → ${esc(t.destination_name)}</div>${t.notes ? `<div class="flow note">${esc(t.notes)}</div>` : ''}</td>
         <td class="hide-sm">${t.category_name ? `<span class="cat">${esc(t.category_name)}</span>` : ''}${(t.tags || []).map((x) => ` <span class="tag">${esc(x)}</span>`).join('')}</td>
         <td class="num">${signedAmount(t)}</td></tr>`)
       .join('');

@@ -5,15 +5,19 @@ import * as api from './api.js';
 import { money, esc, fmtDate, today, addDays, startOfMonth } from './util.js';
 import { skeleton, fill, card, txAttrs, bindTxDetails, signedAmount, counterparty } from './common.js';
 import { actionFor, runAction } from './txedit.js';
+import { loadExcluded, addExcluded, removeExcluded, ruleLabel, partnerOf, RICHTUNG } from './excluded.js';
 
 const DAY = 86400000;
 
-/** Ausgaben und Einnahmen der letzten 24 Monate (gleicher, vorgewärmter Cache wie „Wiederkehrend“). */
-export function loadHistory() {
+/**
+ * Ausgaben und Einnahmen der letzten 24 Monate (gleicher, vorgewärmter Cache wie „Wiederkehrend“).
+ * alle: auch ausgeblendete Buchungen (markiert) – für Prüfen und Aufräumen.
+ */
+export function loadHistory({ alle = false } = {}) {
   const t0 = today();
   const from = startOfMonth(t0, -24);
   return Promise.all(['withdrawal', 'deposit'].map((type) =>
-    api.getAll('transactions', { start: from, end: t0, type })
+    api.getAll('transactions', { start: from, end: t0, type, _alle: alle || undefined })
       .then((groups) => api.flattenTransactions(groups).filter((t) => t.type === type))))
     .then((lists) => lists.flat());
 }
@@ -71,7 +75,7 @@ export async function importStatus(history) {
   const t0 = today();
   const since = addDays(t0, -180);
   return Promise.all(accounts.map(async (a) => {
-    const res = await api.get(`accounts/${a.id}/transactions`, { limit: 1, page: 1 }).catch(() => null);
+    const res = await api.get(`accounts/${a.id}/transactions`, { limit: 1, page: 1, _alle: true }).catch(() => null);
     const last = res?.data?.[0]?.attributes?.transactions?.[0]?.date || null;
     const days = [...new Set(history
       .filter((t) => (String(t.source_id) === a.id || String(t.destination_id) === a.id) && new Date(t.date) >= since)
@@ -97,7 +101,7 @@ export async function importStatus(history) {
 // Hinweise für die Übersicht
 
 export async function checkHints() {
-  const [history, dismissed] = await Promise.all([loadHistory(), api.loadDismissed()]);
+  const [history, dismissed] = await Promise.all([loadHistory({ alle: true }), api.loadDismissed()]);
   const [dups, status] = await Promise.all([findDuplicates(history, dismissed.duplicates), importStatus(history)]);
   const rows = [];
   const serious = dups.filter((d) => d.level >= 2).length;
@@ -108,6 +112,48 @@ export async function checkHints() {
     rows.push({ icon: '⟳', cls: 'hint-import', title: `${s.name}: seit ${s.ago} Tagen keine Buchung`, sub: 'Import vergessen? Prüfen →' });
   }
   return rows;
+}
+
+// ---------------------------------------------------------------------------
+// Ausgeblendete Buchungen verwalten (Knöpfe dazu auch in jeder Buchung: Details aufklappen)
+
+function excludedCard(el, meta, history) {
+  fill(el, () => Promise.all([loadExcluded(), history.catch(() => [])]), (box, [rules, txs]) => {
+    // je Regel: wie viele Buchungen der letzten 24 Monate sie betrifft
+    const hits = (r) => txs.filter((t) => (r.art === 'buchung'
+      ? String(t.transaction_journal_id) === String(r.j)
+      : partnerOf(t)?.trim().toLowerCase() === r.name.trim().toLowerCase()
+        && (r.richtung === 'beide' || r.richtung === (t.type === 'deposit' ? 'eingang' : 'ausgang'))));
+    const partners = [...new Set(txs.map(partnerOf).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
+    meta.textContent = rules.length ? `${rules.length} Regel${rules.length === 1 ? '' : 'n'}` : '';
+    box.innerHTML = `<p class="muted" style="margin-top:0">Ausgeblendete Buchungen zählen nicht in Einnahmen, Ausgaben, Kategorien, Händlern, Fragen und Berichten –
+      etwa Geld, das über ein Konto nur durchgereicht wird. Firefly bleibt unverändert; unter „Buchungen“ stehen sie weiter (markiert).
+      Einzelne Buchungen blendest du in ihren Details aus (Zeile anklicken).</p>
+      ${rules.length ? `<div class="list excl-list">${rules.map((r) => {
+        const { title, sub } = ruleLabel(r);
+        const list = hits(r);
+        const sum = list.reduce((s, t) => s + t.amount, 0);
+        const extra = r.art === 'gegenkonto' && list.length ? ` · ${list.length} Buchung${list.length === 1 ? '' : 'en'} (24 Monate, ${money(sum, list[0].currency_code)})` : '';
+        return `<div class="row"><div class="avatar">${r.art === 'buchung' ? '1' : '∗'}</div>
+          <div style="min-width:0"><div class="title">${esc(title)}</div><div class="subtitle">${esc(sub + extra)}</div></div>
+          <button class="btn small" data-excl-del="${esc(r.id)}">Einblenden</button></div>`;
+      }).join('')}</div>` : '<div class="empty">Noch nichts ausgeblendet.</div>'}
+      <form class="excl-form" id="c-excl-form">
+        <input class="input" name="name" list="c-excl-partners" placeholder="Gegenkonto, z. B. Name des Durchgangskontos" aria-label="Gegenkonto" required>
+        <datalist id="c-excl-partners">${partners.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+        <select class="input select" name="richtung" aria-label="Richtung">${Object.entries(RICHTUNG).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+        <button class="btn primary small" type="submit">Alle ausblenden</button>
+      </form>`;
+    box.querySelectorAll('[data-excl-del]').forEach((btn) => btn.addEventListener('click', () => {
+      btn.disabled = true;
+      removeExcluded(btn.dataset.exclDel).catch((err) => alert(err.message));
+    }));
+    box.querySelector('#c-excl-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      addExcluded({ art: 'gegenkonto', name: form.get('name'), richtung: form.get('richtung') }).catch((err) => alert(err.message));
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -131,9 +177,11 @@ export async function check(view) {
       </section>
       ${card('c-backup', 'Datensicherung (Firefly)', { meta: '<span id="c-backup-meta"></span>' })}
       ${card('c-dup', 'Mögliche doppelte Buchungen', { filter: true, meta: '<span id="c-dup-meta">letzte 24 Monate · Ausgaben & Einnahmen</span>' })}
+      ${card('c-excl', 'Ausgeblendete Buchungen', { meta: '<span id="c-excl-meta"></span>' })}
     </div>`;
   const $ = (id) => view.querySelector(`#${id}`);
-  const history = loadHistory();
+  const history = loadHistory({ alle: true });
+  excludedCard($('c-excl'), $('c-excl-meta'), history);
   backupCard($('c-backup'), $('c-backup-meta'));
 
   fill($('c-import'), () => Promise.all([history.then(importStatus), actionFor('import')]), (el, [status, action]) => {

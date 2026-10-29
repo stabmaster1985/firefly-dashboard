@@ -143,7 +143,7 @@ export async function csvSync(view) {
       api.setFresh(true);
       try {
         txs = api.flattenTransactions(await api.getAll('transactions', {
-          start: addDays(new Date(`${dates[0]}T12:00:00`), -4), end: addDays(new Date(`${dates.at(-1)}T12:00:00`), 4),
+          start: addDays(new Date(`${dates[0]}T12:00:00`), -4), end: addDays(new Date(`${dates.at(-1)}T12:00:00`), 4), _alle: true,
         }));
       } finally {
         api.setFresh(false);
@@ -720,7 +720,7 @@ export async function csvSync(view) {
     api.setFresh(true);
     let txs;
     try {
-      txs = api.flattenTransactions(await api.getAll('transactions', { start: from, end: to }))
+      txs = api.flattenTransactions(await api.getAll('transactions', { start: from, end: to, _alle: true }))
         .filter((t) => t.type === 'withdrawal' || t.type === 'deposit');
     } catch (err) {
       openScan = null;

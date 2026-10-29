@@ -43,7 +43,7 @@ export async function cleanup(view) {
   let editAction;
   try {
     [txs, categories, importPlan, mergePlan, rulesAction, editAction] = await Promise.all([
-      loadHistory(),
+      loadHistory({ alle: true }),
       api.getAll('categories').then((list) => list.map((c) => ({ id: String(c.id), name: c.attributes?.name || '' }))),
       fetch('/local/cleanup/import').then((r) => r.json()),
       fetch('/local/cleanup/merge').then((r) => r.json()),
@@ -437,7 +437,7 @@ export async function cleanup(view) {
 
   /** Ist das Konto leer (frisch aus Firefly)? */
   async function isEmpty(id) {
-    const res = await fetch(`/api/accounts/${encodeURIComponent(id)}/transactions?limit=1`, { headers: { 'X-No-Cache': '1' } }).catch(() => null);
+    const res = await fetch(`/api/accounts/${encodeURIComponent(id)}/transactions?limit=1`, { headers: { 'X-No-Cache': '1', 'X-FFD-Alle': '1' } }).catch(() => null);
     if (!res) return false;
     if (res.status === 404) return true;
     const body = await res.json().catch(() => null);
@@ -479,7 +479,7 @@ export async function cleanup(view) {
       patchGroup(g.key, { done: new Date().toISOString(), selected: false, members: [p.target], target: p.target, rename: p.rename, emptied: empty });
     }
     api.forget();
-    txs = await loadHistory(); // Buchungen zählen jetzt beim Zielkonto
+    txs = await loadHistory({ alle: true }); // Buchungen zählen jetzt beim Zielkonto
     await loadAccounts(true);
     renderMerge();
     $('a-merge-out').innerHTML = `<span class="badge good">${moved} von ${paare.length} Konten zusammengeführt ✓</span>${moved < paare.length ? ' <span class="muted">Bei den übrigen sind noch Buchungen da – in n8n unter „Executions“ nachsehen.</span>' : ' <span class="muted">Die leeren Konten kannst du jetzt löschen.</span>'}`;

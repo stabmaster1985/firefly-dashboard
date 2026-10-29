@@ -33,6 +33,7 @@ export function forget() {
 function query(params = {}) {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
+    if (k === '_alle') continue;
     if (v === undefined || v === null || v === '') continue;
     qs.set(k, v instanceof Date ? isoDate(v) : String(v));
   }
@@ -61,6 +62,10 @@ function mergeInsight(lists) {
   return [...out.values()].map((x) => ({ ...x, difference: String(Math.round(x.difference_float * 100) / 100) }));
 }
 
+/**
+ * GET über den Proxy. Ausgeblendete Buchungen fehlen in Listen und Summen; mit params._alle
+ * kommen Listen vollständig, Ausgeblendetes markiert (t.ffd_ausgeblendet) – für Abgleich & Pflege.
+ */
 export function get(path, params) {
   if (/^insight\//.test(path) && params?.start && params?.end) {
     const chunks = pastMonthChunks(params.start, params.end);
@@ -75,20 +80,22 @@ export function get(path, params) {
     }
   }
   const url = `/api/${path}${query(params)}`;
-  const hit = memo.get(url);
+  const key = params?._alle ? `${url}#alle` : url;
+  const hit = memo.get(key);
   if (!fresh && hit && Date.now() - hit.at < MEMO_MS) return hit.promise;
-  const promise = load(url);
-  memo.set(url, { promise, at: Date.now() });
-  promise.catch(() => memo.delete(url));
+  const promise = load(url, { alle: Boolean(params?._alle) });
+  memo.set(key, { promise, at: Date.now() });
+  promise.catch(() => memo.delete(key));
   if (memo.size > 800) memo.delete(memo.keys().next().value);
   return promise;
 }
 
-async function load(url) {
+async function load(url, { alle = false } = {}) {
   let res;
   try {
     const headers = {};
     if (fresh) headers['X-No-Cache'] = '1';
+    if (alle) headers['X-FFD-Alle'] = '1';
     if (monthStart > 1) headers['X-Month-Start'] = String(monthStart);
     res = await fetch(url, { headers });
   } catch (err) {

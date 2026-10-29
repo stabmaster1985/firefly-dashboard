@@ -20,6 +20,7 @@ import { createCsvArchive } from './lib/csvarchive.js';
 import { createSyncJob } from './lib/syncjob.js';
 import { createCleanup } from './lib/cleanup.js';
 import { createAuth } from './lib/auth.js';
+import { createExcluded } from './lib/excluded.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
@@ -87,6 +88,10 @@ const firefly = createFirefly({
   persistDir: path.join(DATA_DIR, 'cache'), // abgeschlossene Monate überstehen Neustarts und Updates
 });
 
+// Ausgeblendete Buchungen: zählen in Auswertungen nicht mit (Firefly bleibt unverändert).
+// Alles, was auswertet (Oberfläche, Fragen, KI, Berichte), liest über diese Schicht.
+const excluded = createExcluded(DATA_DIR, { firefly });
+
 // Automationen (Webhooks) – eigene, lokal gespeicherte Konfiguration.
 // Ändert eine Automation Buchungen in Firefly, ist der Zwischenspeicher veraltet.
 const handleActions = createActions(DATA_DIR, { onDataChange: () => firefly.invalidate() });
@@ -103,7 +108,7 @@ const handleSyncJob = createSyncJob(DATA_DIR, { firefly, actions: handleActions,
 const handleCleanup = createCleanup(DATA_DIR);
 
 // KI-Analyse mit einem lokalen Ollama (optional, Labor)
-const handleAi = createAi({ dataDir: DATA_DIR, firefly });
+const handleAi = createAi({ dataDir: DATA_DIR, firefly: excluded });
 
 // Laufende Version und Prüfung auf neue Commits (GitHub)
 const version = createVersion({ root: ROOT, repo: UPDATE_REPO, enabled: UPDATE_CHECK });
@@ -143,7 +148,7 @@ async function proxy(req, res, url) {
   }
 
   try {
-    const result = await firefly.get(apiPath, url.searchParams, { fresh: req.headers['x-no-cache'] === '1' });
+    const result = await excluded.get(apiPath, url.searchParams, { fresh: req.headers['x-no-cache'] === '1', alle: req.headers['x-ffd-alle'] === '1' });
     const gzip = result.gz && /\bgzip\b/.test(req.headers['accept-encoding'] || '');
     send(res, result.status, gzip ? result.gz : result.body, {
       'Content-Type': result.type,
@@ -205,6 +210,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/local/csvsync') return handleCsvSync(req, res);
   if (url.pathname === '/local/syncjob' || url.pathname.startsWith('/local/syncjob/')) return handleSyncJob(req, res, url);
   if (url.pathname === '/local/csvarchive' || url.pathname.startsWith('/local/csvarchive/')) return handleCsvArchive(req, res, url);
+  if (url.pathname === '/local/excluded') return excluded.handle(req, res, url);
   if (url.pathname.startsWith('/local/cleanup/')) return handleCleanup(req, res, url);
   if (url.pathname === '/local/groups' || url.pathname.startsWith('/local/groups/')) return handleGroups(req, res, url);
   if (url.pathname === '/local/version') {
@@ -222,7 +228,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 // Ziele, Einstellungen, Monatsabschluss und Warnungen
-const handleAutomation = createAutomation({ dataDir: DATA_DIR, firefly, actions: handleActions });
+const handleAutomation = createAutomation({ dataDir: DATA_DIR, firefly: excluded, actions: handleActions });
 
 if (WARM_MINUTES > 0) warmNow = startWarmer(firefly, { minutes: WARM_MINUTES, monthStarts: () => [...monthStarts] });
 

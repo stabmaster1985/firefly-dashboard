@@ -2,6 +2,7 @@
 
 import { money, esc, initials, fmtDate, fmtDateShort, storage, store } from './util.js';
 import { enhanceTxEdit } from './txedit.js';
+import { enhanceExclude } from './excluded.js';
 import { CARDS } from './help.js';
 
 // ---------------------------------------------------------------------------
@@ -174,7 +175,7 @@ export function txDetails(t) {
     ? `<div class="tx-links"><a class="btn small" href="${esc(show)}" target="_blank" rel="noopener">In Firefly öffnen ↗</a>
        <a class="btn small" href="${esc(fireflyTxUrl(t, 'edit'))}" target="_blank" rel="noopener">In Firefly bearbeiten ↗</a></div>`
     : '';
-  return `<dl>${fields.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl><div class="tx-edit"></div>${links}`;
+  return `<dl>${fields.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl><div class="tx-edit"></div><div class="tx-edit tx-exclude"></div>${links}`;
 }
 
 /**
@@ -204,6 +205,7 @@ export function bindTxDetails(host, getTx) {
       box.innerHTML = txDetails(t);
       if (note) box.querySelector('.tx-edit').insertAdjacentHTML('beforebegin', `<p class="tx-edit-status good">${note}</p>`);
       enhanceTxEdit(box.querySelector('.tx-edit'), t, () => draw('✓ In Firefly geändert – Listen zeigen es nach dem nächsten Laden.'));
+      enhanceExclude(box.querySelector('.tx-exclude'), t);
     };
     draw();
     row.setAttribute('aria-expanded', 'true');

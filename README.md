@@ -153,6 +153,12 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   - **CSV-Abgleich**: fehlende Empfänger (z. B. „(no name)“ bei Kartenzahlungen) aus den
     Original-CSV-Dateien der Bank nachtragen – mit Vorschau, Kategorien bleiben unverändert
   - beides erscheint auch unter **Hinweise** in der Übersicht
+  - **Ausgeblendete Buchungen**: durchlaufende Posten (z. B. Geld, das über ein Konto nur
+    weitergereicht wird) zählen nicht mit – einzeln in den Buchungsdetails („Diese Buchung
+    ausblenden“) oder alle mit einem Gegenkonto, wahlweise nur Ein- oder Ausgänge. Wirkt auf
+    Übersicht, Kategorien, Tags, Händler, Jahresrückblick, Labor, Wiederkehrend, Fragen und
+    Berichte; Firefly bleibt unverändert. Unter „Buchungen“, im CSV-Abgleich und beim Prüfen
+    stehen sie weiter (in der Buchungsliste durchgestrichen). Regeln in `DATA_DIR/excluded.json`
 - **Jahresrückblick** – Sparquote, Monat für Monat, Highlights, Kategorien im Vergleich zum
   Vorjahr, größte Ausgaben, Abo-Kosten pro Jahr und ein **Ausgaben-Kalender** (ein Feld pro
   Tag, je dunkler, desto mehr ausgegeben; Klick zeigt die Buchungen des Tages, dazu Ø pro Tag,
