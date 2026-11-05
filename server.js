@@ -21,6 +21,7 @@ import { createSyncJob } from './lib/syncjob.js';
 import { createCleanup } from './lib/cleanup.js';
 import { createAuth } from './lib/auth.js';
 import { createExcluded } from './lib/excluded.js';
+import { createMqtt } from './lib/mqtt.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
@@ -92,9 +93,18 @@ const firefly = createFirefly({
 // Alles, was auswertet (Oberfläche, Fragen, KI, Berichte), liest über diese Schicht.
 const excluded = createExcluded(DATA_DIR, { firefly });
 
+// Home Assistant per MQTT (optional, MQTT_ENABLED) – rechnet über dieselbe Schicht wie die Oberfläche
+const mqtt = createMqtt({ dataDir: DATA_DIR, firefly: excluded });
+
+// Daten in Firefly geändert (Automation, Abgleich): Zwischenspeicher verwerfen, Kennzahlen bald neu senden
+const dataChanged = () => {
+  firefly.invalidate();
+  mqtt.soon();
+};
+
 // Automationen (Webhooks) – eigene, lokal gespeicherte Konfiguration.
 // Ändert eine Automation Buchungen in Firefly, ist der Zwischenspeicher veraltet.
-const handleActions = createActions(DATA_DIR, { onDataChange: () => firefly.invalidate() });
+const handleActions = createActions(DATA_DIR, { onDataChange: dataChanged });
 
 // Gruppen aus dem Kategorien-Labor (längere Arbeit, über Geräte und Updates hinweg)
 const handleGroups = createGroups(DATA_DIR);
@@ -102,7 +112,7 @@ const handleGroups = createGroups(DATA_DIR);
 // CSV-Abgleich: welche CSV-Zeilen schon übertragen wurden
 const handleCsvSync = createCsvSync(DATA_DIR);
 const handleCsvArchive = createCsvArchive(DATA_DIR);
-const handleSyncJob = createSyncJob(DATA_DIR, { firefly, actions: handleActions, csvMemory: (items) => handleCsvSync.remember(items.map((i) => ({ fp: i.fp, j: i.j, name: i.name }))) });
+const handleSyncJob = createSyncJob(DATA_DIR, { firefly: { ...firefly, invalidate: dataChanged }, actions: handleActions, csvMemory: (items) => handleCsvSync.remember(items.map((i) => ({ fp: i.fp, j: i.j, name: i.name }))) });
 
 // Daten aufräumen: vorbereitete Pläne (Regeln aus der Import-Konfiguration, Konten zusammenführen)
 const handleCleanup = createCleanup(DATA_DIR);
@@ -210,7 +220,11 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/local/csvsync') return handleCsvSync(req, res);
   if (url.pathname === '/local/syncjob' || url.pathname.startsWith('/local/syncjob/')) return handleSyncJob(req, res, url);
   if (url.pathname === '/local/csvarchive' || url.pathname.startsWith('/local/csvarchive/')) return handleCsvArchive(req, res, url);
-  if (url.pathname === '/local/excluded') return excluded.handle(req, res, url);
+  if (url.pathname === '/local/excluded') {
+    if (req.method !== 'GET') res.on('finish', () => mqtt.soon(2000)); // Summen ändern sich
+    return excluded.handle(req, res, url);
+  }
+  if (url.pathname === '/local/mqtt') return mqtt.handle(req, res, url).catch((err) => send(res, 500, JSON.stringify({ message: err.message }), { 'Content-Type': MIME['.json'] }));
   if (url.pathname.startsWith('/local/cleanup/')) return handleCleanup(req, res, url);
   if (url.pathname === '/local/groups' || url.pathname.startsWith('/local/groups/')) return handleGroups(req, res, url);
   if (url.pathname === '/local/version') {
@@ -241,3 +255,10 @@ server.listen(PORT, HOST, () => {
     console.log('Hinweis: Kein DASHBOARD_PASSWORD gesetzt – jeder im Netzwerk kann das Dashboard öffnen.');
   }
 });
+
+// Beim Beenden (docker stop) Home Assistant „offline“ melden
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.once(signal, () => {
+    Promise.race([mqtt.stop(), new Promise((r) => setTimeout(r, 1500))]).finally(() => process.exit(0));
+  });
+}

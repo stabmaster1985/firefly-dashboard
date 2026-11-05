@@ -305,6 +305,63 @@ Händlern entworfen. Das Modell bleibt zwischen den Paketen 30 Minuten geladen. 
 demselben Ollama noch etwas anderes (z. B. der Paperless Companion mit anderem Modell),
 muss Ollama ggf. zwischen den Modellen wechseln – das kostet jedes Mal Ladezeit.
 
+## Home Assistant (MQTT)
+
+Optional sendet das Dashboard **zusammengefasste** Kennzahlen per MQTT an einen Broker im Heimnetz
+(z. B. das Mosquitto-Add-on). Über die **Home-Assistant-Discovery** legt HA das Gerät
+**„Firefly Finanzen“** mit seinen Sensoren selbst an – ohne YAML, ohne Neustart und ohne Firefly-Token
+in Home Assistant. Standardmäßig ist das aus.
+
+```ini
+MQTT_ENABLED=true
+MQTT_URL=mqtt://homeassistant.local:1883
+MQTT_USER=firefly
+MQTT_PASSWORD=…
+# optional: Konten einzeln als Sensor (Firefly-Konto-IDs, z. B. Girokonto und Tagesgeld)
+MQTT_ACCOUNTS=1,4
+# optional: Link „Gerät besuchen“ in HA
+PUBLIC_URL=http://dashboard.local:8080
+```
+
+**Was gesendet wird** – alles in `firefly_dashboard/state` (retained, JSON, Euro mit Punkt), alle
+`MQTT_PUBLISH_INTERVAL` Sekunden (Standard 30 min), beim Verbinden und rund 20 Sekunden nach einer
+Änderung durch eine Automation oder einen CSV-Abgleich bzw. nach dem Aus-/Einblenden von Buchungen:
+
+| Feld | Sensor | Gruppe |
+|---|---|---|
+| `nettovermoegen` | Nettovermögen | `MQTT_SEND_BALANCES` |
+| `konten.<name>` | Konto <Name> (je Eintrag in `MQTT_ACCOUNTS`) | `MQTT_SEND_BALANCES` |
+| `monat_ausgaben`, `monat_einnahmen`, `monat_saldo` | Ausgaben / Einnahmen / Saldo diesen Monat | `MQTT_SEND_MONTH` |
+| `vormonat_ausgaben_bis_heute`, `monat_ausgaben_vs_vormonat_pct` | Attribute von „Ausgaben diesen Monat“ (Vormonat bis zum gleichen Tag) | `MQTT_SEND_MONTH` |
+| `prognose_monatsende_saldo` | Prognose Monatsende | `MQTT_SEND_MONTH` |
+| `unkategorisiert` | Unkategorisierte Buchungen (Ausgaben im Monat ohne Kategorie) | `MQTT_SEND_MONTH` |
+| `budget_max_auslastung_pct`, `budget_max_name`, `budgets_ueberschritten` | Budget-Auslastung (max.), Budgets überschritten | `MQTT_SEND_BUDGETS` |
+| `naechste_wiederkehrende` (+ `_titel`, `_betrag`), `wiederkehrende_7_tage_summe` | Nächste wiederkehrende Zahlung, Wiederkehrende Zahlungen 7 Tage | `MQTT_SEND_RECURRING` |
+| `letzte_buchung`, `stand` | Letzte Buchung, Datenstand (Diagnose) | immer |
+
+Die Werte sind dieselben wie im Dashboard: gleiche Summen (ausgeblendete Buchungen zählen nicht),
+gleicher Vergleich mit dem Vormonat, dieselbe Prognose wie mit dem Prognose-Schalter der Übersicht,
+dieselbe Erkennung wiederkehrender Zahlungen. **„Budgets“ sind die Ziele je Kategorie** aus dem
+Dashboard (Kategorien → Ziel setzen); ohne Ziele entfallen die Budget-Sensoren. „Monat“ ist der
+Kalendermonat, mit `MQTT_MONTH=gehalt` der Gehaltsmonat (Gehaltstag aus den Einstellungen).
+
+`firefly_dashboard/status` meldet `online`/`offline` (retained, Last Will) – ist das Dashboard aus,
+zeigt HA die Sensoren als „nicht verfügbar“. Startet Home Assistant neu (`homeassistant/status` =
+`online`), sendet das Dashboard die Discovery erneut. Wird eine Gruppe abgeschaltet oder ein Konto
+aus `MQTT_ACCOUNTS` entfernt, verschwinden die zugehörigen Sensoren in HA. Ein nicht erreichbarer
+Broker stört das Dashboard nicht: Es versucht es mit wachsendem Abstand erneut (bis 5 min) und
+schreibt nur einen Hinweis ins Log.
+
+Prüfen ohne Broker: `GET /local/mqtt?vorschau=1` zeigt das State-JSON und alle Discovery-Nachrichten,
+so wie sie gesendet würden (auch bei `MQTT_ENABLED=false`, ohne Zugangsdaten). Mit Broker: in
+MQTT Explorer die Topics `firefly_dashboard/#` und `homeassistant/sensor/firefly_dashboard/#` ansehen.
+
+> **Datenschutz:** Gesendet werden nur Summen und Kennzahlen – keine einzelnen Buchungen,
+> Verwendungszwecke oder IBANs (Ausnahme: der Name der nächsten wiederkehrenden Zahlung, z. B.
+> „Miete“; abschaltbar mit `MQTT_SEND_RECURRING=false`). Retained-Nachrichten bleiben auf dem Broker
+> liegen und **kann jeder lesen, der Zugang zum Broker hat**. Den Broker daher nur mit Benutzer und
+> Passwort betreiben (kein anonymer Zugriff) und nicht ins Internet freigeben.
+
 ## Wie es funktioniert
 
 Ein kleiner Node.js-Server (ohne Framework) liefert die Oberfläche aus und reicht API-Anfragen an
@@ -581,6 +638,14 @@ auf <http://localhost:8080>.
 | `OLLAMA_URL` / `OLLAMA_MODEL` | nein | Vorgabe für die KI-Analyse im Labor (Standard `http://ollama:11434`, Modell im Labor wählbar) |
 | `OLLAMA_WAIT_MINUTES` | nein | Vorgabe für die Wartezeit aufs erste Wort (5, 10, 20 oder 30; Standard 10, im Labor änderbar) |
 | `DATA_DIR` | nein | Ablage für Automationen (Standard `./data`, im Docker-Image `/data`) |
+| `MQTT_ENABLED` | nein | Kennzahlen an Home Assistant senden (Standard `false`, siehe [Home Assistant (MQTT)](#home-assistant-mqtt)) |
+| `MQTT_URL` / `MQTT_USER` / `MQTT_PASSWORD` | nein | Broker, z. B. `mqtt://homeassistant.local:1883` (auch `mqtts://`) |
+| `MQTT_BASE_TOPIC` / `MQTT_DISCOVERY_PREFIX` | nein | Topics (Standard `firefly_dashboard` / `homeassistant`) |
+| `MQTT_PUBLISH_INTERVAL` | nein | Sekunden zwischen zwei Sendungen (Standard 1800, mindestens 60) |
+| `MQTT_ACCOUNTS` | nein | Firefly-Konto-IDs (kommagetrennt), die einzeln als Sensor erscheinen |
+| `MQTT_SEND_BALANCES` / `_MONTH` / `_BUDGETS` / `_RECURRING` | nein | Gruppen einzeln abschalten (Standard jeweils `true`) |
+| `MQTT_MONTH` | nein | `kalender` (Standard) oder `gehalt` |
+| `PUBLIC_URL` | nein | Adresse des Dashboards für den Link „Gerät besuchen“ in Home Assistant |
 
 ## Geschwindigkeit
 

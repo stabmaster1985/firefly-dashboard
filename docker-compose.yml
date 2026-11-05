@@ -11,6 +11,13 @@ services:
       FIREFLY_TOKEN: "HIER-DEN-FIREFLY-TOKEN-EINFUEGEN"
       DASHBOARD_USER: "ich"
       DASHBOARD_PASSWORD: "HIER-EIN-PASSWORT"
+      # Optional: Kennzahlen an Home Assistant (MQTT, siehe README)
+      # MQTT_ENABLED: "true"
+      # MQTT_URL: "mqtt://192.168.1.60:1883"
+      # MQTT_USER: "firefly"
+      # MQTT_PASSWORD: "HIER-DAS-MQTT-PASSWORT"
+      # MQTT_ACCOUNTS: "1,4"
+      # PUBLIC_URL: "http://192.168.1.50:8080"
     volumes:
       - firefly-dashboard-data:/data   # gespeicherte Automationen
 

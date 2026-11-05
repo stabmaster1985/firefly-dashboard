@@ -15,6 +15,7 @@
     "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
-    "chart.js": "4.4.7"
+    "chart.js": "4.4.7",
+    "mqtt": "5.14.1"
   }
 }

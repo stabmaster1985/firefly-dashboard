@@ -8,6 +8,7 @@ import { actionFor, setCategory } from './txedit.js';
 import { skeleton, fill, card, stat, signedAmount, mainCurrency, sum, counterparty, downloadCsv, termsMatcher, multiSelect, txAttrs, bindTxDetails } from './common.js';
 import { shareStrip, weekdayChart, sizeChart } from './dist.js';
 import { loadGoals, saveGoal, goalStatus, goalBar } from './goals.js';
+import { previousRange, yearAgoRange, remainderWindows, forecastTotalWith } from './periods.js';
 
 export const NO_CATEGORY = '0';
 
@@ -67,34 +68,10 @@ export const categoryTotals = (kind, start, end) => dimTotals('category', kind, 
 
 /** Monatsmodell des Zeitraums: Kalendermonat oder Gehaltsmonat. */
 const modelOf = (period) => period.model || CALENDAR;
+export { previousRange, yearAgoRange };
 
-/**
- * Vergleichszeitraum direkt davor, gleich lang. Läuft der aktuelle Zeitraum
- * noch, wird nur bis zur selben Stelle verglichen (1.–19. Okt. ↔ 1.–19. Sep.;
- * im Gehaltsmonat entsprechend ab dem Gehaltstag).
- */
-export function previousRange(period) {
-  const { start, end } = period;
-  const M = modelOf(period);
-  if (!M.aligned(period)) {
-    // Eigener Zeitraum: gleich viele Tage direkt davor
-    const days = Math.round((capToday(end) - start) / 86400000) + 1;
-    return [addDays(start, -days), addDays(start, -1)];
-  }
-  const kS = M.keyOf(start);
-  const n = M.monthsBetween(kS, M.keyOf(end)) + 1;
-  const prevStart = M.range(kS, -n)[0];
-  const prevEndFull = M.range(kS, -1)[1];
-  if (end <= today()) return [prevStart, prevEndFull];
-  const shifted = M.shift(today(), -n);
-  return [prevStart, shifted < prevEndFull ? shifted : prevEndFull];
-}
-
-/** Derselbe Zeitraum ein Jahr früher (bei laufendem Zeitraum bis zur selben Stelle). */
-export function yearAgoRange(period) {
-  const M = modelOf(period);
-  return [M.shift(period.start, -12), M.shift(capToday(period.end), -12)];
-}
+/** Hochrechnung der Gesamtsumme (Einnahmen oder Ausgaben). */
+export const forecastTotal = (kind, period) => forecastTotalWith((s, e) => api.get(`insight/${kind}/total`, { start: s, end: e }), period);
 
 /** Vergleich nach Einstellung: Vorperiode (Standard) oder Vorjahr. */
 export function compareRange(period) {
@@ -136,23 +113,6 @@ export const isRunning = ({ start, end }) => start <= today() && end > today();
 export const forecastActive = (period) => forecastEnabled() && isRunning(period);
 
 /**
- * Vergleichsfenster für „den Rest des Zeitraums“: dieselben verbleibenden
- * Tage in früheren Perioden. Monat → die 3 Vormonate, länger → Vorjahr.
- */
-function remainderWindows(period) {
-  const from = addDays(today(), 1);
-  const to = period.end;
-  const M = modelOf(period);
-  if (!M.aligned(period)) {
-    const len = Math.round((period.end - period.start) / 86400000) + 1;
-    return [1, 2, 3].map((k) => [addDays(from, -k * len), addDays(to, -k * len)]);
-  }
-  const n = M.monthsBetween(M.keyOf(period.start), M.keyOf(period.end)) + 1;
-  const shifts = n === 1 ? [1, 2, 3] : [12];
-  return shifts.map((k) => [M.shift(from, -k), M.shift(to, -k)]);
-}
-
-/**
  * Hochrechnung je Eintrag: bisher + Ø dessen, was früher im restlichen Teil
  * des Zeitraums noch dazukam. Fixkosten, die schon gebucht sind (Miete am 3.),
  * werden so nicht doppelt gezählt.
@@ -176,19 +136,6 @@ export async function forecastRemainder(dimKey, kind, period) {
     return { id, code, name: names.get(key), value };
   });
   return get;
-}
-
-/** Hochrechnung der Gesamtsumme (Einnahmen oder Ausgaben). */
-export async function forecastTotal(kind, period) {
-  const windows = remainderWindows(period);
-  const lists = await Promise.all(windows.map(([s, e]) => api.get(`insight/${kind}/total`, { start: s, end: e }).catch(() => [])));
-  const byCode = new Map();
-  for (const list of lists) {
-    for (const x of list || []) {
-      byCode.set(x.currency_code, (byCode.get(x.currency_code) || 0) + Math.abs(Number(x.difference_float ?? x.difference)) / windows.length);
-    }
-  }
-  return (code) => byCode.get(code) || 0;
 }
 
 // ---------------------------------------------------------------------------
