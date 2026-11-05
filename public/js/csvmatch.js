@@ -189,7 +189,9 @@ export function matchRows(rows, txs) {
   };
   const ownOk = (row, t) => {
     if (!row.own) return true;
-    const own = String((t.type === 'deposit' ? t.destination_iban : t.source_iban) || '').replace(/\s+/g, '');
+    // eigenes Konto: bei Eingängen das Ziel – auch bei Umbuchungen, die hier ankommen (Gutschrift vom eigenen anderen Konto)
+    const incoming = t.type === 'deposit' || (t.type === 'transfer' && row.amount > 0);
+    const own = String((incoming ? t.destination_iban : t.source_iban) || '').replace(/\s+/g, '');
     return !own || own === row.own;
   };
   // Zeilen mit eindeutigem Text zuerst – dann bleiben für gleichartige Zeilen die passenden übrig
