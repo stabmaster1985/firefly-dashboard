@@ -1321,3 +1321,11 @@ tr.tx-hidden td.num { text-decoration: line-through; }
 .excl-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
 .excl-form input { flex: 1 1 200px; min-width: 0; }
 .excl-list .subtitle { white-space: normal; }
+
+/* CSV-Archiv: Kontostand laut Bank gegen Firefly */
+.arch-saldo { margin: 8px 0 0; padding: 10px 12px; border-radius: 10px; font-size: 13px; background: var(--surface-2); display: grid; gap: 6px; }
+.arch-saldo.good { color: var(--positive); }
+.arch-saldo.bad { border-left: 3px solid var(--negative); }
+.arch-saldo ul { margin: 4px 0 0; padding-left: 18px; }
+.arch-saldo li { margin: 2px 0; overflow-wrap: anywhere; }
+.arch-saldo .date { color: var(--text-muted); font-variant-numeric: tabular-nums; }

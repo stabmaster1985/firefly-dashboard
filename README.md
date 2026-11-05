@@ -492,6 +492,14 @@ wählen (gern alle auf einmal, überlappende Zeilen zählen nur einmal):
   sortiert – mit Zeitraum, Lücken ohne CSV und auf Knopfdruck dem Stand in Firefly (wie viele
   Zeilen dort sind, wie viele ohne Empfänger, welche fehlen). Ausgewählte Konten oder Dateien
   gehen per „Ausgewählte abgleichen“ in den Abgleich.
+- **Kontostand laut Bank**: Hat die CSV die Spalte „Saldo nach Buchung“ (VR-Banken u. a.),
+  vergleicht die Prüfung eines Kontos den Kontostand laut Bank Tag für Tag mit Firefly. Weicht er
+  ab, steht dort, seit wann (zwischen welchen Tagen die Ursache liegt) und welche Buchungen in
+  Frage kommen: bei der Bank, aber nicht auf diesem Konto in Firefly (fehlt oder auf einem anderen
+  Konto gebucht), in Firefly zusätzlich (doppelt, falsches Konto) oder mit falscher Richtung –
+  eine vertauschte Umbuchung zählt doppelt. Buchungen, deren Betrag genau zur Differenz passt,
+  sind markiert. Firefly-Buchungen zählen dabei am Buchungstag ihrer CSV-Zeile, ein abweichendes
+  Valutadatum führt also nicht zu Fehlalarmen.
 
 - Die Dateien werden **nur im Browser** gelesen (UTF-8 oder Windows-1252, `;` oder `,`), Spalten
   an der Kopfzeile erkannt (VR-Banken: „Name Zahlungsbeteiligter“, „IBAN Zahlungsbeteiligter“,

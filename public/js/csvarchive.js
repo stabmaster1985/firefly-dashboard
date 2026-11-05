@@ -4,8 +4,9 @@
 // oder Dateien gehen dann in den bekannten Abgleich darunter.
 
 import * as api from './api.js';
-import { esc, fmtDate } from './util.js';
-import { decodeCsv, readRows, uniqueRows, matchRows, fingerprints } from './csvmatch.js';
+import { esc, fmtDate, money, isoDate, today } from './util.js';
+import { fireflyTxUrl } from './common.js';
+import { decodeCsv, readRows, uniqueRows, matchRows, fingerprints, saldoCheck } from './csvmatch.js';
 
 const headers = { 'X-Requested-With': 'firefly-dashboard' };
 const jsonHeaders = { ...headers, 'Content-Type': 'application/json' };
@@ -161,8 +162,60 @@ export function csvArchive(el, { load, memory }) {
       });
       perFile[idOf.get(f)] = c;
     }
-    data = await call('/status', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ status: { [g.key]: { counts, perFile, rows: unique.length, from: g.from, to: g.to, files: g.sig } } }) });
+    const saldo = g.acc && rows.some((r) => r.saldo !== null) ? await checkSaldo(g, rows) : null;
+    data = await call('/status', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ status: { [g.key]: { counts, perFile, rows: unique.length, from: g.from, to: g.to, files: g.sig, saldo } } }) });
   }
+
+  /** Kontostand laut Bank („Saldo nach Buchung“) gegen Firefly – frisch aus Firefly, nicht aus dem Zwischenspeicher. */
+  async function checkSaldo(g, rows) {
+    busy = `${g.label}: vergleiche Kontostand laut Bank mit Firefly …`;
+    render();
+    const t0 = isoDate(today());
+    const first = rows.filter((r) => r.saldo !== null).map((r) => r.book).sort()[0];
+    api.setFresh(true);
+    let account;
+    let txs;
+    try {
+      [account, txs] = await Promise.all([
+        api.get(`accounts/${g.acc.id}`).then((r) => r.data.attributes),
+        api.getAll(`accounts/${g.acc.id}/transactions`, { start: isoOf(day(first) - 7 * DAY), end: t0, _alle: true }).then(api.flattenTransactions),
+      ]);
+    } finally {
+      api.setFresh(false);
+    }
+    const res = saldoCheck(rows, txs, { accountId: g.acc.id, current: account.current_balance, today: t0 });
+    if (!res) return null;
+    const inWindow = (d) => !res.since || ((!res.before || d > isoOf(day(res.before) - 4 * DAY)) && d <= isoOf(day(res.since) + 4 * DAY));
+    const rowOut = (r) => ({ date: r.book, amount: r.amount, text: [r.name, r.purpose || r.text].filter(Boolean).join(' · ').slice(0, 140) });
+    const txOut = (t) => ({ date: String(t.date).slice(0, 10), amount: String(t.source_id) === String(g.acc.id) ? -t.amount : t.amount, text: [t.description, t.type === 'transfer' ? `Umbuchung ${t.source_name} → ${t.destination_name}` : ''].filter(Boolean).join(' · ').slice(0, 140), group: t.groupId });
+    // zuerst, was zum Zeitpunkt der Abweichung passt
+    const pick = (list, dateOf) => [...list.filter((x) => inWindow(dateOf(x))), ...list.filter((x) => !inWindow(dateOf(x)))].slice(0, 15);
+    return {
+      last: res.last, bank: res.bank, firefly: res.firefly, diff: res.diff, since: res.since, before: res.before,
+      missing: pick(res.missing, (r) => r.book).map(rowOut), missingCount: res.missing.length,
+      extra: pick(res.extra, (t) => String(t.date).slice(0, 10)).map(txOut), extraCount: res.extra.length,
+      wrong: res.wrong.slice(0, 15).map((w) => ({ ...rowOut(w.row), firefly: w.firefly, group: w.t.groupId, transfer: w.t.type === 'transfer' })), wrongCount: res.wrong.length,
+    };
+  }
+
+  /** Zeile unter dem Abgleich-Status: stimmt der Kontostand mit der Bank überein? */
+  const saldoLine = (g) => {
+    const s = g.status?.saldo;
+    if (!s) return '';
+    if (Math.abs(s.diff) < 0.005) return `<div class="arch-saldo good">Kontostand stimmt mit der Bank überein ✓ <span class="muted">(${fmtDate(s.last)}: ${money(s.bank)})</span></div>`;
+    const link = (x) => (x.group && fireflyTxUrl({ groupId: x.group }) ? ` <a class="plain" href="${esc(fireflyTxUrl({ groupId: x.group }))}" target="_blank" rel="noopener" title="In Firefly öffnen">↗</a>` : '');
+    const item = (x, extra = '') => `<li><span class="date">${fmtDate(x.date)}</span> <b>${money(x.amount, 'EUR', { signed: true })}</b> ${esc(x.text)}${extra}${link(x)}</li>`;
+    const half = (x) => Math.abs(Math.abs(x.amount) * 2 - Math.abs(s.diff)) < 0.005 || Math.abs(Math.abs(x.amount) - Math.abs(s.diff)) < 0.005;
+    const hint = (x) => (half(x) ? ' <span class="badge bad">passt zur Differenz</span>' : '');
+    return `<div class="arch-saldo bad">
+      <div><b>Kontostand weicht ab: ${money(s.diff, 'EUR', { signed: true })}</b> – Bank am ${fmtDate(s.last)}: ${money(s.bank)}, Firefly: ${money(s.firefly)}.
+        ${s.since ? (s.before ? `Bis ${fmtDate(s.before)} stimmte es, ab ${fmtDate(s.since)} nicht mehr – die Ursache liegt dazwischen.` : `Die Differenz besteht schon am ersten Tag der CSV-Dateien (${fmtDate(s.since)}) – Ursache davor (z. B. Anfangssaldo) oder ältere CSV-Dateien hochladen.`) : ''}</div>
+      ${s.wrong.length ? `<div>In Firefly mit falscher Richtung bzw. falschem Vorzeichen (z. B. Umbuchung vertauscht – zählt doppelt):<ul>${s.wrong.map((x) => item(x, ` <span class="muted">· Firefly: ${money(x.firefly, 'EUR', { signed: true })}</span>${hint({ amount: x.amount })}`)).join('')}</ul></div>` : ''}
+      ${s.missing.length ? `<div>Bei der Bank, aber nicht auf diesem Konto in Firefly${s.missingCount > s.missing.length ? ` (${s.missingCount}, die ersten ${s.missing.length})` : ''} – fehlt oder liegt auf einem anderen Konto:<ul>${s.missing.map((x) => item(x, hint(x))).join('')}</ul></div>` : ''}
+      ${s.extra.length ? `<div>In Firefly auf diesem Konto, aber nicht in den CSV-Dateien${s.extraCount > s.extra.length ? ` (${s.extraCount}, die ersten ${s.extra.length})` : ''} – doppelt, falsches Konto oder noch nicht gebucht:<ul>${s.extra.map((x) => item(x, hint(x))).join('')}</ul></div>` : ''}
+      ${!s.wrong.length && !s.missing.length && !s.extra.length ? '<div class="muted">Alle Zeilen passen zu Firefly-Buchungen – die Differenz stammt aus der Zeit vor den CSV-Dateien (Anfangssaldo) oder aus Buchungen nach dem letzten CSV-Tag mit anderem Datum.</div>' : ''}
+    </div>`;
+  };
 
   async function upload(list) {
     const files = [...list].filter((f) => /\.csv$/i.test(f.name) || f.type === 'text/csv');
@@ -253,6 +306,7 @@ export function csvArchive(el, { load, memory }) {
             <button class="btn small" data-check="${esc(g.key)}"${busy ? ' disabled' : ''}>${g.status ? 'Neu prüfen' : 'Mit Firefly abgleichen'}</button>
           </div>
           <div class="arch-status">${statusLine(g)}</div>
+          ${saldoLine(g)}
           ${(() => {
             const miss = g.files.filter((f) => fileState(g, f).missing);
             return miss.length ? `<div class="arch-miss">Fehlende Einträge in ${miss.length} Datei${miss.length === 1 ? '' : 'en'}: ${miss.slice(0, 5).map((f) => `<b>${esc(f.name)}</b> ${f.info?.from ? `(${fmtDate(f.info.from)} – ${fmtDate(f.info.to)})` : ''}: ${fileState(g, f).missing}`).join(' · ')}${miss.length > 5 ? ` · +${miss.length - 5} weitere` : ''}

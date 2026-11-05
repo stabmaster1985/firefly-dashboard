@@ -32,7 +32,8 @@ export async function accountDetail(view, { period, id }) {
 
   const accountP = api.get(`accounts/${encodeURIComponent(id)}`).then((r) => ({ id: r.data.id, ...r.data.attributes }));
   // Alle Buchungen ab Verlaufsbeginn bis heute – daraus lassen sich die Salden rückwärts rechnen
-  const txsP = api.getAll(`accounts/${encodeURIComponent(id)}/transactions`, { start: histStart, end: t0 > end ? t0 : end })
+  // (auch ausgeblendete: der Kontostand enthält sie, sonst stimmte der Verlauf nicht)
+  const txsP = api.getAll(`accounts/${encodeURIComponent(id)}/transactions`, { start: histStart, end: t0 > end ? t0 : end, _alle: true })
     .then((groups) => api.flattenTransactions(groups));
 
   /** Betrag aus Sicht dieses Kontos: Abgang negativ, Zugang positiv. */

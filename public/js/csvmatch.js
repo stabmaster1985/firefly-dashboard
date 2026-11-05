@@ -64,9 +64,10 @@ const COLUMNS = {
   own: ['iban auftragskonto', 'auftragskonto'],
   ci: ['glaeubiger id', 'glaeubiger identifikation'],
   mref: ['mandatsreferenz'],
+  saldo: ['saldo nach buchung', 'saldo'],
 };
 /** Spaltenpositionen im Standard-Export der VR-Banken (falls die Kopfzeile fehlt). */
-const VR_POSITIONS = { own: 1, book: 4, valuta: 5, name: 6, iban: 7, bic: 8, text: 9, purpose: 10, amount: 11, ci: 17, mref: 18 };
+const VR_POSITIONS = { own: 1, book: 4, valuta: 5, name: 6, iban: 7, bic: 8, text: 9, purpose: 10, amount: 11, saldo: 13, ci: 17, mref: 18 };
 
 /** Kopfzeile → { feld: index }; fehlt eine Kopfzeile, die VR-Positionen. */
 export function detectColumns(header) {
@@ -115,6 +116,7 @@ export function readRows(text, file = '') {
       file, line: i + (hasHeader ? 2 : 1), date, book: parseDay(get(r, 'book')) || date, amount,
       name: get(r, 'name'), iban: get(r, 'iban').replace(/\s+/g, ''), bic: get(r, 'bic'),
       text: get(r, 'text'), purpose: get(r, 'purpose'), own: get(r, 'own').replace(/\s+/g, ''),
+      saldo: Number.isFinite(parseAmount(get(r, 'saldo'))) ? parseAmount(get(r, 'saldo')) : null, // „Saldo nach Buchung“
       raw: r, // Originalfelder – für den Import neuer Zeilen
     });
   });
@@ -315,3 +317,73 @@ export const changeFor = ({ row, t }, { iban = true, party = true, description =
   ...(tags ? { tags } : {}),
   name_alt: counterpartyOf(t) || null,
 });
+
+/**
+ * Kontostand laut Bank je Buchungstag: „Saldo nach Buchung“ der zeitlich letzten Zeile des Tages.
+ * Bank-Exporte stehen neueste zuerst oder älteste zuerst – das ergibt sich aus der Datei selbst.
+ */
+export function bankSaldoByDay(rows) {
+  const out = new Map();
+  for (const f of new Set(rows.map((r) => r.file))) {
+    const list = rows.filter((r) => r.file === f && r.saldo !== null).sort((a, b) => a.line - b.line);
+    if (!list.length) continue;
+    const newestFirst = list[0].book > list.at(-1).book;
+    for (const r of newestFirst ? [...list].reverse() : list) out.set(r.book, r.saldo); // die letzte gewinnt
+  }
+  return new Map([...out].sort(([a], [b]) => a.localeCompare(b)));
+}
+
+/**
+ * Saldo-Abgleich eines Kontos: Kontostand laut Bank-CSV gegen Firefly, Tag für Tag.
+ *   rows: alle CSV-Zeilen des Kontos (mit saldo), txs: Firefly-Buchungen des Kontos ab dem ersten
+ *   CSV-Tag bis heute, accountId, current: aktueller Firefly-Kontostand, today: JJJJ-MM-TT.
+ * Firefly-Buchungen zählen am Buchungstag ihrer CSV-Zeile (Firefly nimmt oft die Valuta) –
+ * so bleiben nur echte Abweichungen. Ergebnis:
+ *   { ok, last, bank, firefly, diff, since, before, missing, extra, wrong } oder null (keine Salden).
+ *   since: ab diesem Buchungstag besteht die heutige Differenz, before: letzter Tag ohne sie;
+ *   missing: CSV-Zeilen ohne Firefly-Buchung, extra: Firefly-Buchungen ohne CSV-Zeile,
+ *   wrong: zugeordnet, aber mit anderem Vorzeichen (z. B. Umbuchung in falscher Richtung).
+ */
+export function saldoCheck(rows, txs, { accountId, current, today }) {
+  const bank = bankSaldoByDay(rows);
+  if (!bank.size) return null;
+  const days = [...bank.keys()];
+  const first = days[0];
+  const signed = (t) => (String(t.source_id) === String(accountId) ? -t.amount : String(t.destination_id) === String(accountId) ? t.amount : 0);
+  const own = txs.filter((t) => signed(t) !== 0 && String(t.date).slice(0, 10) <= today);
+  const unique = uniqueRows(rows);
+  const matched = matchRows(unique, own);
+  const bankDay = new Map(); // Journal → Buchungstag laut CSV
+  const wrong = [];
+  const missing = [];
+  for (const m of matched) {
+    if (!m.t) {
+      if (m.status !== 'mehrdeutig') missing.push(m.row);
+      continue;
+    }
+    bankDay.set(String(m.t.transaction_journal_id), m.row.book);
+    if (cents(signed(m.t)) !== cents(m.row.amount) || Math.sign(signed(m.t)) !== Math.sign(m.row.amount)) wrong.push({ row: m.row, t: m.t, firefly: signed(m.t) });
+  }
+  const dayOf = (t) => bankDay.get(String(t.transaction_journal_id)) || String(t.date).slice(0, 10);
+  const last = days.at(-1);
+  // Firefly-Kontostand am Ende eines Tages: heutiger Stand minus alles, was danach kam
+  const after = new Map();
+  for (const t of own) after.set(dayOf(t), (after.get(dayOf(t)) || 0) + signed(t));
+  const ffAt = (d) => {
+    let bal = Number(current);
+    for (const [k, v] of after) if (k > d) bal -= v;
+    return bal;
+  };
+  const round = (n) => Math.round(n * 100) / 100;
+  const diffs = days.map((d) => [d, round(bank.get(d) - ffAt(d))]);
+  const diff = diffs.at(-1)[1];
+  const extra = own.filter((t) => !bankDay.has(String(t.transaction_journal_id)) && dayOf(t) >= first && dayOf(t) <= last);
+  const result = { ok: Math.abs(diff) < 0.005, last, bank: bank.get(last), firefly: round(ffAt(last)), diff, missing, extra, wrong, since: null, before: null };
+  if (result.ok) return result;
+  // seit wann besteht die heutige Differenz?
+  let k = diffs.length - 1;
+  while (k > 0 && Math.abs(diffs[k - 1][1] - diff) < 0.005) k -= 1;
+  result.since = diffs[k][0];
+  result.before = k > 0 ? diffs[k - 1][0] : null; // null: schon vor der ersten CSV-Zeile
+  return result;
+}
