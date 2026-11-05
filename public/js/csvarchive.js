@@ -31,7 +31,7 @@ function gapsOf(files) {
 
 export function csvArchive(el, { load, memory }) {
   let data = { files: [], status: {} };
-  let accounts = []; // Firefly-Bestandskonten { id, name, iban }
+  let accounts = []; // Firefly-Bestandskonten { id, name, iban } (iban auch leer)
   const fileCache = new Map(); // id → ArrayBuffer
   const selected = new Set(); // Datei-IDs
   const open = new Set(); // aufgeklappte Konten
@@ -78,7 +78,8 @@ export function csvArchive(el, { load, memory }) {
     busy = '';
   }
 
-  const accountFor = (iban) => accounts.find((a) => a.iban === iban);
+  /** Firefly-Konto zur IBAN: über die IBAN in Firefly oder von Hand zugeordnet. */
+  const accountFor = (iban) => accounts.find((a) => a.iban && a.iban === iban) || accounts.find((a) => a.id === data.links?.[iban]);
   /** Dateien nach Konto gruppieren. */
   const groups = () => {
     const map = new Map();
@@ -162,7 +163,7 @@ export function csvArchive(el, { load, memory }) {
       });
       perFile[idOf.get(f)] = c;
     }
-    const saldo = g.acc && rows.some((r) => r.saldo !== null) ? await checkSaldo(g, rows) : null;
+    const saldo = !rows.some((r) => r.saldo !== null) ? { skipped: 'spalte' } : !g.acc ? { skipped: 'konto' } : await checkSaldo(g, rows);
     data = await call('/status', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ status: { [g.key]: { counts, perFile, rows: unique.length, from: g.from, to: g.to, files: g.sig, saldo } } }) });
   }
 
@@ -201,8 +202,12 @@ export function csvArchive(el, { load, memory }) {
   /** Zeile unter dem Abgleich-Status: stimmt der Kontostand mit der Bank überein? */
   const saldoLine = (g) => {
     const s = g.status?.saldo;
-    if (!s) return '';
-    if (Math.abs(s.diff) < 0.005) return `<div class="arch-saldo good">Kontostand stimmt mit der Bank überein ✓ <span class="muted">(${fmtDate(s.last)}: ${money(s.bank)})</span></div>`;
+    if (g.key === UNKNOWN) return '';
+    if (!g.status) return '<div class="arch-saldo muted">Kontostand laut Bank mit Firefly vergleichen: „Mit Firefly abgleichen“ klicken.</div>';
+    if (!s) return '<div class="arch-saldo muted">Kontostand laut Bank mit Firefly vergleichen: „Neu prüfen“ klicken.</div>';
+    if (s.skipped === 'konto') return '<div class="arch-saldo muted">Kontostand-Vergleich braucht das Firefly-Konto: oben unter „Firefly-Konto“ auswählen, dann „Neu prüfen“.</div>';
+    if (s.skipped === 'spalte') return '<div class="arch-saldo muted">Kein Kontostand-Vergleich: Die CSV-Dateien haben keine Spalte „Saldo nach Buchung“.</div>';
+    if (Math.abs(s.diff) < 0.005) return `<div class="arch-saldo good"><div>Kontostand stimmt mit der Bank überein ✓ <span class="muted">(${fmtDate(s.last)}: ${money(s.bank)})</span></div></div>`;
     const link = (x) => (x.group && fireflyTxUrl({ groupId: x.group }) ? ` <a class="plain" href="${esc(fireflyTxUrl({ groupId: x.group }))}" target="_blank" rel="noopener" title="In Firefly öffnen">↗</a>` : '');
     const item = (x, extra = '') => `<li><span class="date">${fmtDate(x.date)}</span> <b>${money(x.amount, 'EUR', { signed: true })}</b> ${esc(x.text)}${extra}${link(x)}</li>`;
     const half = (x) => Math.abs(Math.abs(x.amount) * 2 - Math.abs(s.diff)) < 0.005 || Math.abs(Math.abs(x.amount) - Math.abs(s.diff)) < 0.005;
@@ -305,6 +310,10 @@ export function csvArchive(el, { load, memory }) {
             <span class="arch-meta">${g.files.length} Datei${g.files.length === 1 ? '' : 'en'} · ${g.from ? `${fmtDate(g.from)} – ${fmtDate(g.to)}` : '–'} · ${g.rows} Zeilen</span>
             <button class="btn small" data-check="${esc(g.key)}"${busy ? ' disabled' : ''}>${g.status ? 'Neu prüfen' : 'Mit Firefly abgleichen'}</button>
           </div>
+          ${g.key !== UNKNOWN && accounts.length && !(g.acc?.iban === g.key) ? `<div class="arch-link"><label>Firefly-Konto <select class="input select" data-link="${esc(g.key)}">
+            <option value="">– nicht zugeordnet –</option>
+            ${accounts.map((a) => `<option value="${esc(a.id)}"${g.acc?.id === a.id ? ' selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label>
+            ${g.acc ? '' : '<span class="muted">In Firefly hat kein Konto diese IBAN – bitte zuordnen.</span>'}</div>` : ''}
           <div class="arch-status">${statusLine(g)}</div>
           ${saldoLine(g)}
           ${(() => {
@@ -313,7 +322,6 @@ export function csvArchive(el, { load, memory }) {
               <button class="link-btn" data-pick-missing="${esc(g.key)}">nur diese auswählen</button></div>` : '';
           })()}
           ${g.gaps.length ? `<div class="arch-gaps">Lücken ohne CSV: ${g.gaps.slice(0, 6).map(([a, b]) => `${fmtDate(a)} – ${fmtDate(b)}`).join(' · ')}${g.gaps.length > 6 ? ` · +${g.gaps.length - 6} weitere` : ''}</div>` : ''}
-          ${g.key !== UNKNOWN && !g.acc && accounts.length ? '<div class="arch-gaps">Kein Bestandskonto mit dieser IBAN in Firefly – abgeglichen wird gegen alle Buchungen.</div>' : ''}
           ${open.has(g.key) ? `<table class="arch-files"><tbody>${g.files.map((f) => `<tr${fileState(g, f).missing ? ' class="arch-missing"' : ''}>
             <td><input type="checkbox" data-file="${f.id}" ${selected.has(f.id) ? 'checked' : ''} aria-label="Datei auswählen"></td>
             <td>${esc(f.name)}${f.info?.error ? ` <span class="bad">(${esc(f.info.error)})</span>` : ''} ${fileBadges(g, f)}</td>
@@ -331,7 +339,11 @@ export function csvArchive(el, { load, memory }) {
     el.querySelectorAll('[data-partial]').forEach((x) => (x.indeterminate = true));
   }
 
-  el.addEventListener('change', (e) => {
+  el.addEventListener('change', async (e) => {
+    if (e.target.dataset.link !== undefined) {
+      data = await call('/link', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ iban: e.target.dataset.link, account: e.target.value || null }) });
+      return render();
+    }
     if (e.target.id === 'a-input' || e.target.id === 'a-dir') return e.target.files.length && upload(e.target.files);
     const acc = e.target.dataset.acc;
     if (acc !== undefined) {
@@ -422,7 +434,7 @@ export function csvArchive(el, { load, memory }) {
     try {
       const [list, accs] = await Promise.all([call(''), api.getAll('accounts', { type: 'asset' }).catch(() => [])]);
       data = list;
-      accounts = accs.map((a) => ({ id: a.id, name: a.attributes?.name || '', iban: String(a.attributes?.iban || '').replace(/\s+/g, '').toUpperCase() })).filter((a) => a.iban);
+      accounts = accs.filter((a) => a.attributes?.active !== false).map((a) => ({ id: String(a.id), name: a.attributes?.name || '', iban: String(a.attributes?.iban || '').replace(/\s+/g, '').toUpperCase() }));
       await ensureInfos();
     } catch (err) {
       note = `<span class="bad">Archiv nicht lesbar: ${esc(err.message)}</span>`;

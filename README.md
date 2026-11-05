@@ -499,7 +499,10 @@ wählen (gern alle auf einmal, überlappende Zeilen zählen nur einmal):
   Konto gebucht), in Firefly zusätzlich (doppelt, falsches Konto) oder mit falscher Richtung –
   eine vertauschte Umbuchung zählt doppelt. Buchungen, deren Betrag genau zur Differenz passt,
   sind markiert. Firefly-Buchungen zählen dabei am Buchungstag ihrer CSV-Zeile, ein abweichendes
-  Valutadatum führt also nicht zu Fehlalarmen.
+  Valutadatum führt also nicht zu Fehlalarmen. Zu finden unter **CSV-Abgleich → CSV-Archiv**, je
+  Konto nach „Mit Firefly abgleichen“ bzw. „Neu prüfen“. Die Dateien werden dem Firefly-Konto über
+  dessen IBAN zugeordnet; ist in Firefly keine IBAN hinterlegt, das Konto unter „Firefly-Konto“
+  einmal auswählen (gilt auf allen Geräten).
 
 - Die Dateien werden **nur im Browser** gelesen (UTF-8 oder Windows-1252, `;` oder `,`), Spalten
   an der Kopfzeile erkannt (VR-Banken: „Name Zahlungsbeteiligter“, „IBAN Zahlungsbeteiligter“,

@@ -69,25 +69,46 @@ async function withdrawals(start, end) {
     if (page >= r.meta.pagination.total_pages) return out.filter((t) => t.source_name === 'Girokonto');
   }
 }
+/** Alle Buchungen des Girokontos (Ein- und Ausgänge, Umbuchungen) mit Kontostand nach jeder Buchung – wie im Bank-Export. */
+async function withSaldo(start, end) {
+  const get = (p) => fetch(`${API}/${p}`, { headers: { Authorization: 'Bearer demo' } }).then((x) => x.json());
+  const acc = await get('accounts?type=asset&limit=250&page=1').then((r) => r.data.find((a) => a.attributes.name === 'Girokonto'));
+  const out = [];
+  for (let page = 1; ; page++) {
+    const r = await get(`accounts/${acc.id}/transactions?start=${iso(start)}&end=${iso(end)}&limit=250&page=${page}`);
+    out.push(...r.data.flatMap((g) => g.attributes.transactions));
+    if (page >= r.meta.pagination.total_pages) break;
+  }
+  const signed = (t) => (String(t.source_id) === String(acc.id) ? -Number(t.amount) : Number(t.amount));
+  let bal = Number(acc.attributes.current_balance);
+  return out.sort((a, b) => b.date.localeCompare(a.date)).map((t) => {
+    const row = { ...t, signed: signed(t), saldo: bal };
+    bal -= row.signed;
+    return row;
+  });
+}
 const de = (iso10) => iso10.slice(0, 10).split('-').reverse().join('.');
+const money = (n) => n.toFixed(2).replace('.', ',');
 const csvRow = (t, { konto = 'Girokonto', iban = GIRO_IBAN } = {}) => {
-  const name = /^\(.*\)$/.test(t.destination_name) ? String(t.notes || '').split('//')[0] : t.destination_name;
+  const amount = t.signed ?? -Number(t.amount);
+  const party = amount < 0 ? t.destination_name : t.source_name;
+  const name = /^\(.*\)$/.test(party) ? String(t.notes || '').split('//')[0] : party;
   const purpose = String(t.notes || t.description).replaceAll('"', '');
   return [konto, iban, 'GENODEM1DOR', 'Dortmunder Volksbank', de(t.date), de(t.date), name, 'DE99 1111 2222 3333', '', t.description, `"${purpose}"`,
-    `-${Number(t.amount).toFixed(2).replace('.', ',')}`, 'EUR', '', '', '', '', '', ''].join(';');
+    money(amount), 'EUR', t.saldo === undefined ? '' : money(t.saldo), '', '', '', '', '', ''].join(';');
 };
 const HEADER = 'Bezeichnung Auftragskonto;IBAN Auftragskonto;BIC Auftragskonto;Bankname Auftragskonto;Buchungstag;Valutadatum;Name Zahlungsbeteiligter;IBAN Zahlungsbeteiligter;BIC (SWIFT-Code) Zahlungsbeteiligter;Buchungstext;Verwendungszweck;Betrag;Waehrung;Saldo nach Buchung;Bemerkung;Kategorie;Steuerrelevant;Glaeubiger ID;Mandatsreferenz';
 const csvDir = path.join(dataDir, 'csv');
 fs.mkdirSync(path.join(csvDir, 'alt'), { recursive: true });
-const recent = await withdrawals(month(-2), new Date());
+const recent = await withSaldo(month(-2), new Date()); // mit „Saldo nach Buchung“ → Kontostand-Vergleich
 const older = await withdrawals(month(-6), month(-4, true)); // Lücke im Monat dazwischen
 const write = (file, rows) => fs.writeFileSync(path.join(csvDir, file), `${[HEADER, ...rows].join('\n')}\n`);
 write('Umsaetze.csv', recent.map((t) => csvRow(t)));
 write('alt/Umsaetze.csv', older.map((t) => csvRow(t)));
 // Datei mit drei Buchungen, die es in Firefly nicht gibt
-const fake = (amount, i) => csvRow({ ...recent[0], amount, description: 'Einkauf Testladen', destination_name: `Testladen ${i}`, notes: null });
+const fake = (amount, i) => csvRow({ ...recent[0], amount, signed: -amount, saldo: undefined, description: 'Einkauf Testladen', destination_name: `Testladen ${i}`, notes: null });
 write('fehlt.csv', [...recent.slice(0, 9).map((t) => csvRow(t)), fake(12.34, 1), fake(56.78, 2), fake(9.99, 3)]);
-write('tagesgeld.csv', recent.slice(0, 5).map((t) => csvRow(t, { konto: 'Tagesgeld', iban: TAGESGELD_IBAN })));
+write('tagesgeld.csv', recent.slice(0, 5).map((t) => csvRow({ ...t, saldo: undefined }, { konto: 'Tagesgeld', iban: TAGESGELD_IBAN })));
 
 // ---- Aufnahmen ----------------------------------------------------------------------
 fs.mkdirSync(OUT, { recursive: true });
