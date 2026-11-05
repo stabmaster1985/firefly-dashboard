@@ -42,3 +42,6 @@ IP-Adressen oder Zugangsdaten in Bildern, `mock/demo-data/` oder sonstigen Datei
 - Nach Änderungen an Dateien in `public/` die Version in `public/sw.js` (`VERSION`) erhöhen,
   damit installierte Apps die neue Oberfläche laden.
 - Prüfen in der Demo, auch am Handy (390 px) und im dunklen Modus.
+- **`docker-compose.yml` nicht ändern.** Nutzer tragen dort Token und Passwort ein; das Update
+  (`git pull --autostash`, n8n-Workflow) kollidiert sonst mit ihren lokalen Änderungen. Neue
+  Einstellungen nur in `.env.example` und README dokumentieren.

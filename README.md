@@ -425,7 +425,9 @@ volumes:
 Docker-Host per SSH aktualisiert: Repository nach `~/firefly-diy` holen (beim ersten Lauf
 klonen, danach `git pull`), neu bauen und starten (`docker compose up -d --build`), alte Images
 aufräumen und prüfen, ob der Container läuft. Lokale Änderungen, z. B. Token und Passwort in der
-`docker-compose.yml`, bleiben erhalten (`git pull --autostash`).
+`docker-compose.yml`, bleiben erhalten (`git pull --autostash`). Hat sich dieselbe Stelle auch im
+Repository geändert, behält das Update die lokale Fassung der Datei und meldet das im Protokoll
+(„Konflikt in …: lokale Fassung bleibt“), statt hängen zu bleiben.
 
 1. In n8n **Import from File** → `n8n/firefly-dashboard-update.json`.
 2. Im Knoten **Update auf CT 114** eine SSH-Zugangsdaten anlegen (Host = IP des LXC 114,
