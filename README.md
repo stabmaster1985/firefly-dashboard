@@ -500,7 +500,11 @@ wählen (gern alle auf einmal, überlappende Zeilen zählen nur einmal):
   eine vertauschte Umbuchung zählt doppelt. Buchungen, deren Betrag genau zur Differenz passt,
   sind markiert; „vermutlich doppelt“ heißt, dieselbe Bewegung steht schon einmal in Firefly (typisch:
   einmal aus der CSV dieses Kontos als Ausgabe, einmal aus der des anderen eigenen Kontos als
-  Umbuchung). Firefly-Buchungen zählen dabei am Buchungstag ihrer CSV-Zeile, ein abweichendes
+  Umbuchung). Außerdem erkannt: **vorgemerkte Umsätze** (Zeilen ohne Saldo), die schon in Firefly
+  stehen – kommt die gebuchte Fassung später mit anderem Text dazu, zählen sie doppelt –, und Tage,
+  an denen sich der Bank-Saldo anders ändert, als die CSV-Zeilen ergeben (Zeile fehlt im Export).
+  Das Anfangsguthaben aus Firefly gilt nicht als zusätzliche Buchung.
+  Firefly-Buchungen zählen dabei am Buchungstag ihrer CSV-Zeile, ein abweichendes
   Valutadatum führt also nicht zu Fehlalarmen. Zu finden unter **CSV-Abgleich → CSV-Archiv**, je
   Konto nach „Mit Firefly abgleichen“ bzw. „Neu prüfen“. Die Dateien werden dem Firefly-Konto über
   dessen IBAN zugeordnet; ist in Firefly keine IBAN hinterlegt, das Konto unter „Firefly-Konto“

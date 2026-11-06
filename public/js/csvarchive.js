@@ -203,6 +203,12 @@ export function csvArchive(el, { load, memory }) {
       missing: pick(res.missing, (r) => r.book).map(rowOut), missingCount: res.missing.length,
       extra: pick(res.extra, (t) => String(t.date).slice(0, 10)).map(txOut), extraCount: res.extra.length,
       wrong: res.wrong.slice(0, 15).map((w) => ({ ...rowOut(w.row), firefly: w.firefly, group: w.t.groupId, transfer: w.t.type === 'transfer' })), wrongCount: res.wrong.length,
+      // vorgemerkt: nur, was in Firefly steckt (sonst stört es den Kontostand nicht)
+      pending: pick(res.pending.filter((p) => p.t), (p) => p.row.book).map((p) => ({
+        ...rowOut(p.row), group: p.t.groupId,
+        ...(p.booked ? { twin: `${fmtDate(p.booked.date)}: ${describe(p.booked)}`.slice(0, 160), twinGroup: p.booked.groupId } : {}),
+      })),
+      gaps: res.csvGaps.slice(0, 10).map((x) => ({ date: x.day, prev: x.prev, change: x.change, rows: x.rows, amount: x.delta })),
     };
   }
 
@@ -226,7 +232,11 @@ export function csvArchive(el, { load, memory }) {
       ${s.missing.length ? `<div>Bei der Bank, aber nicht auf diesem Konto in Firefly${s.missingCount > s.missing.length ? ` (${s.missingCount}, die ersten ${s.missing.length})` : ''} – fehlt oder liegt auf einem anderen Konto:<ul>${s.missing.map((x) => item(x, hint(x))).join('')}</ul></div>` : ''}
       ${s.extra.length ? `<div>In Firefly auf diesem Konto, aber nicht in den CSV-Dateien${s.extraCount > s.extra.length ? ` (${s.extraCount}, die ersten ${s.extra.length})` : ''} – doppelt, falsches Konto oder noch nicht gebucht:<ul>${s.extra.map((x) => item(x, `${hint(x)}${x.twin ? `<br><span class="badge warn">vermutlich doppelt</span> <span class="muted">gleiche Buchung schon vorhanden – ${esc(x.twin)}</span>${link({ group: x.twinGroup })}` : ''}`)).join('')}</ul>
         ${s.extra.some((x) => x.twin) ? '<div class="muted">„Vermutlich doppelt“: Dieselbe Bewegung steht zweimal in Firefly – oft einmal aus der CSV dieses Kontos (Ausgabe/Einnahme) und einmal aus der des anderen eigenen Kontos (Umbuchung). Eine davon in Firefly löschen; bei Geld zwischen eigenen Konten die Umbuchung behalten.</div>' : ''}</div>` : ''}
-      ${!s.wrong.length && !s.missing.length && !s.extra.length ? '<div class="muted">Alle Zeilen passen zu Firefly-Buchungen – die Differenz stammt aus der Zeit vor den CSV-Dateien (Anfangssaldo) oder aus Buchungen nach dem letzten CSV-Tag mit anderem Datum.</div>' : ''}
+      ${s.pending?.length ? `<div>In den CSV-Dateien als <b>vorgemerkt</b> (ohne Saldo), aber schon in Firefly – die Bank bucht sie später, oft mit anderem Text oder Datum; steht die gebuchte Fassung auch in Firefly, zählt der Betrag doppelt:<ul>${s.pending.map((x) => item(x, `${hint(x)}${x.twin ? `<br><span class="badge warn">vermutlich doppelt</span> <span class="muted">gebuchte Fassung – ${esc(x.twin)}</span>${link({ group: x.twinGroup })}` : ''}`)).join('')}</ul>
+        ${s.pending.some((x) => x.twin) ? '<div class="muted">Die vorgemerkte Buchung in Firefly löschen, die gebuchte behalten.</div>' : ''}</div>` : ''}
+      ${s.gaps?.length ? `<div>Saldo der Bank ändert sich anders, als die CSV-Zeilen ergeben – im Export fehlt vermutlich eine Zeile:<ul>${s.gaps.map((x) => `<li><span class="date">${fmtDate(x.date)}</span> Saldo ${money(x.change, 'EUR', { signed: true })} ggü. ${fmtDate(x.prev)}, Zeilen ${money(x.rows, 'EUR', { signed: true })} → <b>${money(x.amount, 'EUR', { signed: true })}</b> ohne Zeile${hint(x)}</li>`).join('')}</ul>
+        <div class="muted">Im Online-Banking die Umsätze dieser Tage ansehen; die fehlende Buchung in Firefly nachtragen oder die CSV für diese Tage neu exportieren.</div></div>` : ''}
+      ${!s.wrong.length && !s.missing.length && !s.extra.length && !s.pending?.length && !s.gaps?.length ? '<div class="muted">Alle Zeilen passen zu Firefly-Buchungen – die Differenz stammt aus der Zeit vor den CSV-Dateien (Anfangssaldo) oder aus Buchungen nach dem letzten CSV-Tag mit anderem Datum.</div>' : ''}
     </div>`;
   };
 

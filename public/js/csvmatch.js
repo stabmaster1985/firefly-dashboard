@@ -325,14 +325,20 @@ export const changeFor = ({ row, t }, { iban = true, party = true, description =
  * Bank-Exporte stehen neueste zuerst oder älteste zuerst – das ergibt sich aus der Datei selbst.
  */
 export function bankSaldoByDay(rows) {
-  const out = new Map();
+  const out = new Map(); // Tag → { saldo, n }
   for (const f of new Set(rows.map((r) => r.file))) {
     const list = rows.filter((r) => r.file === f && r.saldo !== null).sort((a, b) => a.line - b.line);
     if (!list.length) continue;
     const newestFirst = list[0].book > list.at(-1).book;
-    for (const r of newestFirst ? [...list].reverse() : list) out.set(r.book, r.saldo); // die letzte gewinnt
+    const perDay = new Map();
+    for (const r of newestFirst ? [...list].reverse() : list) {
+      const d = perDay.get(r.book) || { saldo: 0, n: 0 };
+      perDay.set(r.book, { saldo: r.saldo, n: d.n + 1 }); // die zeitlich letzte Zeile des Tages gewinnt
+    }
+    // Tag in mehreren Dateien (Export mitten am Tag): die Datei mit den meisten Zeilen des Tages zählt
+    for (const [day, d] of perDay) if (!out.has(day) || d.n >= out.get(day).n) out.set(day, d);
   }
-  return new Map([...out].sort(([a], [b]) => a.localeCompare(b)));
+  return new Map([...out].sort(([a], [b]) => a.localeCompare(b)).map(([day, d]) => [day, d.saldo]));
 }
 
 /**
@@ -345,7 +351,9 @@ export function bankSaldoByDay(rows) {
  *   since: ab diesem Buchungstag besteht die heutige Differenz, before: letzter Tag ohne sie;
  *   missing: CSV-Zeilen ohne Firefly-Buchung, extra: Firefly-Buchungen ohne CSV-Zeile,
  *   wrong: zugeordnet, aber mit anderem Vorzeichen (z. B. Umbuchung in falscher Richtung);
- *   twins: Journal einer extra-Buchung → gleiche, der CSV zugeordnete Buchung (vermutlich doppelt).
+ *   twins: Journal einer extra-Buchung → gleiche, der CSV zugeordnete Buchung (vermutlich doppelt);
+ *   pending: vorgemerkte Zeilen (ohne Saldo) { row, t, booked } – booked: gebuchte Fassung, falls auch in Firefly;
+ *   csvGaps: Tage, an denen sich der Bank-Saldo anders ändert, als die CSV-Zeilen ergeben.
  */
 export function saldoCheck(rows, txs, { accountId, current, today }) {
   const bank = bankSaldoByDay(rows);
@@ -380,7 +388,9 @@ export function saldoCheck(rows, txs, { accountId, current, today }) {
   const round = (n) => Math.round(n * 100) / 100;
   const diffs = days.map((d) => [d, round(bank.get(d) - ffAt(d))]);
   const diff = diffs.at(-1)[1];
-  const extra = own.filter((t) => !bankDay.has(String(t.transaction_journal_id)) && dayOf(t) >= first && dayOf(t) <= last);
+  // Anfangsguthaben und Abstimmungen gibt es nur in Firefly – keine Bank-Buchungen
+  const bookkeeping = (t) => /opening|reconciliation/i.test(String(t.type));
+  const extra = own.filter((t) => !bookkeeping(t) && !bankDay.has(String(t.transaction_journal_id)) && dayOf(t) >= first && dayOf(t) <= last);
   // Doppelt? Eine zugeordnete Buchung mit gleichem Betrag bis 3 Tage daneben (z. B. einmal aus der CSV dieses
   // Kontos als Ausgabe, einmal aus der des anderen Kontos als Umbuchung)
   const matchedTx = matched.filter((m) => m.t).map((m) => m.t);
@@ -390,7 +400,27 @@ export function saldoCheck(rows, txs, { accountId, current, today }) {
       && Math.abs(dayNum(x.date) - dayNum(t.date)) <= 3);
     if (twin) twins.set(String(t.transaction_journal_id), twin);
   }
-  const result = { ok: Math.abs(diff) < 0.005, last, bank: bank.get(last), firefly: round(ffAt(last)), diff, missing, extra, wrong, twins, since: null, before: null };
+  // Vorgemerkte Umsätze: Zeilen ohne Saldo in Dateien, die sonst einen haben. Die Bank zählt sie (noch) nicht;
+  // gebucht erscheinen sie später oft mit anderem Text/Datum erneut – in Firefly dann doppelt.
+  const withSaldo = new Set(rows.filter((r) => r.saldo !== null).map((r) => r.file));
+  const txOfRow = new Map(matched.filter((m) => m.t).map((m) => [m.row, m.t]));
+  const pending = unique.filter((r) => r.saldo === null && withSaldo.has(r.file)).map((row) => {
+    const t = txOfRow.get(row) || null;
+    // gebuchte Fassung: eine andere zugeordnete Buchung mit gleichem Betrag bis 7 Tage daneben
+    const booked = t ? matchedTx.find((x) => x !== t && cents(signed(x)) === cents(row.amount) && Math.sign(signed(x)) === Math.sign(row.amount)
+      && Math.abs(dayNum(x.date) - dayNum(row.date)) <= 7) || null : null;
+    return { row, t, booked };
+  });
+  // Saldo-Sprünge, die die Zeilen der CSV nicht erklären (Zeile fehlt im Export, Dateien überschneiden sich halb)
+  const sumByDay = new Map();
+  for (const r of unique) if (r.saldo !== null) sumByDay.set(r.book, (sumByDay.get(r.book) || 0) + r.amount);
+  const csvGaps = [];
+  for (let i = 1; i < days.length; i++) {
+    const change = round(bank.get(days[i]) - bank.get(days[i - 1]));
+    const rowsSum = round(sumByDay.get(days[i]) || 0);
+    if (Math.abs(change - rowsSum) >= 0.005) csvGaps.push({ day: days[i], prev: days[i - 1], change, rows: rowsSum, delta: round(change - rowsSum) });
+  }
+  const result = { ok: Math.abs(diff) < 0.005, last, bank: bank.get(last), firefly: round(ffAt(last)), diff, missing, extra, wrong, twins, pending, csvGaps, since: null, before: null };
   if (result.ok) return result;
   // seit wann besteht die heutige Differenz?
   let k = diffs.length - 1;
