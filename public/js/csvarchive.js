@@ -188,7 +188,14 @@ export function csvArchive(el, { load, memory }) {
     if (!res) return null;
     const inWindow = (d) => !res.since || ((!res.before || d > isoOf(day(res.before) - 4 * DAY)) && d <= isoOf(day(res.since) + 4 * DAY));
     const rowOut = (r) => ({ date: r.book, amount: r.amount, text: [r.name, r.purpose || r.text].filter(Boolean).join(' · ').slice(0, 140) });
-    const txOut = (t) => ({ date: String(t.date).slice(0, 10), amount: String(t.source_id) === String(g.acc.id) ? -t.amount : t.amount, text: [t.description, t.type === 'transfer' ? `Umbuchung ${t.source_name} → ${t.destination_name}` : ''].filter(Boolean).join(' · ').slice(0, 140), group: t.groupId });
+    const describe = (t) => [t.description, t.type === 'transfer' ? `Umbuchung ${t.source_name} → ${t.destination_name}` : t.type === 'withdrawal' ? `an ${t.destination_name}` : `von ${t.source_name}`].filter(Boolean).join(' · ');
+    const txOut = (t) => {
+      const twin = res.twins.get(String(t.transaction_journal_id));
+      return {
+        date: String(t.date).slice(0, 10), amount: String(t.source_id) === String(g.acc.id) ? -t.amount : t.amount, text: describe(t).slice(0, 140), group: t.groupId,
+        ...(twin ? { twin: `${fmtDate(twin.date)}: ${describe(twin)}`.slice(0, 160), twinGroup: twin.groupId } : {}),
+      };
+    };
     // zuerst, was zum Zeitpunkt der Abweichung passt
     const pick = (list, dateOf) => [...list.filter((x) => inWindow(dateOf(x))), ...list.filter((x) => !inWindow(dateOf(x)))].slice(0, 15);
     return {
@@ -209,7 +216,7 @@ export function csvArchive(el, { load, memory }) {
     if (s.skipped === 'spalte') return '<div class="arch-saldo muted">Kein Kontostand-Vergleich: Die CSV-Dateien haben keine Spalte „Saldo nach Buchung“.</div>';
     if (Math.abs(s.diff) < 0.005) return `<div class="arch-saldo good"><div>Kontostand stimmt mit der Bank überein ✓ <span class="muted">(${fmtDate(s.last)}: ${money(s.bank)})</span></div></div>`;
     const link = (x) => (x.group && fireflyTxUrl({ groupId: x.group }) ? ` <a class="plain" href="${esc(fireflyTxUrl({ groupId: x.group }))}" target="_blank" rel="noopener" title="In Firefly öffnen">↗</a>` : '');
-    const item = (x, extra = '') => `<li><span class="date">${fmtDate(x.date)}</span> <b>${money(x.amount, 'EUR', { signed: true })}</b> ${esc(x.text)}${extra}${link(x)}</li>`;
+    const item = (x, extra = '') => `<li><span class="date">${fmtDate(x.date)}</span> <b>${money(x.amount, 'EUR', { signed: true })}</b> ${esc(x.text)}${link(x)}${extra}</li>`;
     const half = (x) => Math.abs(Math.abs(x.amount) * 2 - Math.abs(s.diff)) < 0.005 || Math.abs(Math.abs(x.amount) - Math.abs(s.diff)) < 0.005;
     const hint = (x) => (half(x) ? ' <span class="badge bad">passt zur Differenz</span>' : '');
     return `<div class="arch-saldo bad">
@@ -217,7 +224,8 @@ export function csvArchive(el, { load, memory }) {
         ${s.since ? (s.before ? `Bis ${fmtDate(s.before)} stimmte es, ab ${fmtDate(s.since)} nicht mehr – die Ursache liegt dazwischen.` : `Die Differenz besteht schon am ersten Tag der CSV-Dateien (${fmtDate(s.since)}) – Ursache davor (z. B. Anfangssaldo) oder ältere CSV-Dateien hochladen.`) : ''}</div>
       ${s.wrong.length ? `<div>In Firefly mit falscher Richtung bzw. falschem Vorzeichen (z. B. Umbuchung vertauscht – zählt doppelt):<ul>${s.wrong.map((x) => item(x, ` <span class="muted">· Firefly: ${money(x.firefly, 'EUR', { signed: true })}</span>${hint({ amount: x.amount })}`)).join('')}</ul></div>` : ''}
       ${s.missing.length ? `<div>Bei der Bank, aber nicht auf diesem Konto in Firefly${s.missingCount > s.missing.length ? ` (${s.missingCount}, die ersten ${s.missing.length})` : ''} – fehlt oder liegt auf einem anderen Konto:<ul>${s.missing.map((x) => item(x, hint(x))).join('')}</ul></div>` : ''}
-      ${s.extra.length ? `<div>In Firefly auf diesem Konto, aber nicht in den CSV-Dateien${s.extraCount > s.extra.length ? ` (${s.extraCount}, die ersten ${s.extra.length})` : ''} – doppelt, falsches Konto oder noch nicht gebucht:<ul>${s.extra.map((x) => item(x, hint(x))).join('')}</ul></div>` : ''}
+      ${s.extra.length ? `<div>In Firefly auf diesem Konto, aber nicht in den CSV-Dateien${s.extraCount > s.extra.length ? ` (${s.extraCount}, die ersten ${s.extra.length})` : ''} – doppelt, falsches Konto oder noch nicht gebucht:<ul>${s.extra.map((x) => item(x, `${hint(x)}${x.twin ? `<br><span class="badge warn">vermutlich doppelt</span> <span class="muted">gleiche Buchung schon vorhanden – ${esc(x.twin)}</span>${link({ group: x.twinGroup })}` : ''}`)).join('')}</ul>
+        ${s.extra.some((x) => x.twin) ? '<div class="muted">„Vermutlich doppelt“: Dieselbe Bewegung steht zweimal in Firefly – oft einmal aus der CSV dieses Kontos (Ausgabe/Einnahme) und einmal aus der des anderen eigenen Kontos (Umbuchung). Eine davon in Firefly löschen; bei Geld zwischen eigenen Konten die Umbuchung behalten.</div>' : ''}</div>` : ''}
       ${!s.wrong.length && !s.missing.length && !s.extra.length ? '<div class="muted">Alle Zeilen passen zu Firefly-Buchungen – die Differenz stammt aus der Zeit vor den CSV-Dateien (Anfangssaldo) oder aus Buchungen nach dem letzten CSV-Tag mit anderem Datum.</div>' : ''}
     </div>`;
   };

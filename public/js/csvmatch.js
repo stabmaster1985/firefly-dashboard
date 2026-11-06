@@ -344,7 +344,8 @@ export function bankSaldoByDay(rows) {
  *   { ok, last, bank, firefly, diff, since, before, missing, extra, wrong } oder null (keine Salden).
  *   since: ab diesem Buchungstag besteht die heutige Differenz, before: letzter Tag ohne sie;
  *   missing: CSV-Zeilen ohne Firefly-Buchung, extra: Firefly-Buchungen ohne CSV-Zeile,
- *   wrong: zugeordnet, aber mit anderem Vorzeichen (z. B. Umbuchung in falscher Richtung).
+ *   wrong: zugeordnet, aber mit anderem Vorzeichen (z. B. Umbuchung in falscher Richtung);
+ *   twins: Journal einer extra-Buchung → gleiche, der CSV zugeordnete Buchung (vermutlich doppelt).
  */
 export function saldoCheck(rows, txs, { accountId, current, today }) {
   const bank = bankSaldoByDay(rows);
@@ -380,7 +381,16 @@ export function saldoCheck(rows, txs, { accountId, current, today }) {
   const diffs = days.map((d) => [d, round(bank.get(d) - ffAt(d))]);
   const diff = diffs.at(-1)[1];
   const extra = own.filter((t) => !bankDay.has(String(t.transaction_journal_id)) && dayOf(t) >= first && dayOf(t) <= last);
-  const result = { ok: Math.abs(diff) < 0.005, last, bank: bank.get(last), firefly: round(ffAt(last)), diff, missing, extra, wrong, since: null, before: null };
+  // Doppelt? Eine zugeordnete Buchung mit gleichem Betrag bis 3 Tage daneben (z. B. einmal aus der CSV dieses
+  // Kontos als Ausgabe, einmal aus der des anderen Kontos als Umbuchung)
+  const matchedTx = matched.filter((m) => m.t).map((m) => m.t);
+  const twins = new Map();
+  for (const t of extra) {
+    const twin = matchedTx.find((x) => cents(signed(x)) === cents(signed(t)) && Math.sign(signed(x)) === Math.sign(signed(t))
+      && Math.abs(dayNum(x.date) - dayNum(t.date)) <= 3);
+    if (twin) twins.set(String(t.transaction_journal_id), twin);
+  }
+  const result = { ok: Math.abs(diff) < 0.005, last, bank: bank.get(last), firefly: round(ffAt(last)), diff, missing, extra, wrong, twins, since: null, before: null };
   if (result.ok) return result;
   // seit wann besteht die heutige Differenz?
   let k = diffs.length - 1;
