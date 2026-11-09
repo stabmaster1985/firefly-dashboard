@@ -3,6 +3,8 @@
 Ein modernes, schreibgeschütztes Web-Dashboard für [Firefly III](https://www.firefly-iii.org/) –
 als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfach nur **anschauen** willst.
 
+[![Unterstützen per PayPal](https://img.shields.io/badge/Unterst%C3%BCtzen-PayPal.me-0070ba?logo=paypal&logoColor=white)](https://www.paypal.me/FrankTylinski)
+
 ![Übersicht: Nettovermögen, Einnahmen, Ausgaben, Saldo, Hinweise, Cashflow und Konten](docs/screenshots/uebersicht.png)
 
 <table>
@@ -698,3 +700,9 @@ funktioniert es nur als normales Lesezeichen.
   für die Startseite ausgewählt sind (*Optionen → Einstellungen → Konten auf der Startseite*).
 - Bei mehreren Währungen werden Summen in der jeweils häufigsten Währung angezeigt.
 - Getestet mit der Firefly-III-API v6.
+
+## Unterstützen
+
+Das Dashboard ist kostenlos und entsteht in meiner Freizeit. Wenn es dir hilft und du meine Arbeit
+unterstützen möchtest, freue ich mich über einen Beitrag per
+**[PayPal.me/FrankTylinski](https://www.paypal.me/FrankTylinski)** – danke!
