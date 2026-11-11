@@ -32,6 +32,12 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
 
 <sub>Alle Bilder zeigen die Demo-Daten (<code>npm run demo</code>), keine echten Finanzen.</sub>
 
+- **Menü** – nach Aufgaben gruppiert (Überblick, Ausgaben verstehen, Buchungen & Fragen, Pflegen,
+  Werkzeuge); Gruppen lassen sich auf- und zuklappen (merkt sich das Gerät, „Werkzeuge“ ist anfangs
+  zu). Kleine Zahlen zeigen, wo etwas zu tun ist: offene Händler bei „Zuordnen“, Hinweise bei
+  „Prüfen“, nahe Kündigungsfristen bei „Wiederkehrend“. Am Handy steht unten eine Leiste mit vier
+  Seiten; „Mehr“ öffnet alle Seiten mit Suchfeld, dort legt „Untere Leiste anpassen“ fest, welche
+  vier Seiten unten stehen
 - **Übersicht** – Nettovermögen, Einnahmen und Ausgaben mit Vergleich zur Vorperiode, Saldo &
   Sparquote, Cashflow der letzten 12 Monate, **Geldfluss-Diagramm** (Einnahmen → Ausgaben →
   Gespart; Klick auf einen Block oder ein Band zeigt die Buchungen dazu, mit Sprung zur Analyse
