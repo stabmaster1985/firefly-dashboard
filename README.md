@@ -178,7 +178,11 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   lassen sich dort abweichend zuordnen („nur diese“). **PayPal & Co.:** Steht im Buchungstext, bei
   wem eingekauft wurde („PP.4711.PP . Spotify AB, Ihr Einkauf bei Spotify AB“, „PayPal \*Steam“),
   zählt dieser Händler – nicht PayPal; Zahlungen ohne Händlerangabe stehen gesammelt unter
-  „PayPal – Händler nicht im Text“. Wirkt in Übersicht, Kategorien,
+  „PayPal – Händler nicht im Text“. **In Firefly übernehmen:** ausgewählte Zuordnungen werden per
+  Automation „Firefly-Regeln anlegen“ zu Firefly-Regeln „Händler → Kategorie“ (Gruppe „Dashboard:
+  Händler → Kategorie (Zuordnen)“) – nur für Ausgaben ohne Kategorie, auf Wunsch rückwirkend; so setzt
+  Firefly die Kategorie künftig schon beim Import. Einzeln zugeordnete Buchungen setzt das Dashboard
+  per Automation „Kategorie übernehmen“ direkt in Firefly. Wirkt in Übersicht, Kategorien,
   Jahresrückblick, Händler, Fragen, Berichten und MQTT; in den Buchungsdetails steht
   „automatisch“. Firefly bleibt unverändert (Zuordnungen in `DATA_DIR/autocat.json`)
 - **Prüfen** – Datenqualität auf einen Blick:

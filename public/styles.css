@@ -1521,3 +1521,11 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
 .cm-merged .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .cm-acts { display: flex; align-items: center; gap: 12px; flex: none; }
 @media (max-width: 760px) { .cm-merged .row { flex-wrap: wrap; } .cm-acts { width: 100%; justify-content: space-between; } }
+
+/* Zuordnen: In Firefly übernehmen */
+.z-ff-table { max-height: 460px; overflow-y: auto; }
+.z-ff-table tbody tr { cursor: default; }
+.z-ff-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-top: 12px; font-size: 14px; }
+.z-ff-actions label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.z-ff-actions select { height: 32px; }
+.z-ff-single { margin-top: 14px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }

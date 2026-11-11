@@ -6,6 +6,17 @@
 import * as api from './api.js';
 import { money, esc, fmtDate, percent } from './util.js';
 import { card, skeleton, txAttrs, bindTxDetails, signedAmount } from './common.js';
+import { actionFor, runAction, setCategory } from './txedit.js';
+import { toFireflyRules } from './rules.js';
+import { isoDate, today } from './util.js';
+
+const FF_GROUP = 'Dashboard: Händler → Kategorie (Zuordnen)';
+/** Kurze, feste Kennung je Händler für die Regel-Markierung („id:…“ ohne Leerzeichen). */
+const keyId = (k) => {
+  let h = 2166136261;
+  for (const ch of String(k)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  return `z-${h.toString(36)}`;
+};
 
 const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
 const call = (method, body) => fetch('/local/autocat', { method, headers: method === 'GET' ? {} : headers, body: body ? JSON.stringify(body) : undefined })
@@ -21,10 +32,17 @@ export async function assignPage(view) {
       <section class="card span-12" id="z-cover">${skeleton(3)}</section>
       ${card('z-open', 'Noch nicht zugeordnet', { filter: true, meta: '<span id="z-open-meta"></span>' })}
       ${card('z-auto', 'Automatisch zugeordnet', { filter: true, meta: '<span id="z-auto-meta"></span>' })}
+      ${card('z-ff', 'In Firefly übernehmen', { meta: '<span id="z-ff-meta"></span>' })}
       ${card('z-set', 'Einstellungen', { meta: 'Woraus die Kategorien abgeleitet werden' })}
     </div>`;
   const $ = (id) => view.querySelector(`#${id}`);
-  ['z-open', 'z-auto', 'z-set'].forEach((id) => ($(id).innerHTML = skeleton(4)));
+  ['z-open', 'z-auto', 'z-ff', 'z-set'].forEach((id) => ($(id).innerHTML = skeleton(4)));
+  let rulesAction = null;
+  let editAction = null;
+  let ffPick = null; // ausgewählte Händler (Schlüssel) – beim ersten Laden vorbelegt
+  let ffRange = 'all';
+  let ffNote = '';
+  let ffBusy = '';
   let data;
   let shownOpen = 40;
   let shownAuto = 40;
@@ -33,6 +51,85 @@ export async function assignPage(view) {
 
   const catInput = (value, attrs) => `<input class="input" list="z-cats" value="${esc(value || '')}" placeholder="Kategorie wählen oder neu eingeben" aria-label="Kategorie" ${attrs}>`;
   const quelle = (q) => (q ? `<span class="badge auto" title="Quelle der Zuordnung">${esc(data.quellen[q] || q)}</span>` : '');
+
+  // ---- In Firefly übernehmen: Händler-Zuordnungen als Firefly-Regeln, Einzelzuordnungen per n8n ----
+  const UP_TO_DATE = (m) => m.ff && m.ff.sentAt && m.ff.category === m.category;
+  const ffCandidates = () => data.automatisch.filter((m) => m.cond && m.category && m.quelle !== 'buchung');
+  function renderFirefly() {
+    const cands = ffCandidates();
+    if (!ffPick) ffPick = new Set(cands.filter((m) => !UP_TO_DATE(m) && ['zuordnung', 'import', 'liste', 'gelernt'].includes(m.quelle)).map((m) => m.key));
+    const keys = new Set(cands.map((m) => m.key));
+    const elsewhere = data.firefly.filter((f) => !keys.has(f.key)); // übertragen – Firefly hat die Buchungen inzwischen kategorisiert
+    const sent = data.firefly.filter((f) => f.sentAt).length;
+    $('z-ff-meta').textContent = sent ? `${sent} Regel${sent === 1 ? '' : 'n'} in Firefly` : '';
+    const status = (m) => (UP_TO_DATE(m) ? '<span class="badge good">in Firefly</span>'
+      : m.ff?.sentAt ? `<span class="badge warn" title="In Firefly steht noch „${esc(m.ff.category)}“">geändert</span>` : '');
+    const n = [...ffPick].filter((k) => keys.has(k)).length;
+    $('z-ff').innerHTML = `
+      <p class="muted" style="margin-top:0">Macht aus den Zuordnungen Firefly-Regeln (Gruppe „${esc(FF_GROUP)}“): „Händler → Kategorie“ –
+        sie greifen bei künftigen Importen und auf Wunsch rückwirkend, <b>nur bei Ausgaben ohne Kategorie</b> (vorhandene Kategorien bleiben).
+        Danach stehen die Kategorien in Firefly selbst.</p>
+      ${ffNote ? `<div class="cm-note">${ffNote}</div>` : ''}
+      ${!rulesAction ? '<div class="empty">Dafür unter <a href="#/automationen">Automationen</a> eine Automation mit Auslöser „Firefly-Regeln anlegen“ einrichten (Vorlage n8n/firefly-buchung-bearbeiten.json).</div>' : `
+      ${cands.length ? `<div class="table-wrap z-ff-table"><table><thead><tr><th class="pick-cell"><input type="checkbox" id="z-ff-all" aria-label="alle auswählen"></th><th>Händler</th><th>Kategorie</th><th class="num hide-sm">24 Monate</th></tr></thead>
+        <tbody>${cands.map((m) => `<tr style="cursor:default">
+          <td class="pick-cell"><input type="checkbox" data-ff="${esc(m.key)}" ${ffPick.has(m.key) ? 'checked' : ''} aria-label="${esc(m.name)}"></td>
+          <td><div class="desc">${esc(m.name)} ${status(m)}</div><div class="flow">${esc(data.quellen[m.quelle] || m.quelle || '')} · ${esc(m.cond.field === 'party' ? 'Empfänger' : m.cond.field === 'notes' ? 'Notizen' : 'Beschreibung')} ${m.cond.op === 'equals' ? 'ist' : 'enthält'} „${esc(m.cond.value)}“</div></td>
+          <td>${esc(m.category)}</td>
+          <td class="num hide-sm">${money(m.auto, data.waehrung)}</td></tr>`).join('')}</tbody></table></div>
+        <div class="z-ff-actions">
+          <label>rückwirkend anwenden <select class="input select" data-ff-range>
+            <option value="all"${ffRange === 'all' ? ' selected' : ''}>alle Buchungen ohne Kategorie</option>
+            <option value="24"${ffRange === '24' ? ' selected' : ''}>letzte 24 Monate</option>
+            <option value="none"${ffRange === 'none' ? ' selected' : ''}>nein, nur künftige Importe</option></select></label>
+          <button class="btn primary" type="button" id="z-ff-send"${n && !ffBusy ? '' : ' disabled'}>${n} als Regel${n === 1 ? '' : 'n'} nach Firefly</button>
+        </div>
+        <p class="muted small-text">KI-Zuordnungen sind anfangs nicht angehakt – erst prüfen („Buchungen ansehen“ oben). Bereits übertragene Regeln bleiben bestehen; „geändert“ heißt: im Dashboard jetzt eine andere Kategorie – erneut übertragen ändert die Regel.</p>`
+    : '<div class="empty">Keine automatischen Zuordnungen mit erkennbarem Händler.</div>'}
+      ${elsewhere.length ? `<details class="r-hidden"><summary>${elsewhere.length} Regel${elsewhere.length === 1 ? '' : 'n'} schon in Firefly wirksam (die Buchungen haben dort ihre Kategorie)</summary>
+        <ul>${elsewhere.map((f) => `<li>${esc(f.name)} → ${esc(f.category)} <button class="link-btn" type="button" data-ff-remove="${esc(f.key)}">Regel entfernen</button></li>`).join('')}</ul></details>` : ''}
+      ${data.einzeln?.length ? `<div class="z-ff-single"><b>${data.einzeln.length} einzeln zugeordnete Buchung${data.einzeln.length === 1 ? '' : 'en'}</b> <span class="muted">(„nur diese“) – dafür gibt es keine Regel; ${editAction ? 'direkt per n8n setzen:' : 'braucht die Automation „Kategorie übernehmen“.'}</span>
+        ${editAction ? `<button class="btn small" type="button" id="z-ff-single"${ffBusy ? ' disabled' : ''}>In Firefly setzen</button>` : ''}</div>` : ''}`}
+      ${ffBusy ? `<p class="muted">${esc(ffBusy)}</p>` : ''}`;
+    const all = $('z-ff').querySelector('#z-ff-all');
+    if (all) {
+      all.checked = cands.length > 0 && cands.every((m) => ffPick.has(m.key));
+      all.indeterminate = !all.checked && cands.some((m) => ffPick.has(m.key));
+    }
+  }
+
+  /** Alle vorgemerkten Händler als Regeln schicken (die Gruppe wird abgeglichen) und ggf. rückwirkend anwenden. */
+  async function sendRules(list) {
+    const rules = list.map((f) => ({ id: keyId(f.key), enabled: true, when: [f.cond], setCategory: f.category, addTags: [] }));
+    const regeln = toFireflyRules(rules).map((r, k, arr) => ({
+      ...r,
+      // nur Ausgaben ohne Kategorie – vorhandene Kategorien (auch vom Import) bleiben unangetastet
+      triggers: [...r.triggers, { type: 'has_no_category', value: 'true' }, { type: 'transaction_type', value: 'withdrawal' }],
+      order: arr.length - k,
+      description: `Zuordnen (Dashboard) · id:${r.labor_id}`,
+    }));
+    const t0 = today();
+    const anwenden = ffRange === 'none' ? null
+      : { start: ffRange === 'all' ? '2000-01-01' : isoDate(new Date(t0.getFullYear(), t0.getMonth() - 24, 1)), end: isoDate(t0) };
+    const res = await runAction(rulesAction, { typ: 'regeln_anlegen', gruppe: FF_GROUP, regeln, anwenden });
+    if (!res.ok) throw new Error(`n8n antwortet mit ${res.status || 'Fehler'}: ${String(res.response || '').slice(0, 200)}`);
+  }
+
+  async function ffDo(label, fn) {
+    ffBusy = label;
+    ffNote = '';
+    renderFirefly();
+    try {
+      ffNote = await fn();
+      api.forget();
+      bookings.clear();
+      data = await call('GET');
+    } catch (err) {
+      ffNote = `<span class="bad">${esc(err.message)}</span>`;
+    }
+    ffBusy = '';
+    render();
+  }
 
   /** Buchungen eines aufgeklappten Händlers: Datum, Text, Betrag, Kategorie samt Herkunft – einzeln änderbar. */
   function txBlock(key) {
@@ -125,6 +222,8 @@ export async function assignPage(view) {
       return b && typeof b === 'object' ? b.buchungen[i] : null;
     }));
 
+    renderFirefly();
+
     // ---- Einstellungen ----
     const e = data.einstellungen;
     const q = s.quellen;
@@ -196,6 +295,36 @@ export async function assignPage(view) {
     const t = e.target.closest('button');
     if (!t) return;
     if (t.dataset.reset) return update(call('POST', { key: t.dataset.reset, category: null }));
+    if (t.id === 'z-ff-send') {
+      const list = ffCandidates().filter((m) => ffPick.has(m.key));
+      if (!list.length || !window.confirm(`${list.length} Regel${list.length === 1 ? '' : 'n'} „Händler → Kategorie“ in Firefly anlegen${ffRange === 'none' ? '' : ' und auf vorhandene Ausgaben ohne Kategorie anwenden'}?`)) return;
+      return ffDo('Übertrage nach Firefly … (rückwirkend anwenden kann ein paar Minuten dauern)', async () => {
+        const res = await call('POST', { ff: { add: list.map((m) => ({ key: m.key, name: m.name, category: m.category, cond: m.cond })) } });
+        await sendRules(res.firefly);
+        await call('POST', { ff: { sent: true } });
+        list.forEach((m) => ffPick.delete(m.key));
+        return `<span class="good">✓ ${res.firefly.length} Regel${res.firefly.length === 1 ? '' : 'n'} in Firefly (Gruppe „${esc(FF_GROUP)}“)${ffRange === 'none' ? '' : ', auf vorhandene Ausgaben ohne Kategorie angewendet'}.</span>`;
+      });
+    }
+    if (t.dataset.ffRemove) {
+      return ffDo('Entferne die Regel in Firefly …', async () => {
+        const res = await call('POST', { ff: { remove: [t.dataset.ffRemove] } });
+        await sendRules(res.firefly.filter((f) => f.sentAt));
+        return 'Regel in Firefly entfernt – bereits gesetzte Kategorien bleiben.';
+      });
+    }
+    if (t.id === 'z-ff-single') {
+      const list = data.einzeln;
+      if (!window.confirm(`${list.length} Buchung${list.length === 1 ? '' : 'en'} in Firefly kategorisieren?`)) return;
+      return ffDo(`Setze ${list.length} Kategorie${list.length === 1 ? '' : 'n'} in Firefly …`, async () => {
+        let ok = 0;
+        for (const tx of list) {
+          const res = await setCategory(editAction, tx, tx.ffd_ziel).catch(() => ({ ok: false }));
+          if (res.ok) ok += 1;
+        }
+        return ok === list.length ? `<span class="good">✓ ${ok} Buchung${ok === 1 ? '' : 'en'} in Firefly kategorisiert.</span>` : `<span class="bad">${ok} von ${list.length} gesetzt – Rest bitte erneut versuchen.</span>`;
+      });
+    }
     if (t.dataset.show !== undefined) {
       const key = t.dataset.show;
       if (openKeys.has(key)) {
@@ -222,12 +351,25 @@ export async function assignPage(view) {
     }
   });
   view.addEventListener('change', (e) => {
+    if (e.target.dataset.ff) {
+      if (e.target.checked) ffPick.add(e.target.dataset.ff);
+      else ffPick.delete(e.target.dataset.ff);
+      return renderFirefly();
+    }
+    if (e.target.id === 'z-ff-all') {
+      ffCandidates().forEach((m) => (e.target.checked ? ffPick.add(m.key) : ffPick.delete(m.key)));
+      return renderFirefly();
+    }
+    if (e.target.matches('[data-ff-range]')) {
+      ffRange = e.target.value;
+      return;
+    }
     if (e.target.dataset.opt) return update(call('PUT', { [e.target.dataset.opt]: e.target.checked }));
     if (e.target.matches('[data-opt-min]')) return update(call('PUT', { aiMin: Number(e.target.value) }));
   });
 
   try {
-    data = await call('GET');
+    [data, rulesAction, editAction] = await Promise.all([call('GET'), actionFor('rules').catch(() => null), actionFor('categorize').catch(() => null)]);
     if (view.isConnected) render();
   } catch (err) {
     $('z-cover').innerHTML = `<div class="empty">Konnte nicht geladen werden: ${esc(err.message)}</div>`;
