@@ -646,6 +646,14 @@ Geräten und nach Updates. Nach Firefly geht erst etwas per Knopf.
   (Kategorien, Tags, Beträge bleiben) und benennt das Ziel ggf. um. Danach prüft das Dashboard,
   welche Konten leer sind; **leere Konten löschen** (`typ: konten_loeschen`) erst auf
   ausdrücklichen Klick und nur, was gerade als leer bestätigt wurde.
+- **Kategorien zusammenführen:** Kategorien ankreuzen (mit Buchungen und Summen der letzten 24
+  Monate, Vorschläge bei fast gleichen Namen) und ein Ziel wählen – vorhanden oder neu. **Nur im
+  Dashboard** wirkt sofort in allen Auswertungen und lässt sich aufheben (gespeichert in
+  `DATA_DIR/autocat.json`, Firefly unverändert). **In Firefly zusammenführen** schickt über die
+  Automation „Firefly-Regeln anlegen“ je Kategorie eine Regel „Kategorie ist A → Kategorie B“
+  (Regelgruppe „Dashboard: Kategorien zusammengeführt“) und wendet sie auf alle Buchungen an – so
+  landen auch künftige Importe mit der alten Kategorie im Ziel. Aufheben entfernt die Regel wieder;
+  schon umgestellte Buchungen behalten die neue Kategorie. Leere alte Kategorien in Firefly löschen.
 
 Empfohlene Reihenfolge: CSV-Abgleich (Empfänger nachtragen) → Gegenkonten zusammenführen →
 Regeln aus der Import-Konfiguration übertragen.

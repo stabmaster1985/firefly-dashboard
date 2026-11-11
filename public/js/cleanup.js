@@ -13,6 +13,7 @@ import { actionFor, runAction } from './txedit.js';
 import { loadHistory } from './check.js';
 import { counterpartyOf, toFireflyRules } from './rules.js';
 import { analyzeImportConfig, mergeGroups } from './cleanupcore.js';
+import { catMergeCard } from './catmerge.js';
 
 const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
 const RULE_GROUP = 'Dashboard: Händler → Kategorie (Import)';
@@ -30,10 +31,12 @@ export async function cleanup(view) {
     <div class="grid">
       ${card('a-import', 'Regeln aus der Import-Konfiguration', { meta: '<span id="a-import-meta"></span>' })}
       ${card('a-merge', 'Ähnliche Gegenkonten zusammenführen', { meta: '<span id="a-merge-meta"></span>' })}
+      ${card('a-cats', 'Kategorien zusammenführen', { meta: '<span id="a-cats-meta"></span>' })}
     </div>`;
   const $ = (id) => view.querySelector(`#${id}`);
   $('a-import').innerHTML = skeleton(4);
   $('a-merge').innerHTML = skeleton(4);
+  $('a-cats').innerHTML = skeleton(4);
 
   let txs;
   let categories;
@@ -55,6 +58,7 @@ export async function cleanup(view) {
     return;
   }
   if (!view.isConnected) return;
+  catMergeCard($('a-cats'), $('a-cats-meta'), { rulesAction });
   const catNames = categories.map((c) => c.name).sort((a, b) => a.localeCompare(b, 'de'));
 
   // ======================================================================

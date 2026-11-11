@@ -235,7 +235,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method !== 'GET') res.on('finish', () => mqtt.soon(2000)); // Summen ändern sich
     return excluded.handle(req, res, url);
   }
-  if (url.pathname === '/local/autocat' || url.pathname === '/local/ledger') {
+  if (url.pathname === '/local/autocat' || url.pathname === '/local/ledger' || url.pathname === '/local/kategorien') {
     if (req.method !== 'GET') res.on('finish', () => mqtt.soon(2000)); // Kategorien-Summen ändern sich
     return view.handle(req, res, url);
   }
