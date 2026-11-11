@@ -4,6 +4,7 @@
 import * as api from './api.js';
 import { money, esc, fmtDate, today, startOfMonth, addDays, isoDate, parseDate, storage, store } from './util.js';
 import { skeleton, fill, card, stat, mainCurrency, sum } from './common.js';
+import { lineChart, seriesColor } from './charts.js';
 
 const RHYTHMS = [
   { days: 7, label: 'wöchentlich', tol: 2, min: 4 },
@@ -141,9 +142,17 @@ export function detectRecurring(transactions, kind, levelKey = 'normal') {
         const intermediary = cluster.length < own.length || keyOf === passes[1];
         const cleanDesc = last.description.replace(/\s*[#*]?\d{4,}\S*/g, '').replace(/\s+/g, ' ').trim();
         const name = intermediary && descNames.size === 1 && cleanDesc ? cleanDesc : last.party || last.description;
+        // Konto, von dem gezahlt (bzw. auf das eingezahlt) wird – für die Kontostand-Vorschau
+        const accs = new Map();
+        hit.list.forEach((t) => {
+          const id = kind === 'income' ? t.destination_id : t.source_id;
+          if (id) accs.set(String(id), { id: String(id), name: kind === 'income' ? t.destination_name : t.source_name, n: (accs.get(String(id))?.n || 0) + 1 });
+        });
+        const acc = [...accs.values()].sort((a, b) => b.n - a.n)[0];
         found.push({
           name,
           party: last.party,
+          account: acc ? { id: acc.id, name: acc.name } : null,
           via: name !== last.party && partyNames.size === 1 ? last.party : null,
           code,
           rhythm: hit.rhythm,
@@ -167,13 +176,92 @@ export function detectRecurring(transactions, kind, levelKey = 'normal') {
   return { items: found.sort((a, b) => b.perYear - a.perYear), stats };
 }
 
-/** Lädt die Buchungen der letzten 24 Monate und erkennt Muster (für Seite und Prognose). */
+// ---------------------------------------------------------------------------
+// Eigene Angaben (DATA_DIR/recurring.json, lib/automation.js): ausgeblendete Fehlerkennungen,
+// von Hand angelegte Verträge und Vertragsdaten (Ende, Kündigungsfrist, Verlängerung, Notiz).
+// Oberfläche, Warnungen und MQTT wenden sie gleich an.
+
+export const RHYTHM_LABELS = RHYTHMS.map((r) => r.label);
+/** Feste Kennung eines Eintrags (Art, Name, Rhythmus) – für Ausblenden und Vertragsdaten. */
+export const recurringId = (kind, r) => `${kind}|${normalize(r.name) || normalize(r.party) || String(r.name).toLowerCase()}|${r.rhythm.label}`;
+const addMonths = (d, n) => {
+  const last = new Date(d.getFullYear(), d.getMonth() + n + 1, 0).getDate();
+  return new Date(d.getFullYear(), d.getMonth() + n, Math.min(d.getDate(), last));
+};
+
+/**
+ * Nächste Kündigungsfrist eines Vertrags: { ende, frist, tage } (Daten) oder null.
+ * Verlängert sich der Vertrag automatisch, rollt das Ende weiter, bis die Frist in der Zukunft liegt.
+ */
+export function contractDeadline(v, t0 = today()) {
+  if (!v?.ende) return null;
+  let ende = parseDate(v.ende);
+  if (Number.isNaN(ende.getTime())) return null;
+  const frist = Math.max(0, Number(v.frist) || 0);
+  const ext = Math.max(0, Number(v.verlaengerung) || 0);
+  let dl = addMonths(ende, -frist);
+  for (let i = 0; dl < t0 && ext > 0 && i < 200; i++) {
+    ende = addMonths(ende, ext);
+    dl = addMonths(ende, -frist);
+  }
+  return { ende, frist: dl, tage: Math.round((dl - t0) / DAY) };
+}
+
+/**
+ * Erkannte Einträge mit den eigenen Angaben zusammenführen: Kennung und Vertragsdaten anhängen,
+ * von Hand angelegte Verträge ergänzen. Ausgeblendete kommen getrennt zurück (hidden).
+ */
+export function applyOverrides(items, cfg, kind, t0 = today()) {
+  const hiddenIds = new Set(cfg?.hidden || []);
+  const vertraege = cfg?.vertraege || {};
+  const all = items.map((r) => {
+    const id = recurringId(kind, r);
+    return { ...r, id, vertrag: vertraege[id] || null };
+  });
+  for (const m of cfg?.manual || []) {
+    if ((m.kind || 'expense') !== kind) continue;
+    const rhythm = RHYTHMS.find((x) => x.label === m.rhythm);
+    const start = parseDate(m.next);
+    if (!rhythm || Number.isNaN(start.getTime()) || !(Number(m.amount) > 0)) continue;
+    const anchorDay = start.getDate();
+    let next = start;
+    for (let i = 0; next < t0 && i < 2000; i++) next = stepDate(next, rhythm, anchorDay);
+    const amount = Number(m.amount);
+    all.push({
+      id: m.id, manual: true, name: m.name, party: m.name, via: null, code: m.code || 'EUR', rhythm, amount, count: 0, first: null, last: null,
+      lastAmount: amount, next, anchorDay, active: true, perYear: (amount * 365.25) / rhythm.days, category: m.category || '', changed: false,
+      confidence: 100, account: m.account || null, vertrag: vertraege[m.id] || null,
+    });
+  }
+  return { items: all.filter((r) => !hiddenIds.has(r.id)).sort((a, b) => b.perYear - a.perYear), hidden: all.filter((r) => hiddenIds.has(r.id)) };
+}
+
+let cfgPromise = null;
+/** Eigene Angaben vom Server (einmal je Seitenaufruf). */
+export function loadRecurringConfig(force = false) {
+  if (force || !cfgPromise) cfgPromise = fetch('/local/recurring').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  return cfgPromise;
+}
+/** Eigene Angabe ändern: { action: 'hide' | 'vertrag' | 'add' | 'remove', … } → neue Angaben. */
+export async function changeRecurring(body) {
+  const r = await fetch('/local/recurring', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' }, body: JSON.stringify(body) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.message || `HTTP ${r.status}`);
+  cfgPromise = Promise.resolve(data);
+  return data;
+}
+
+/** Lädt die Buchungen der letzten 24 Monate und erkennt Muster (für Seite und Prognose). Ausgeblendete fehlen in items. */
 export async function loadRecurring(kind, levelKey = storage('ffd-recurring-level', 'normal')) {
   const t0 = today();
   const from = startOfMonth(t0, -24);
-  const groups = await api.getAll('transactions', { start: from, end: t0, type: kind === 'income' ? 'deposit' : 'withdrawal' });
+  const [groups, cfg] = await Promise.all([
+    api.getAll('transactions', { start: from, end: t0, type: kind === 'income' ? 'deposit' : 'withdrawal' }),
+    loadRecurringConfig(),
+  ]);
   const txs = api.flattenTransactions(groups).filter((t) => t.type === (kind === 'income' ? 'deposit' : 'withdrawal'));
   const result = detectRecurring(txs, kind, levelKey);
+  Object.assign(result, applyOverrides(result.items, cfg, kind, t0));
   result.from = from;
   result.oldest = txs.length ? txs.reduce((m, t) => (String(t.date) < m ? String(t.date) : m), String(txs[0].date)) : null;
   return result;
@@ -238,8 +326,12 @@ export async function recurring(view, { params }) {
       <section class="card span-3" id="r-year"></section>
       <section class="card span-3" id="r-count"></section>
       <section class="card span-3" id="r-next"></section>
+      ${card('r-forecast', 'Kontostand-Vorschau', { meta: '<span id="r-forecast-meta"></span>' })}
       ${card('r-soon', kind === 'income' ? 'Demnächst erwartet' : 'Demnächst fällig', { filter: true, meta: `<span class="chips small" role="group" aria-label="Zeitraum">${RANGES.map((d) => `<a class="chip" href="${hrefWith({ tage: String(d) })}" aria-pressed="${d === days}">${d} Tage</a>`).join('')}</span>` })}
       ${card('r-table', kind === 'income' ? 'Regelmäßige Einnahmen' : 'Regelmäßige Zahlungen', { filter: true, meta: '<span id="r-meta"></span>' })}
+      ${card('r-contracts', 'Verträge & Kündigungsfristen', { span: kind === 'expense' ? 'span-6' : 'span-12', meta: '<span id="r-contracts-meta"></span>' })}
+      ${kind === 'expense' ? card('r-reserve', 'Rücklage für seltene Zahlungen', { span: 'span-6', meta: 'vierteljährlich und seltener' }) : ''}
+      ${card('r-add', 'Vertrag von Hand anlegen', { meta: 'z. B. Jahresbeiträge, die noch nicht erkannt werden' })}
     </div>
     <div class="pick-bar r-pick" id="r-pick" hidden></div>`;
   const $ = (id) => view.querySelector(`#${id}`);
@@ -249,6 +341,28 @@ export async function recurring(view, { params }) {
     $('r-diag').textContent = `${stats.transactions} Buchungen seit ${fmtDate(from)} geprüft${oldest ? ` (älteste: ${fmtDate(oldest)})` : ''} · ${stats.found} Muster gefunden`;
   }).catch((err) => ($('r-diag').textContent = `Analyse fehlgeschlagen: ${err.message}`));
 
+  const editing = new Set(); // aufgeklappte Bearbeiten-Zeilen
+  /** Eigene Angabe speichern und die Seite neu zeichnen (Summen, Fristen, Vorschau ändern sich). */
+  const save = (body) => changeRecurring(body).then(() => window.dispatchEvent(new Event('ffd-rerender'))).catch((err) => alert(err.message));
+  const deadlineBadge = (r) => {
+    const dl = contractDeadline(r.vertrag, t0);
+    if (!dl) return '';
+    const cls = dl.tage <= 30 ? 'bad' : dl.tage <= 90 ? 'warn' : '';
+    return ` <span class="badge ${cls}" title="Kündigungsfrist">kündigen bis ${fmtDate(dl.frist)}</span>`;
+  };
+  const editRow = (r) => {
+    const v = r.vertrag || {};
+    return `<tr class="r-edit"><td colspan="8"><form class="r-edit-form" data-contract="${esc(r.id)}">
+      <label>Vertragsende<input class="input" type="date" name="ende" value="${esc(v.ende || '')}"></label>
+      <label>Kündigungsfrist<select class="input select" name="frist">${[0, 1, 2, 3, 6, 12].map((n) => `<option value="${n}"${Number(v.frist ?? 1) === n ? ' selected' : ''}>${n ? `${n} Monat${n === 1 ? '' : 'e'}` : 'keine'}</option>`).join('')}</select></label>
+      <label>verlängert sich um<select class="input select" name="verlaengerung">${[0, 1, 3, 6, 12, 24].map((n) => `<option value="${n}"${Number(v.verlaengerung ?? 12) === n ? ' selected' : ''}>${n ? `${n} Monat${n === 1 ? '' : 'e'}` : 'endet'}</option>`).join('')}</select></label>
+      <label class="r-note">Notiz<input class="input" name="notiz" value="${esc(v.notiz || '')}" placeholder="z. B. Kundennummer, Kündigung per Mail"></label>
+      <div class="r-edit-actions"><button class="btn primary small" type="submit">Speichern</button>
+        ${r.vertrag ? `<button class="link-btn" type="button" data-clear="${esc(r.id)}">Vertragsdaten löschen</button>` : ''}
+        ${r.manual ? `<button class="link-btn" type="button" data-remove="${esc(r.id)}">Eintrag löschen</button>`
+    : `<button class="link-btn" type="button" data-hide="${esc(r.id)}" title="Kein echter Vertrag (z. B. regelmäßig Tanken) – zählt dann nirgends mehr mit">kein Vertrag – ausblenden</button>`}</div>
+    </form></td></tr>`;
+  };
   const rKey = (r) => RHYTHM_KEYS[r.rhythm.label] || r.rhythm.label;
   const statusOk = (r) => showAll || r.active;
   const inFilter = (r) => statusOk(r) && (!rhythms.size || rhythms.has(rKey(r)));
@@ -329,7 +443,7 @@ export async function recurring(view, { params }) {
   }
   const savePicked = () => store(PICK_KEY, JSON.stringify([...picked]));
 
-  fill($('r-table'), () => data, (el, { items, stats, from }) => {
+  fill($('r-table'), () => data, (el, { items, stats, from, hidden }) => {
     const rows = items.filter(inFilter);
     $('r-meta').textContent = `${rows.length} Einträge`;
     if (!rows.length) {
@@ -352,21 +466,24 @@ export async function recurring(view, { params }) {
           const q = r.via ? `"${r.name}"` : `${op}:"${r.party || r.name}"`;
           return `<tr data-href="#/buchungen?q=${encodeURIComponent(q)}&von=${isoDate(from)}&bis=${isoDate(t0)}"${r.active ? '' : ' class="inactive"'}>
           <td class="pick-cell"><input type="checkbox" data-pick="${esc(idOf(r))}" ${picked.has(idOf(r)) ? 'checked' : ''} aria-label="${esc(r.name)} auswählen"></td>
-          <td><div class="desc">${esc(r.name)}</div><div class="flow">${esc(r.category || 'ohne Kategorie')}${r.via ? ` · über ${esc(r.via)}` : ''} · ${r.count}× seit ${fmtDate(r.first, { month: 'short', year: 'numeric' })}<span class="show-sm"> · ${esc(r.rhythm.label)}</span></div></td>
-          <td class="hide-sm">${esc(r.rhythm.label)}<div class="flow">${r.confidence} % sicher</div></td>
+          <td><div class="desc">${esc(r.name)}${r.manual ? ' <span class="badge">von Hand</span>' : ''}${deadlineBadge(r)}</div><div class="flow">${esc(r.category || 'ohne Kategorie')}${r.via ? ` · über ${esc(r.via)}` : ''} · ${r.manual ? 'eigener Eintrag' : `${r.count}× seit ${fmtDate(r.first, { month: 'short', year: 'numeric' })}`}<span class="show-sm"> · ${esc(r.rhythm.label)}</span></div></td>
+          <td class="hide-sm">${esc(r.rhythm.label)}<div class="flow">${r.manual ? 'von dir' : `${r.confidence} % sicher`}</div></td>
           <td class="num"><b>${money(r.amount, r.code)}</b>${r.changed ? `<div class="flow" title="Letzter Betrag weicht ab">zuletzt ${money(r.lastAmount, r.code)}</div>` : ''}</td>
           <td class="num hide-sm">${money(r.perYear / 12, r.code)}</td>
           <td class="num hide-sm">${money(r.perYear, r.code)}</td>
-          <td class="hide-sm date">${fmtDate(r.last)}</td>
-          <td>${r.active ? `<span class="date">${fmtDate(r.next)}</span>` : '<span class="badge">beendet?</span>'}</td>
-        </tr>`;
+          <td class="hide-sm date">${r.last ? fmtDate(r.last) : '–'}</td>
+          <td class="r-next-cell">${r.active ? `<span class="date">${fmtDate(r.next)}</span>` : '<span class="badge">beendet?</span>'}
+            <button class="link-btn r-edit-btn" type="button" data-edit="${esc(r.id)}" title="Vertragsdaten, ausblenden …" aria-label="${esc(r.name)} bearbeiten">✎</button></td>
+        </tr>${editing.has(r.id) ? editRow(r) : ''}`;
         })
         .join('')}</tbody>
       <tfoot><tr class="r-sum"><td></td><td colspan="2"><b>Summe</b> <span class="muted">${activeRows.length} aktive${filterNote ? ` · ${esc(filterNote)}` : ''}</span></td><td class="num"></td>
         <td class="num hide-sm"><b>${money(sum(activeRows, (r) => r.perYear) / 12, code)}</b></td><td class="num hide-sm"><b>${money(sum(activeRows, (r) => r.perYear), code)}</b></td><td class="hide-sm"></td><td></td></tr>
         <tr class="r-sum r-sum-sm"><td></td><td colspan="7"><span class="muted">je Monat</span> <b>${money(sum(activeRows, (r) => r.perYear) / 12, code)}</b> · <span class="muted">je Jahr</span> <b>${money(sum(activeRows, (r) => r.perYear), code)}</b></td></tr></tfoot>
       </table></div>
-      <div class="legend" style="margin-top:12px"><span>Erkannt anhand regelmäßiger Abstände und ähnlicher Beträge – auch über PayPal & Co. · Zeile anklicken zeigt alle Buchungen · Häkchen: eigene Summe bilden (z. B. alle Versicherungen)</span></div>`;
+      <div class="legend" style="margin-top:12px"><span>Erkannt anhand regelmäßiger Abstände und ähnlicher Beträge – auch über PayPal & Co. · Zeile anklicken zeigt alle Buchungen · Häkchen: eigene Summe bilden (z. B. alle Versicherungen) · ✎: Vertragsdaten oder ausblenden</span></div>
+      ${hidden?.length ? `<details class="r-hidden"><summary>${hidden.length} ausgeblendet (keine echten Verträge)</summary>
+        <ul>${hidden.map((r) => `<li>${esc(r.name)} <span class="muted">· ${esc(r.rhythm.label)} · ${money(r.amount, r.code)}</span> <button class="link-btn" type="button" data-unhide="${esc(r.id)}">wieder einblenden</button></li>`).join('')}</ul></details>` : ''}`;
 
     // Summenleiste für die Auswahl
     const byId = new Map(items.map((r) => [idOf(r), r]));
@@ -410,10 +527,218 @@ export async function recurring(view, { params }) {
       el.querySelectorAll('[data-pick]').forEach((box) => (box.checked = false));
       updatePick();
     });
-    el.addEventListener('click', (e) => {
-      if (e.target.closest('input, label, .pick-cell')) return;
+    el.addEventListener('click', async (e) => {
+      const edit = e.target.closest('[data-edit]');
+      if (edit) {
+        const id = edit.dataset.edit;
+        const tr = edit.closest('tr');
+        if (tr.nextElementSibling?.classList.contains('r-edit')) {
+          tr.nextElementSibling.remove();
+          editing.delete(id);
+        } else {
+          editing.add(id);
+          tr.insertAdjacentHTML('afterend', editRow(items.find((x) => x.id === id)));
+        }
+        return;
+      }
+      const btn = e.target.closest('[data-unhide], [data-hide], [data-remove], [data-clear]');
+      if (btn) {
+        btn.disabled = true;
+        if (btn.dataset.unhide) return save({ action: 'hide', id: btn.dataset.unhide, hidden: false });
+        if (btn.dataset.hide) return save({ action: 'hide', id: btn.dataset.hide, hidden: true });
+        if (btn.dataset.remove && window.confirm('Diesen von Hand angelegten Vertrag löschen?')) return save({ action: 'remove', id: btn.dataset.remove });
+        if (btn.dataset.clear) return save({ action: 'vertrag', id: btn.dataset.clear, vertrag: null });
+        btn.disabled = false;
+        return;
+      }
+      if (e.target.closest('input, label, .pick-cell, .r-edit, button, summary, details')) return;
       const tr = e.target.closest('tr[data-href]');
       if (tr) location.hash = tr.dataset.href;
     });
+    el.addEventListener('submit', (e) => {
+      const form = e.target.closest('[data-contract]');
+      if (!form) return;
+      e.preventDefault();
+      const f = new FormData(form);
+      form.querySelector('button[type=submit]').disabled = true;
+      save({ action: 'vertrag', id: form.dataset.contract, vertrag: { ende: f.get('ende') || null, frist: f.get('frist'), verlaengerung: f.get('verlaengerung'), notiz: f.get('notiz') } });
+    });
   }, skeleton(8));
+
+  // ---- Verträge & Kündigungsfristen ----
+  fill($('r-contracts'), () => data, (el, { items }) => {
+    const list = items.filter((r) => r.vertrag).map((r) => ({ r, dl: contractDeadline(r.vertrag, t0) }))
+      .sort((a, b) => (a.dl?.frist || Infinity) - (b.dl?.frist || Infinity));
+    $('r-contracts-meta').textContent = list.length ? `${list.length} mit Vertragsdaten` : '';
+    if (!list.length) {
+      el.innerHTML = `<div class="empty">Noch keine Vertragsdaten. In der Tabelle oben bei einem Vertrag auf ✎ tippen und Vertragsende und
+        Kündigungsfrist eintragen – das Dashboard erinnert dann 30 Tage vorher (Hinweise in der Übersicht, per n8n-Automation „Warnungen“ und MQTT).</div>`;
+      return;
+    }
+    el.innerHTML = `<div class="list">${list.map(({ r, dl }) => `<div class="row" style="cursor:default">
+      <div style="min-width:0"><div class="title">${esc(r.name)} ${deadlineBadge(r)}</div>
+        <div class="subtitle">${money(r.amount, r.code)} ${esc(r.rhythm.label)}${dl ? ` · Vertragsende ${fmtDate(dl.ende)}${r.vertrag.verlaengerung ? `, verlängert sich um ${r.vertrag.verlaengerung} Monate` : ''}` : ''}${r.vertrag.notiz ? ` · ${esc(r.vertrag.notiz)}` : ''}</div></div>
+      <div class="amount">${dl ? `<span class="date">${fmtDate(dl.frist)}</span><div class="flow">kündigen bis</div>` : ''}</div></div>`).join('')}</div>`;
+  }, skeleton(3));
+
+  // ---- Rücklage für seltene Zahlungen (vierteljährlich und seltener) ----
+  if (kind === 'expense') {
+    fill($('r-reserve'), () => data, (el, { items }) => {
+      const rare = items.filter((r) => r.active && r.next && r.rhythm.days >= 89).sort((a, b) => a.next - b.next);
+      if (!rare.length) return (el.innerHTML = '<div class="empty">Keine vierteljährlichen, halbjährlichen oder jährlichen Zahlungen erkannt. Fehlt etwas? Unten von Hand anlegen.</div>');
+      const code = mainCurrency(rare, 'code');
+      const monthsUntil = (d) => Math.max(1, Math.ceil((d - t0) / DAY / 30.44));
+      const steady = sum(rare, (r) => r.perYear / 12);
+      const catchUp = sum(rare.filter((r) => (r.next - t0) / DAY <= 366), (r) => r.amount / monthsUntil(r.next));
+      el.innerHTML = `<div class="r-reserve-sum">
+          <div><span class="muted">dauerhaft je Monat</span><b>${money(steady, code)}</b></div>
+          <div><span class="muted">ab jetzt bis zu den nächsten Terminen</span><b>${money(catchUp, code)}</b></div>
+        </div>
+        <div class="table-wrap"><table><tbody>${rare.map((r) => `<tr style="cursor:default">
+          <td><div class="desc">${esc(r.name)}</div><div class="flow">${esc(r.rhythm.label)} · ${money(r.amount, r.code)}</div></td>
+          <td class="date">${fmtDate(r.next)}<div class="flow">in ${monthsUntil(r.next)} Monat${monthsUntil(r.next) === 1 ? '' : 'en'}</div></td>
+          <td class="num"><b>${money(r.perYear / 12, r.code)}</b><div class="flow">je Monat</div></td>
+          <td class="num hide-sm">${money(r.amount / monthsUntil(r.next), r.code)}<div class="flow">bis zum Termin</div></td></tr>`).join('')}</tbody></table></div>
+        <div class="legend" style="margin-top:10px"><span>„Dauerhaft“: Betrag je Jahr ÷ 12 – reicht auf Dauer für alle diese Zahlungen. „Ab jetzt“: was bis zum jeweils nächsten Termin noch fehlt, wenn noch nichts zurückgelegt ist.</span></div>`;
+    }, skeleton(3));
+  }
+
+  // ---- Vertrag von Hand anlegen ----
+  fill($('r-add'), () => api.getAll('accounts', { type: 'asset' }).catch(() => []), (el, accounts) => {
+    const active = accounts.filter((a) => a.attributes?.active !== false);
+    el.innerHTML = `<form class="r-add-form" id="r-add-form">
+      <label>Name<input class="input" name="name" required placeholder="z. B. Kfz-Versicherung"></label>
+      <label>Betrag<input class="input" name="amount" required inputmode="decimal" placeholder="0,00"></label>
+      <label>Rhythmus<select class="input select" name="rhythm">${RHYTHM_LABELS.map((l) => `<option${l === 'jährlich' ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+      <label>Nächster Termin<input class="input" type="date" name="next" required></label>
+      <label>Kategorie<input class="input" name="category" placeholder="optional"></label>
+      <label>Konto<select class="input select" name="account"><option value="">–</option>${active.map((a) => `<option value="${esc(a.id)}">${esc(a.attributes.name)}</option>`).join('')}</select></label>
+      <label>Art<select class="input select" name="kind"><option value="expense"${kind === 'expense' ? ' selected' : ''}>Ausgabe</option><option value="income"${kind === 'income' ? ' selected' : ''}>Einnahme</option></select></label>
+      <button class="btn primary" type="submit">Anlegen</button>
+    </form>
+    <p class="muted small-text">Für Zahlungen, die die Erkennung (noch) nicht findet – etwa einen Jahresbeitrag, der erst einmal gebucht wurde. Sie zählen in Summen, „Demnächst fällig“, Rücklage und Kontostand-Vorschau mit.</p>`;
+    el.querySelector('#r-add-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      const acc = active.find((a) => a.id === f.get('account'));
+      e.target.querySelector('button').disabled = true;
+      save({ action: 'add', manual: { name: f.get('name'), amount: f.get('amount'), rhythm: f.get('rhythm'), next: f.get('next'), category: f.get('category'), kind: f.get('kind'),
+        account: acc ? { id: acc.id, name: acc.attributes.name } : null } });
+    });
+  }, skeleton(2));
+
+  forecastCard($('r-forecast'), $('r-forecast-meta'), t0);
+}
+
+// ---------------------------------------------------------------------------
+// Kontostand-Vorschau: heutiger Kontostand, dann Tag für Tag die erwarteten regelmäßigen Ein- und
+// Ausgänge des Kontos – optional dazu der Durchschnitt der übrigen Ausgaben (Einkäufe, Tanken …).
+
+const FC_RANGES = [['gehalt', 'bis zum Gehalt'], ['30', '30 Tage'], ['60', '60 Tage'], ['90', '90 Tage']];
+
+async function forecastCard(el, meta, t0) {
+  el.innerHTML = skeleton(3);
+  let exp;
+  let inc;
+  let accounts;
+  let recent;
+  try {
+    [exp, inc, accounts, recent] = await Promise.all([
+      loadRecurring('expense'), loadRecurring('income'),
+      api.getAll('accounts', { type: 'asset' }),
+      api.getAll('transactions', { start: addDays(t0, -90), end: t0, type: 'withdrawal' }).then(api.flattenTransactions),
+    ]);
+  } catch (err) {
+    el.innerHTML = `<div class="empty">Konnte nicht geladen werden: ${esc(err.message)}</div>`;
+    return;
+  }
+  const active = accounts.filter((a) => a.attributes?.active !== false);
+  if (!active.length) return (el.innerHTML = '<div class="empty">Keine Konten gefunden.</div>');
+  // Standard: das Konto mit den meisten regelmäßigen Zahlungen
+  const counts = new Map();
+  exp.items.forEach((r) => r.active && r.account && counts.set(r.account.id, (counts.get(r.account.id) || 0) + 1));
+  const fallback = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || active[0].id;
+  let accId = active.some((a) => a.id === storage('ffd-fc-account', '')) ? storage('ffd-fc-account', '') : fallback;
+  let range = FC_RANGES.some(([k]) => k === storage('ffd-fc-range', 'gehalt')) ? storage('ffd-fc-range', 'gehalt') : 'gehalt';
+  let variable = storage('ffd-fc-variable', '1') === '1';
+
+  const draw = () => {
+    if (!el.isConnected) return;
+    const acc = active.find((a) => a.id === accId);
+    const code = acc.attributes.currency_code || 'EUR';
+    const onAcc = (r) => r.active && (r.account ? r.account.id === accId : accId === fallback);
+    const expenses = exp.items.filter(onAcc);
+    const incomes = inc.items.filter(onAcc);
+    // Ende: bis zum nächsten größten Eingang („Gehalt“) bzw. feste Tage
+    const salary = [...incomes].sort((a, b) => b.amount - a.amount)[0];
+    const end = range === 'gehalt' ? (salary?.next || addDays(t0, 30)) : addDays(t0, Number(range) - 1);
+    const events = [
+      ...upcomingBetween(expenses, t0, end).map((r) => ({ date: r.date, name: r.name, amount: -r.amount, r })),
+      ...upcomingBetween(incomes, t0, end).map((r) => ({ date: r.date, name: r.name, amount: r.amount, r })),
+    ].sort((a, b) => a.date - b.date || a.amount - b.amount);
+    // übrige Ausgaben: was in den letzten 90 Tagen vom Konto ging, abzüglich der regelmäßigen (hochgerechnet)
+    const spent90 = sum(recent.filter((t) => String(t.source_id) === accId && t.type === 'withdrawal'), (t) => t.amount);
+    const recurring90 = sum(expenses, (r) => (r.perYear * 90) / 365.25);
+    const perDay = Math.max(0, spent90 - recurring90) / 90;
+    // Verlauf Tag für Tag
+    const start = Number(acc.attributes.current_balance) || 0;
+    let bal = start;
+    const points = [];
+    let low = { value: start, date: t0 };
+    const byDay = new Map();
+    events.forEach((e) => byDay.set(isoDate(e.date), [...(byDay.get(isoDate(e.date)) || []), e]));
+    const salaryDay = range === 'gehalt' && salary?.next ? isoDate(salary.next) : null;
+    for (let d = t0; d <= end; d = addDays(d, 1)) {
+      if (variable && d > t0) bal -= perDay;
+      for (const e of byDay.get(isoDate(d)) || []) bal += e.amount;
+      points.push([new Date(d), bal]);
+      // tiefster Stand vor dem Gehalt (am Gehaltstag selbst kommt es ja an)
+      if (bal < low.value && isoDate(d) !== salaryDay) low = { value: bal, date: new Date(d) };
+    }
+    const endBal = points.at(-1)[1];
+    const cls = low.value < 0 ? 'bad' : low.value < Math.max(100, perDay * 7) ? 'warn' : 'good';
+    const verdict = low.value < 0
+      ? `Das Konto rutscht voraussichtlich ins Minus: <b>${money(low.value, code)}</b> am ${fmtDate(low.date)}.`
+      : cls === 'warn' ? `Es wird knapp: tiefster Stand <b>${money(low.value, code)}</b> am ${fmtDate(low.date)}.`
+        : `Reicht: tiefster Stand <b>${money(low.value, code)}</b>${low.date > t0 ? ` am ${fmtDate(low.date)}` : ''}.`;
+    meta.textContent = acc.attributes.name;
+    el.innerHTML = `
+      <div class="r-fc-tools">
+        <label>Konto <select class="input select" data-fc-acc>${active.map((a) => `<option value="${esc(a.id)}"${a.id === accId ? ' selected' : ''}>${esc(a.attributes.name)}</option>`).join('')}</select></label>
+        <span class="chips small" role="group" aria-label="Zeitraum">${FC_RANGES.map(([k, l]) => `<button type="button" class="chip" data-fc-range="${k}" aria-pressed="${k === range}"${k === 'gehalt' && !salary ? ' disabled title="Kein regelmäßiger Eingang auf diesem Konto erkannt"' : ''}>${l}</button>`).join('')}</span>
+        <label class="check"><input type="checkbox" data-fc-var ${variable ? 'checked' : ''}> übrige Ausgaben einrechnen (Ø ${money(perDay, code)}/Tag)</label>
+      </div>
+      <div class="r-fc-head">
+        <div><span class="muted">heute</span><b>${money(start, code)}</b></div>
+        <div><span class="muted">${range === 'gehalt' && salary ? `am ${fmtDate(end)} (mit ${esc(salary.name)})` : `am ${fmtDate(end)}`}</span><b>${money(endBal, code)}</b></div>
+        <div class="r-fc-verdict ${cls}">${verdict}</div>
+      </div>
+      <div class="chart-box"><canvas aria-label="Kontostand-Vorschau"></canvas></div>
+      <details class="r-fc-events"><summary>${events.length} erwartete Buchungen bis ${fmtDate(end)}${variable ? ` + ca. ${money(perDay * Math.max(0, points.length - 1), code)} übrige Ausgaben` : ''}</summary>
+        <div class="table-wrap"><table><tbody>${events.map((e) => `<tr style="cursor:default"><td class="date">${fmtDate(e.date, { weekday: 'short', day: '2-digit', month: '2-digit' })}</td>
+          <td>${esc(e.name)}<div class="flow">${esc(e.r.rhythm.label)}</div></td><td class="num ${e.amount > 0 ? 'pos' : ''}">${money(e.amount, code, { signed: true })}</td></tr>`).join('') || '<tr><td>keine</td></tr>'}</tbody></table></div>
+      </details>
+      <div class="legend" style="margin-top:10px"><span>Grundlage: aktueller Kontostand in Firefly und die erkannten bzw. von dir angelegten regelmäßigen Buchungen dieses Kontos${variable ? ', dazu der Tagesdurchschnitt der übrigen Ausgaben der letzten 90 Tage' : ''}. Umbuchungen zwischen eigenen Konten sind nicht enthalten; was heute fällig ist, kann schon gebucht sein.</span></div>`;
+    const step = Math.max(1, Math.ceil(points.length / 90));
+    const shown = points.filter((_, i, arr) => i % step === 0 || i === arr.length - 1);
+    lineChart(el.querySelector('canvas'), { labels: shown.map(([d]) => d), series: [{ label: acc.attributes.name, data: shown.map(([, v]) => Math.round(v * 100) / 100), color: seriesColor(low.value < 0 ? 1 : 0) }], currency: code });
+  };
+  el.addEventListener('change', (e) => {
+    if (e.target.matches('[data-fc-acc]')) {
+      accId = e.target.value;
+      store('ffd-fc-account', accId);
+    } else if (e.target.matches('[data-fc-var]')) {
+      variable = e.target.checked;
+      store('ffd-fc-variable', variable ? '1' : '0');
+    } else return;
+    draw();
+  });
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-fc-range]');
+    if (!b || b.disabled) return;
+    range = b.dataset.fcRange;
+    store('ffd-fc-range', range);
+    draw();
+  });
+  draw();
 }

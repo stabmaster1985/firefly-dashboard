@@ -243,6 +243,10 @@ window.addEventListener('ffd-excluded', () => {
   const y = scrollY;
   render().then(() => setTimeout(() => scrollTo(0, y), 300));
 });
+window.addEventListener('ffd-rerender', () => {
+  const y = scrollY;
+  render().then(() => setTimeout(() => scrollTo(0, y), 300));
+});
 
 const rangeForm = document.getElementById('custom-range');
 const rangeFrom = document.getElementById('cr-from');

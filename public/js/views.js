@@ -146,7 +146,7 @@ export async function overview(view, { period }) {
 
   // Hinweise: Warnungen des Servers + Buchungen ohne Kategorie
   fill($('hints'), () => Promise.all([fetch('/local/alerts').then((r) => r.json()).catch(() => ({ alerts: [] })), cats, checkHints().catch(() => [])]), (el, [res, { code, cur }, checks]) => {
-    const ICON = { grosse_buchung: '€', preisaenderung: '±', ausgeblieben: '?' };
+    const ICON = { grosse_buchung: '€', preisaenderung: '±', ausgeblieben: '?', kuendigungsfrist: '§' };
     const rows = (res.alerts || []).slice(0, 5).map((a) => `<div class="row">
       <div class="avatar hint-${esc(a.art)}">${ICON[a.art] || '!'}</div>
       <div style="min-width:0"><div class="title">${esc(a.titel)}</div><div class="subtitle">${esc(a.text)}</div></div><div></div></div>`);

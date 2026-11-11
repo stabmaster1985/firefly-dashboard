@@ -52,7 +52,19 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   (wöchentlich, monatlich, vierteljährlich, jährlich … – mehrere wählbar), **„Demnächst fällig“**
   (alle erwarteten Termine der nächsten 14/30/60/90 Tage mit Summe je Monat und laufender Summe)
   und **Summen**: unter der Tabelle für alles Angezeigte (je Monat / je Jahr), per Häkchen für eine
-  eigene Auswahl (z. B. alle Versicherungen)
+  eigene Auswahl (z. B. alle Versicherungen). Außerdem:
+  - **Kontostand-Vorschau**: aktueller Kontostand eines Kontos, dann Tag für Tag die erwarteten
+    regelmäßigen Ein- und Ausgänge (bis zum nächsten Gehalt oder 30/60/90 Tage), auf Wunsch mit dem
+    Tagesdurchschnitt der übrigen Ausgaben der letzten 90 Tage – mit Verlauf, tiefstem Stand und
+    Warnung, wenn es knapp wird oder ins Minus geht
+  - **Verträge & Kündigungsfristen**: je Eintrag (✎) Vertragsende, Kündigungsfrist, automatische
+    Verlängerung und Notiz; 30 Tage vor Fristablauf erscheint ein Hinweis in der Übersicht, geht
+    per Automation „Warnungen“ an n8n und als Sensor „Nächste Kündigungsfrist“ an Home Assistant
+  - **Rücklage für seltene Zahlungen**: vierteljährliche bis jährliche Beträge – was dauerhaft je
+    Monat zurückzulegen ist und was bis zum jeweils nächsten Termin noch fehlt
+  - **Korrigieren**: Fehlerkennungen (z. B. regelmäßig Tanken) ausblenden – sie zählen dann nirgends
+    mehr mit; Verträge, die (noch) nicht erkannt werden, von Hand anlegen. Gespeichert in
+    `DATA_DIR/recurring.json`, gilt auf allen Geräten
 - **Prognose** (Schalter oben rechts, standardmäßig aus) – Hochrechnung bis zum Ende des
   laufenden Zeitraums, auf der Übersicht zusätzlich **im Detail**: die einzelnen erwarteten
   Termine (aus den wiederkehrenden Zahlungen) und die geschätzten weiteren Ausgaben je Kategorie. Gerechnet wird mit dem, was in den Vormonaten im restlichen Teil des
@@ -361,6 +373,7 @@ PUBLIC_URL=http://dashboard.local:8080
 | `unkategorisiert` | Unkategorisierte Buchungen (Ausgaben im Monat ohne Kategorie) | `MQTT_SEND_MONTH` |
 | `budget_max_auslastung_pct`, `budget_max_name`, `budgets_ueberschritten` | Budget-Auslastung (max.), Budgets überschritten | `MQTT_SEND_BUDGETS` |
 | `naechste_wiederkehrende` (+ `_titel`, `_betrag`), `wiederkehrende_7_tage_summe` | Nächste wiederkehrende Zahlung, Wiederkehrende Zahlungen 7 Tage | `MQTT_SEND_RECURRING` |
+| `naechste_kuendigungsfrist` (+ `_titel`) | Nächste Kündigungsfrist (Vertragsdaten von der Seite „Wiederkehrend“) | `MQTT_SEND_RECURRING` |
 | `letzte_buchung`, `stand` | Letzte Buchung, Datenstand (Diagnose) | immer |
 
 Die Werte sind dieselben wie im Dashboard: gleiche Summen (ausgeblendete Buchungen zählen nicht),

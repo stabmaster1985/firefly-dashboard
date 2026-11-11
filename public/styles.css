@@ -627,7 +627,7 @@ td.heat.over-goal { box-shadow: inset 0 -3px 0 var(--status-critical); }
 .legend i.line-key.goal { border-top: 2px dotted var(--status-critical); }
 .avatar[class*="hint-"] { font-size: 16px; font-weight: 700; }
 .hint-grosse_buchung { background: rgba(208, 59, 59, 0.12); color: var(--negative); }
-.hint-preisaenderung, .hint-ausgeblieben { background: rgba(250, 178, 25, 0.18); color: #9a6700; }
+.hint-preisaenderung, .hint-ausgeblieben, .hint-kuendigungsfrist { background: rgba(250, 178, 25, 0.18); color: #9a6700; }
 .hint-kategorie { background: var(--accent-soft); color: var(--accent); }
 .hint-dup, .hint-import { background: rgba(250, 178, 25, 0.18); color: #9a6700; font-size: 14px !important; }
 tr.dup-head td { cursor: default; background: none !important; padding-top: 18px; border-bottom: 0; }
@@ -1398,3 +1398,54 @@ tr.r-sum-sm { display: none; }
 table.r-soon tr.r-month-head td > span { display: inline-block; }
 table.r-soon tr.r-month-head td { display: table-cell; }
 table.r-soon tr.r-month-head td span + span { float: right; font-variant-numeric: tabular-nums; }
+
+/* Wiederkehrend: Vorschau, Verträge, Rücklage, Bearbeiten */
+.r-fc-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-bottom: 12px; font-size: 14px; }
+.r-fc-tools label { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.r-fc-tools select { height: 32px; max-width: 220px; }
+.r-fc-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 28px; margin-bottom: 10px; }
+.r-fc-head > div:not(.r-fc-verdict) { display: grid; }
+.r-fc-head b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.r-fc-verdict { flex: 1 1 260px; padding: 8px 12px; border-radius: 10px; background: var(--surface-2); font-size: 14px; }
+.r-fc-verdict.good { color: var(--positive); }
+.r-fc-verdict.warn { color: #9a6700; }
+.r-fc-verdict.bad { color: var(--negative); }
+:root[data-theme="dark"] .r-fc-verdict.warn { color: var(--status-warning); }
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) .r-fc-verdict.warn { color: var(--status-warning); } }
+.r-fc-events { margin-top: 10px; font-size: 14px; }
+.r-fc-events summary, .r-hidden summary { cursor: pointer; color: var(--text-secondary); }
+.r-hidden { margin-top: 10px; font-size: 13px; }
+.r-hidden ul { margin: 6px 0 0; padding-left: 18px; }
+.r-next-cell { white-space: nowrap; }
+.r-edit-btn { margin-left: 6px; font-size: 15px; }
+tr.r-edit td { background: var(--surface-2); cursor: default; }
+tr.r-edit:hover td { background: var(--surface-2); }
+.r-edit-form, .r-add-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; font-size: 13px; }
+.r-edit-form label, .r-add-form label { display: grid; gap: 4px; color: var(--text-muted); min-width: 0; }
+.r-edit-form .input, .r-add-form .input { height: 32px; min-width: 0; }
+.r-edit-form .r-note { flex: 1 1 220px; }
+.r-add-form label:first-child { flex: 1 1 200px; }
+.r-add-form input[name="amount"] { width: 110px; }
+.r-edit-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.r-reserve-sum { display: flex; flex-wrap: wrap; gap: 10px 28px; margin-bottom: 10px; }
+.r-reserve-sum > div { display: grid; }
+.r-reserve-sum b { font-size: 20px; font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) {
+  .r-fc-tools select { max-width: 100%; }
+  .r-edit-form label, .r-add-form label { flex: 1 1 140px; }
+}
+@media (max-width: 760px) {
+  tr.r-edit td { padding: 10px 8px; }
+  .r-edit-form { width: calc(100vw - 88px); }
+  .r-edit-form label { flex: 1 1 100%; }
+  .r-edit-form .input { width: 100%; box-sizing: border-box; }
+}
+@media (max-width: 760px) {
+  .r-next-cell { white-space: normal; text-align: right; }
+  .r-next-cell .date { white-space: nowrap; }
+  .r-edit-btn { display: block; margin: 4px 0 0 auto; padding: 2px 6px; }
+}
+@media (max-width: 760px) {
+  #r-table .desc .badge, #r-table td.num .flow { white-space: normal; }
+  #r-table .desc .badge { display: inline-block; margin-top: 2px; }
+}

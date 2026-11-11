@@ -226,7 +226,7 @@ const server = http.createServer(async (req, res) => {
   if (!(await auth.handle(req, res, url))) return;
   if (url.pathname.startsWith('/api/')) return proxy(req, res, url);
   if (url.pathname === '/local/actions' || url.pathname.startsWith('/local/actions/')) return handleActions(req, res, url);
-  if (['/local/settings', '/local/goals', '/local/alerts', '/local/rules', '/local/dismissed'].includes(url.pathname)) return handleAutomation(req, res, url);
+  if (['/local/settings', '/local/goals', '/local/alerts', '/local/rules', '/local/dismissed', '/local/recurring'].includes(url.pathname)) return handleAutomation(req, res, url);
   if (url.pathname.startsWith('/local/ai/')) return handleAi(req, res, url);
   if (url.pathname === '/local/csvsync') return handleCsvSync(req, res);
   if (url.pathname === '/local/syncjob' || url.pathname.startsWith('/local/syncjob/')) return handleSyncJob(req, res, url);
