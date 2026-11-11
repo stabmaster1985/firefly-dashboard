@@ -1496,3 +1496,9 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
   .nav-pinning a[data-primary] { background: var(--accent-soft); color: var(--accent); outline-color: var(--accent); }
   .nav-pinning a[data-primary]::after { content: '★'; color: var(--accent); }
 }
+@media (max-width: 760px) {
+  /* Automation bearbeiten: einspaltig – der Auslöser-Hinweis rutscht unter das Feld (sonst entsteht eine zweite Spalte) */
+  .trigger-hint { grid-column: 1; margin-top: -8px; }
+  .form-grid .colors { min-width: 0; flex-wrap: wrap; }
+  .form-actions { flex-wrap: wrap; }
+}
