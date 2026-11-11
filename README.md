@@ -50,11 +50,12 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   nächste erwartete Zahlung, vermutlich beendete Verträge. Erkennt auch Abos, die über PayPal
   & Co. laufen; Empfindlichkeit Streng/Normal/Locker umschaltbar. **Filter nach Rhythmus**
   (wöchentlich, monatlich, vierteljährlich, jährlich … – mehrere wählbar), **„Demnächst fällig“**
-  (alle erwarteten Termine der nächsten 14/30/60/90 Tage mit Summe je Monat und laufender Summe)
+  (alle erwarteten Termine bis zum nächsten Gehalt oder der nächsten 14/30/60/90 Tage mit Summe je Monat und laufender Summe)
   und **Summen**: unter der Tabelle für alles Angezeigte (je Monat / je Jahr), per Häkchen für eine
   eigene Auswahl (z. B. alle Versicherungen). Außerdem:
   - **Kontostand-Vorschau**: aktueller Kontostand eines Kontos, dann Tag für Tag die erwarteten
-    regelmäßigen Ein- und Ausgänge (bis zum nächsten Gehalt oder 30/60/90 Tage), auf Wunsch mit dem
+    regelmäßigen Ein- und Ausgänge (bis zum Ende des Gehaltsmonats laut eingestelltem Gehaltstag, bis zum
+    erkannten Gehaltseingang oder 30/60/90 Tage), auf Wunsch mit dem
     Tagesdurchschnitt der übrigen Ausgaben der letzten 90 Tage – mit Verlauf, tiefstem Stand und
     Warnung, wenn es knapp wird oder ins Minus geht
   - **Verträge & Kündigungsfristen**: je Eintrag (✎) Vertragsende, Kündigungsfrist, automatische

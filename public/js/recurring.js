@@ -2,7 +2,7 @@
 // Verträge/Rechnungen gepflegt sein müssen.
 
 import * as api from './api.js';
-import { money, esc, fmtDate, today, startOfMonth, addDays, isoDate, parseDate, storage, store } from './util.js';
+import { money, esc, fmtDate, today, startOfMonth, addDays, isoDate, parseDate, storage, store, monthModel, payday } from './util.js';
 import { skeleton, fill, card, stat, mainCurrency, sum } from './common.js';
 import { lineChart, seriesColor } from './charts.js';
 
@@ -283,15 +283,29 @@ export function upcomingBetween(items, from, to) {
 const RHYTHM_KEYS = { wöchentlich: 'woche', 'alle 2 Wochen': '2wochen', monatlich: 'monat', 'alle 2 Monate': '2monate', vierteljährlich: 'quartal', halbjährlich: 'halbjahr', jährlich: 'jahr' };
 const RANGES = [14, 30, 60, 90];
 
+/** Laufender Gehaltsmonat laut eingestelltem Gehaltstag: { end: letzter Tag, next: nächster Gehaltstag }. */
+export function salaryMonth(t0 = today()) {
+  const M = monthModel(payday());
+  const end = M.range(M.keyOf(t0))[1];
+  return { end, next: addDays(end, 1) };
+}
+
 export async function recurring(view, { params }) {
   const kind = params.get('art') === 'einnahmen' ? 'income' : 'expense';
   const showAll = params.get('alle') === '1';
   const levelKey = LEVELS[params.get('stufe')] ? params.get('stufe') : storage('ffd-recurring-level', 'normal');
   store('ffd-recurring-level', levelKey);
   const rhythms = new Set((params.get('rhythmus') || '').split(',').filter((k) => Object.values(RHYTHM_KEYS).includes(k)));
-  const days = RANGES.includes(Number(params.get('tage'))) ? Number(params.get('tage')) : Number(storage('ffd-recurring-days', '30')) || 30;
-  store('ffd-recurring-days', String(days));
   const t0 = today();
+  // Zeitraum für „Demnächst fällig“: feste Tage oder bis zum Ende des Gehaltsmonats (Gehaltstag aus der Einstellung)
+  const wanted = params.get('tage') || storage('ffd-recurring-days', '30');
+  const toSalary = wanted === 'gehalt';
+  const days = toSalary ? 0 : RANGES.includes(Number(wanted)) ? Number(wanted) : 30;
+  store('ffd-recurring-days', toSalary ? 'gehalt' : String(days));
+  const sal = salaryMonth(t0);
+  const soonEnd = toSalary ? sal.end : addDays(t0, days - 1);
+  const soonLabel = toSalary ? `bis zum Gehalt (${fmtDate(sal.next, { day: '2-digit', month: '2-digit' })})` : `nächste ${days} Tage`;
+  const soonIn = toSalary ? `bis zum Gehalt am ${fmtDate(sal.next)}` : `in den nächsten ${days} Tagen`;
   const hrefWith = (changes) => {
     const qs = new URLSearchParams(params);
     Object.entries(changes).forEach(([k, v]) => (v ? qs.set(k, v) : qs.delete(k)));
@@ -327,7 +341,7 @@ export async function recurring(view, { params }) {
       <section class="card span-3" id="r-count"></section>
       <section class="card span-3" id="r-next"></section>
       ${card('r-forecast', 'Kontostand-Vorschau', { meta: '<span id="r-forecast-meta"></span>' })}
-      ${card('r-soon', kind === 'income' ? 'Demnächst erwartet' : 'Demnächst fällig', { filter: true, meta: `<span class="chips small" role="group" aria-label="Zeitraum">${RANGES.map((d) => `<a class="chip" href="${hrefWith({ tage: String(d) })}" aria-pressed="${d === days}">${d} Tage</a>`).join('')}</span>` })}
+      ${card('r-soon', kind === 'income' ? 'Demnächst erwartet' : 'Demnächst fällig', { filter: true, meta: `<span class="chips small" role="group" aria-label="Zeitraum"><a class="chip" href="${hrefWith({ tage: 'gehalt' })}" aria-pressed="${toSalary}" title="Bis zum Ende des Gehaltsmonats – Gehaltstag ${payday()}. (einstellbar über die Zeitraum-Auswahl oben)">bis Gehalt</a>${RANGES.map((d) => `<a class="chip" href="${hrefWith({ tage: String(d) })}" aria-pressed="${d === days}">${d} Tage</a>`).join('')}</span>` })}
       ${card('r-table', kind === 'income' ? 'Regelmäßige Einnahmen' : 'Regelmäßige Zahlungen', { filter: true, meta: '<span id="r-meta"></span>' })}
       ${card('r-contracts', 'Verträge & Kündigungsfristen', { span: kind === 'expense' ? 'span-6' : 'span-12', meta: '<span id="r-contracts-meta"></span>' })}
       ${kind === 'expense' ? card('r-reserve', 'Rücklage für seltene Zahlungen', { span: 'span-6', meta: 'vierteljährlich und seltener' }) : ''}
@@ -396,14 +410,14 @@ export async function recurring(view, { params }) {
     el.innerHTML = stat('Erkannt', String(active), sub(`${list.length - active} vermutlich beendet`));
   });
   tile('r-next', (el, list) => {
-    const soon = upcomingBetween(list, t0, addDays(t0, days - 1));
-    el.innerHTML = stat(`Nächste ${days} Tage`, money(sum(soon, (r) => r.amount), mainCurrency(soon, 'code')), sub(`${soon.length} erwartete ${word}`));
+    const soon = upcomingBetween(list, t0, soonEnd);
+    el.innerHTML = stat(toSalary ? `Bis zum Gehalt (${fmtDate(sal.next, { day: '2-digit', month: '2-digit' })})` : `Nächste ${days} Tage`, money(sum(soon, (r) => r.amount), mainCurrency(soon, 'code')), sub(`${soon.length} erwartete ${word}`));
   });
 
   // ---- Demnächst fällig: Termine nach Datum, Zwischensumme je Monat, laufende Summe ----
   fill($('r-soon'), () => filtered, (el, list) => {
-    const soon = upcomingBetween(list, t0, addDays(t0, days - 1));
-    if (!soon.length) return (el.innerHTML = `<div class="empty">In den nächsten ${days} Tagen keine erwarteten ${word}${filterNote ? ` (${esc(filterNote)})` : ''}.</div>`);
+    const soon = upcomingBetween(list, t0, soonEnd);
+    if (!soon.length) return (el.innerHTML = `<div class="empty">${soonIn.charAt(0).toUpperCase()}${soonIn.slice(1)} keine erwarteten ${word}${filterNote ? ` (${esc(filterNote)})` : ''}.</div>`);
     const code = mainCurrency(soon, 'code');
     const months = new Map();
     for (const r of soon) {
@@ -416,7 +430,7 @@ export async function recurring(view, { params }) {
       const n = Math.round((d - t0) / DAY);
       return n === 0 ? 'heute' : n === 1 ? 'morgen' : `in ${n} Tagen`;
     };
-    el.innerHTML = `<div class="r-soon-total"><b>${money(sum(soon, (r) => r.amount), code)}</b> <span class="muted">in den nächsten ${days} Tagen · ${soon.length} ${word}</span></div>
+    el.innerHTML = `<div class="r-soon-total"><b>${money(sum(soon, (r) => r.amount), code)}</b> <span class="muted">${soonIn} · ${soon.length} ${word}</span></div>
       <div class="table-wrap"><table class="r-soon"><tbody>${[...months.values()].map((list2) => {
         const head = `<tr class="r-month-head"><td colspan="5"><span>${esc(fmtDate(list2[0].date, { month: 'long', year: 'numeric' }))}</span><span>${money(sum(list2, (r) => r.amount), code)}</span></td></tr>`;
         return head + list2.map((r) => {
@@ -500,12 +514,12 @@ export async function recurring(view, { params }) {
       }
       const active = list.filter((r) => r.active);
       const c = mainCurrency(list, 'code');
-      const soon = upcomingBetween(active, t0, addDays(t0, days - 1));
+      const soon = upcomingBetween(active, t0, soonEnd);
       bar.hidden = false;
       bar.innerHTML = `<span><b>${list.length}</b> ausgewählt</span>
         <span>je Monat <b>${money(sum(active, (r) => r.perYear) / 12, c)}</b></span>
         <span>je Jahr <b>${money(sum(active, (r) => r.perYear), c)}</b></span>
-        <span>nächste ${days} Tage <b>${money(sum(soon, (r) => r.amount), c)}</b></span>
+        <span>${soonLabel} <b>${money(sum(soon, (r) => r.amount), c)}</b></span>
         <button class="link-btn" id="r-pick-clear">Auswahl aufheben</button>`;
     };
     updatePick();
@@ -634,7 +648,7 @@ export async function recurring(view, { params }) {
 // Kontostand-Vorschau: heutiger Kontostand, dann Tag für Tag die erwarteten regelmäßigen Ein- und
 // Ausgänge des Kontos – optional dazu der Durchschnitt der übrigen Ausgaben (Einkäufe, Tanken …).
 
-const FC_RANGES = [['gehalt', 'bis zum Gehalt'], ['30', '30 Tage'], ['60', '60 Tage'], ['90', '90 Tage']];
+const FC_RANGES = [['monat', 'bis Gehaltsmonat-Ende'], ['gehalt', 'bis Gehaltseingang'], ['30', '30 Tage'], ['60', '60 Tage'], ['90', '90 Tage']];
 
 async function forecastCard(el, meta, t0) {
   el.innerHTML = skeleton(3);
@@ -659,7 +673,8 @@ async function forecastCard(el, meta, t0) {
   exp.items.forEach((r) => r.active && r.account && counts.set(r.account.id, (counts.get(r.account.id) || 0) + 1));
   const fallback = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || active[0].id;
   let accId = active.some((a) => a.id === storage('ffd-fc-account', '')) ? storage('ffd-fc-account', '') : fallback;
-  let range = FC_RANGES.some(([k]) => k === storage('ffd-fc-range', 'gehalt')) ? storage('ffd-fc-range', 'gehalt') : 'gehalt';
+  let range = FC_RANGES.some(([k]) => k === storage('ffd-fc-range', 'monat')) ? storage('ffd-fc-range', 'monat') : 'monat';
+  const sal = salaryMonth(t0);
   let variable = storage('ffd-fc-variable', '1') === '1';
 
   const draw = () => {
@@ -671,7 +686,8 @@ async function forecastCard(el, meta, t0) {
     const incomes = inc.items.filter(onAcc);
     // Ende: bis zum nächsten größten Eingang („Gehalt“) bzw. feste Tage
     const salary = [...incomes].sort((a, b) => b.amount - a.amount)[0];
-    const end = range === 'gehalt' ? (salary?.next || addDays(t0, 30)) : addDays(t0, Number(range) - 1);
+    // monat: letzter Tag vor dem nächsten Gehaltstag (Einstellung) · gehalt: bis zum erkannten Gehaltseingang auf diesem Konto
+    const end = range === 'monat' ? sal.end : range === 'gehalt' ? (salary?.next || addDays(t0, 30)) : addDays(t0, Number(range) - 1);
     const events = [
       ...upcomingBetween(expenses, t0, end).map((r) => ({ date: r.date, name: r.name, amount: -r.amount, r })),
       ...upcomingBetween(incomes, t0, end).map((r) => ({ date: r.date, name: r.name, amount: r.amount, r })),
@@ -705,12 +721,12 @@ async function forecastCard(el, meta, t0) {
     el.innerHTML = `
       <div class="r-fc-tools">
         <label>Konto <select class="input select" data-fc-acc>${active.map((a) => `<option value="${esc(a.id)}"${a.id === accId ? ' selected' : ''}>${esc(a.attributes.name)}</option>`).join('')}</select></label>
-        <span class="chips small" role="group" aria-label="Zeitraum">${FC_RANGES.map(([k, l]) => `<button type="button" class="chip" data-fc-range="${k}" aria-pressed="${k === range}"${k === 'gehalt' && !salary ? ' disabled title="Kein regelmäßiger Eingang auf diesem Konto erkannt"' : ''}>${l}</button>`).join('')}</span>
+        <span class="chips small" role="group" aria-label="Zeitraum">${FC_RANGES.map(([k, l]) => `<button type="button" class="chip" data-fc-range="${k}" aria-pressed="${k === range}"${k === 'gehalt' && !salary ? ' disabled title="Kein regelmäßiger Eingang auf diesem Konto erkannt"' : k === 'monat' ? ` title="Bis zum ${fmtDate(sal.end)} – Gehaltstag ${payday()}. laut Einstellung"` : ''}>${l}</button>`).join('')}</span>
         <label class="check"><input type="checkbox" data-fc-var ${variable ? 'checked' : ''}> übrige Ausgaben einrechnen (Ø ${money(perDay, code)}/Tag)</label>
       </div>
       <div class="r-fc-head">
         <div><span class="muted">heute</span><b>${money(start, code)}</b></div>
-        <div><span class="muted">${range === 'gehalt' && salary ? `am ${fmtDate(end)} (mit ${esc(salary.name)})` : `am ${fmtDate(end)}`}</span><b>${money(endBal, code)}</b></div>
+        <div><span class="muted">${range === 'gehalt' && salary ? `am ${fmtDate(end)} (mit ${esc(salary.name)})` : range === 'monat' ? `am ${fmtDate(end)} (vor dem Gehalt am ${fmtDate(sal.next, { day: '2-digit', month: '2-digit' })})` : `am ${fmtDate(end)}`}</span><b>${money(endBal, code)}</b></div>
         <div class="r-fc-verdict ${cls}">${verdict}</div>
       </div>
       <div class="chart-box"><canvas aria-label="Kontostand-Vorschau"></canvas></div>
