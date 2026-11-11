@@ -150,11 +150,18 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
     Gruppenliste filtert nach „Offen“, „Nicht in Firefly“ und „Geändert seit Übertragung"
 - **Zuordnen** – automatische Kategorien: Buchungen ohne Kategorie in Firefly bekommen im
   Dashboard eine, abgeleitet aus dem Händler – Netto, Aldi und Lidl laufen so unter „Lebensmittel“
-  zusammen. Reihenfolge: deine Zuordnung je Händler → deine Regeln aus dem Labor → gelernt aus
-  deinen schon kategorisierten Buchungen → eingebaute Händlerliste (Aldi, Rewe, Shell, Telekom …)
-  → KI-Bewertung. Die Seite zeigt die Abdeckung (Kategorie aus Firefly / automatisch / offen),
-  die offenen Händler nach Betrag und alle automatischen Zuordnungen zum Korrigieren; eine
-  Zuordnung gilt für alle Buchungen des Händlers, auch künftige. Wirkt in Übersicht, Kategorien,
+  zusammen. Reihenfolge: deine Zuordnung (einzelne Buchung, dann Händler) → deine Regeln aus dem
+  Labor → deine Import-Zuordnung (Übersetzungstabelle „Händler → Kategorie“ der Data-Importer-
+  Konfiguration) → gelernt aus deinen schon kategorisierten Buchungen → eingebaute Händlerliste
+  (Aldi, Rewe, Shell, Telekom …) → KI-Bewertung. Kategorien aus Firefly (z. B. beim Import gesetzt)
+  bleiben immer, wie sie sind. Die Seite zeigt die Abdeckung (Kategorie aus Firefly / automatisch /
+  offen), die offenen Händler nach Betrag und alle automatischen Zuordnungen zum Korrigieren; eine
+  Zuordnung gilt für alle Buchungen des Händlers, auch künftige. „Buchungen ansehen“ klappt die
+  einzelnen Buchungen eines Händlers auf (mit Herkunft der Kategorie und allen Details); einzelne
+  lassen sich dort abweichend zuordnen („nur diese“). **PayPal & Co.:** Steht im Buchungstext, bei
+  wem eingekauft wurde („PP.4711.PP . Spotify AB, Ihr Einkauf bei Spotify AB“, „PayPal \*Steam“),
+  zählt dieser Händler – nicht PayPal; Zahlungen ohne Händlerangabe stehen gesammelt unter
+  „PayPal – Händler nicht im Text“. Wirkt in Übersicht, Kategorien,
   Jahresrückblick, Händler, Fragen, Berichten und MQTT; in den Buchungsdetails steht
   „automatisch“. Firefly bleibt unverändert (Zuordnungen in `DATA_DIR/autocat.json`)
 - **Prüfen** – Datenqualität auf einen Blick:

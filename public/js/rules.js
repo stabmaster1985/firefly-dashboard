@@ -75,7 +75,43 @@ const ONLINE = ['paypal', 'amazon', 'zalando', 'ebay', 'klarna', 'otto ', 'etsy'
 const lower = (s) => String(s ?? '').toLowerCase();
 /** Zahlungsdienste: dahinter stecken verschiedene Händler → nach Buchungstext gruppieren. */
 const INTERMEDIARIES = ['paypal', 'klarna', 'sumup', 'stripe', 'adyen', 'amazon payments', 'apple pay', 'google pay', 'sofort', 'giropay', 'mollie', 'unzer', 'payone', 'computop'];
-export const isIntermediary = (party) => INTERMEDIARIES.some((w) => lower(party).includes(w));
+// PayPal-Kennung aus Kontoauszügen: „PP.4711.PP“, nach dem Entfernen der Ziffern auch „PP. .PP .“
+const PP_MARK = /\bpp\s*\.[\s\d]*\.?\s*pp\b/i;
+export const isIntermediary = (party) => INTERMEDIARIES.some((w) => lower(party).includes(w)) || PP_MARK.test(String(party ?? ''));
+
+// ---- Eigentlicher Empfänger hinter PayPal & Co. ------------------------------------
+// Im Buchungstext steht meist, bei wem eingekauft wurde: „PP.4711.PP . Spotify AB, Ihr Einkauf bei Spotify AB“,
+// „Ihre Bestellung bei …“, „Zahlung an …“. Ergebnis: Name des Händlers oder null.
+const VIA_PATTERNS = [
+  /\b(?:paypal|klarna|sumup|pp)\s*\*\s*([^\s,;/*]+(?:\s+(?![\d])[^\s,;/*\d]+)?)/i, // „PayPal *DisneyPlus 123456“
+  /ihre?\s+(?:einkauf|bestellung|zahlung|kauf)\s+(?:bei|an)\s+(.+?)(?=\s*(?:[,;|/]|\s(?:eref|mref|cred|svwz|abwa|iban|bic)\b|$))/i,
+  /\bpp\s*\.[\s\d]*\.?\s*pp\s*[./]*\s*\.\s+(?!ihr)(.+?)(?=\s*(?:[,;|/]|\s(?:eref|mref|cred|svwz|abwa|iban|bic)\b|$))/i,
+  /\b(?:bezahlung|zahlung|einkauf)\s+(?:an|bei)\s+(.+?)(?=\s*(?:[,;|/]|\s(?:eref|mref|cred|svwz|abwa|iban|bic)\b|$))/i,
+];
+const WALLET = /paypal|\bpp\s*\.|klarna|sumup|stripe|adyen|unzer|mollie|amazon payments/i;
+function viaName(text) {
+  const src = String(text ?? '').replace(/\s+/g, ' ');
+  for (const re of VIA_PATTERNS) {
+    const m = re.exec(src);
+    if (!m) continue;
+    const name = m[1].replace(/\s*\b(?:eref|mref|svwz)\+.*$/i, '').replace(/[\s.]+$/, '').trim().slice(0, 60);
+    if (name.length >= 2 && /\p{L}{2}/u.test(name) && !WALLET.test(name) && !isGenericText(name)) return name;
+  }
+  return null;
+}
+/** Händler hinter einem Zahlungsdienst (PayPal, Klarna …) aus Beschreibung oder Notizen – oder null. */
+export function viaMerchant(t) {
+  const party = counterpartyOf(t);
+  const desc = String(t.description ?? '');
+  const notes = String(t.notes ?? '');
+  // nur, wenn ein Zahlungsdienst im Spiel ist (Empfänger oder Text) – sonst ist „Einkauf bei“ eben der Empfänger selbst
+  if (!isIntermediary(party) && !WALLET.test(desc) && !WALLET.test(notes)) return null;
+  for (const [field, text] of [['description', desc], ['notes', notes]]) {
+    const name = viaName(text);
+    if (name) return { name, field, wallet: /klarna/i.test(`${party} ${desc} ${notes}`) ? 'Klarna' : /paypal|\bpp\s*\./i.test(`${party} ${desc} ${notes}`) ? 'PayPal' : party };
+  }
+  return null;
+}
 export const counterpartyOf = (t) => (t.type === 'deposit' ? t.source_name : t.destination_name) || '';
 export const normParty = (s) => lower(s).replace(/[0-9]+/g, ' ').replace(/[^\p{L}& ]+/gu, ' ').replace(/\s+/g, ' ').trim();
 
@@ -136,11 +172,24 @@ export function merchantOf(t) {
 }
 function computeMerchant(t) {
   const party = counterpartyOf(t);
+  // Zahlungsdienst mit erkennbarem Händler im Text: der Händler zählt (gleicher Schlüssel wie bei direkter Zahlung)
+  const behind = viaMerchant(t);
+  if (behind) {
+    const original = lower(behind.field === 'notes' ? t.notes : t.description).replace(/\s+/g, ' ');
+    const value = lower(behind.name);
+    return { key: normParty(behind.name), name: behind.name, via: behind.wallet, from: behind.field,
+      cond: original.includes(value) ? { field: behind.field, op: 'contains', value: behind.name } : { field: behind.field, op: 'contains', value: behind.name.split(' ')[0] } };
+  }
   const via = isIntermediary(party);
   if (!via && !isGenericParty(party)) return { key: normParty(party), name: party, via: null, cond: { field: 'party', op: 'equals', value: party } };
   const src = textSource(t);
   const words = keyWords(src.text);
-  if (!words.length) return { key: via ? '' : normParty(party), name: party, via: null, generic: !via, cond: { field: 'party', op: 'equals', value: party } };
+  if (!words.length && via) {
+    // Zahlungsdienst ohne erkennbaren Händler: alle zusammen, klar benannt (statt „PP. .PP .“)
+    const wallet = /klarna/i.test(party) ? 'Klarna' : /paypal|\bpp\s*\./i.test(party) ? 'PayPal' : party;
+    return { key: `via:${lower(wallet)}`, name: `${wallet} – Händler nicht im Text`, via: party, generic: true, cond: { field: 'party', op: 'equals', value: party } };
+  }
+  if (!words.length) return { key: normParty(party), name: party, via: null, generic: true, cond: { field: 'party', op: 'equals', value: party } };
   // Bedingung: Kennwort so, wie es im Originaltext zusammenhängend vorkommt
   const original = lower(src.field === 'notes' ? t.notes : t.description).replace(/\s+/g, ' ');
   const phrase = words.join(' ');

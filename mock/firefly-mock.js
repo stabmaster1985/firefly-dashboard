@@ -144,6 +144,18 @@ for (let m = new Date(firstDay); m <= today; m = new Date(m.getFullYear(), m.get
   // Zahlungen über PayPal: ein Abo zwischen zufälligen Einkäufen (testet die Erkennung)
   add(day(9 + Math.floor(rand() * 3)), 'withdrawal', 9.99, `PayPal *DisneyPlus ${100000 + Math.floor(rand() * 899999)}`, giro, ext('PayPal Europe S.a.r.l.'), { category: 'Abos' });
   if (rand() < 0.6) add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(12, 140), `PayPal *${pick(['Etsy', 'eBay', 'Steam', 'Vinted'])} ${100000 + Math.floor(rand() * 899999)}`, giro, ext('PayPal Europe S.a.r.l.'), { category: 'Shopping' });
+  // … und wie im Kontoauszug der VR-Banken: Empfänger „PayPal Europe …“ oder nur „PP. .PP .“, der eigentliche Händler steht im
+  // Verwendungszweck („PP.4711.PP . Thalia, Ihr Einkauf bei Thalia“) – beim Import oft ohne Kategorie
+  for (let i = 0; i < 2; i++) {
+    if (rand() < 0.3) continue;
+    const [shop, cat] = pick([['Thalia Bücher GmbH', 'Shopping'], ['Spotify AB', 'Abos'], ['Lieferando.de', 'Restaurant'], ['Zalando SE', 'Shopping'], ['Deutsche Bahn Fernverkehr', 'Mobilität'], ['Apotheke am Markt Online', 'Gesundheit']]);
+    const ref = `${1040000000000 + Math.floor(rand() * 99999999)} PP.${1000 + Math.floor(rand() * 8999)}.PP`;
+    const party = rand() < 0.5 ? 'PayPal Europe S.a.r.l. et Cie S.C.A' : 'PP. .PP .';
+    add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(8, 90), 'Basislastschrift', giro, ext(party),
+      { category: rand() < 0.4 ? cat : null, notes: `${ref} . ${shop}, Ihr Einkauf bei ${shop}` });
+  }
+  // PayPal ohne Händlerangabe (z. B. Geld an Privatpersonen)
+  if (rand() < 0.25) add(day(1 + Math.floor(rand() * 28)), 'withdrawal', between(10, 40), 'PP. .PP . ', giro, ext('PP. .PP .'), {});
   add(day(1), 'withdrawal', 49, 'Deutschlandticket', giro, ext('Deutsche Bahn'), { category: 'Mobilität', budget: 'Mobilität', tags: ['Fixkosten'] });
   const shoppingCount = (1 + Math.floor(rand() * 3)) * SCALE;
   for (let i = 0; i < shoppingCount; i++) {

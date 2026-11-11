@@ -1363,3 +1363,16 @@ tr.tx-hidden td.num { text-decoration: line-through; }
   .z-list .row.z-row .z-form { grid-column: 1 / -1; flex-wrap: wrap; }
   .z-opts { margin-left: 0; }
 }
+.z-show { font-size: inherit; }
+.z-txs { grid-column: 1 / -1; margin: 0 0 12px; padding: 8px 12px; border-radius: 10px; background: var(--surface-2); }
+.z-txs table { font-size: 13px; }
+.z-txs td { vertical-align: middle; }
+.z-tx-cat { min-width: 220px; }
+.z-tx-cat .z-tx-form { margin-top: 6px; }
+.z-tx-form .input { height: 28px; font-size: 13px; }
+@media (max-width: 760px) {
+  .z-txs { padding: 6px; }
+  .z-txs tr { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; }
+  .z-txs td.z-tx-cat { grid-column: 1 / -1; min-width: 0; border-top: 0; padding-top: 0; }
+}
+.z-tx-form .btn { white-space: nowrap; flex: none; }
