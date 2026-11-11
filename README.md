@@ -649,7 +649,8 @@ Geräten und nach Updates. Nach Firefly geht erst etwas per Knopf.
 - **Kategorien zusammenführen:** Kategorien ankreuzen (mit Buchungen und Summen der letzten 24
   Monate, Vorschläge bei fast gleichen Namen) und ein Ziel wählen – vorhanden oder neu. **Nur im
   Dashboard** wirkt sofort in allen Auswertungen und lässt sich aufheben (gespeichert in
-  `DATA_DIR/autocat.json`, Firefly unverändert). **In Firefly zusammenführen** schickt über die
+  `DATA_DIR/autocat.json`, Firefly unverändert) – und lässt sich später unter „Zusammengeführt“ mit
+  **nach Firefly übertragen** (einzeln oder alle) nachziehen. **In Firefly zusammenführen** schickt über die
   Automation „Firefly-Regeln anlegen“ je Kategorie eine Regel „Kategorie ist A → Kategorie B“
   (Regelgruppe „Dashboard: Kategorien zusammengeführt“) und wendet sie auf alle Buchungen an – so
   landen auch künftige Importe mit der alten Kategorie im Ziel. Aufheben entfernt die Regel wieder;

@@ -51,7 +51,6 @@ export function catMergeCard(el, meta, { rulesAction }) {
     const sugg = suggestions(list);
     const names = [...new Set(active.map((c) => c.name))].sort((a, b) => a.localeCompare(b, 'de'));
     meta.textContent = `${active.length} Kategorien${merged.length ? ` · ${merged.length} zusammengeführt` : ''}`;
-    const pendingFirefly = merged.filter((m) => m.firefly && !m.sentAt);
     el.innerHTML = `
       <p class="muted" style="margin-top:0">Mehrere Kategorien zu einer machen, z. B. „Lebensmittel“, „Supermarkt“ und „Einkauf“ → „Lebensmittel“.
         <b>Nur im Dashboard</b> wirkt sofort in allen Auswertungen und lässt sich jederzeit aufheben – Firefly bleibt unverändert.
@@ -80,9 +79,10 @@ export function catMergeCard(el, meta, { rulesAction }) {
       ${merged.length ? `<h3 class="sub-h" style="margin-top:18px">Zusammengeführt</h3>
         <div class="list cm-merged">${merged.map((m) => `<div class="row" style="cursor:default">
           <div style="min-width:0"><div class="title">„${esc(m.from)}“ → „${esc(m.to)}“</div>
-            <div class="subtitle">${m.sentAt ? `in Firefly übertragen am ${fmtDate(m.sentAt)} (Regel in der Gruppe „${esc(RULE_GROUP)}“)` : m.firefly ? '<span class="bad">für Firefly vorgesehen, noch nicht übertragen</span>' : 'nur im Dashboard'}</div></div>
-          <button class="link-btn" type="button" data-unmerge="${esc(m.from)}">aufheben</button></div>`).join('')}</div>
-        ${pendingFirefly.length && rulesAction ? `<button class="btn small" type="button" id="cm-resend" style="margin-top:10px">Noch offene nach Firefly übertragen (${pendingFirefly.length})</button>` : ''}
+            <div class="subtitle">${m.sentAt ? `in Firefly übertragen am ${fmtDate(m.sentAt)} (Regel in der Gruppe „${esc(RULE_GROUP)}“)` : m.firefly ? '<span class="bad">für Firefly vorgesehen, Übertragen fehlgeschlagen – erneut versuchen</span>' : 'nur im Dashboard – lässt sich jederzeit nach Firefly übertragen'}</div></div>
+          <span class="cm-acts">${!m.sentAt && rulesAction ? `<button class="btn small" type="button" data-tofirefly="${esc(m.from)}" title="Regel „Kategorie ist ${esc(m.from)} → ${esc(m.to)}“ in Firefly anlegen und auf alle Buchungen anwenden">nach Firefly übertragen</button>` : ''}
+            <button class="link-btn" type="button" data-unmerge="${esc(m.from)}">aufheben</button></span></div>`).join('')}</div>
+        ${merged.filter((m) => !m.sentAt).length > 1 && rulesAction ? `<button class="btn small" type="button" id="cm-all" style="margin-top:10px">Alle ${merged.filter((m) => !m.sentAt).length} nach Firefly übertragen</button>` : ''}
         <p class="muted small-text">„Aufheben“ wirkt sofort im Dashboard; wurde schon nach Firefly übertragen, wird die Regel dort entfernt –
           die Buchungen behalten aber die neue Kategorie (in Firefly ggf. von Hand zurücksetzen). Leere alte Kategorien kannst du in Firefly löschen.
           Tipp: Auch in der Import-Konfiguration (Data Importer) die alte Kategorie durch die neue ersetzen.</p>` : ''}`;
@@ -161,11 +161,16 @@ export function catMergeCard(el, meta, { rulesAction }) {
       });
       return;
     }
-    if (b.id === 'cm-resend') {
+    // nachträglich nach Firefly: einzelne oder alle noch nicht übertragenen Zusammenführungen
+    const later = b.dataset.tofirefly ? data.zusammengefuehrt.filter((m) => m.from === b.dataset.tofirefly)
+      : b.id === 'cm-all' ? data.zusammengefuehrt.filter((m) => !m.sentAt) : null;
+    if (later?.length) {
+      if (!window.confirm(`In Firefly zusammenführen?\n\n${later.map((m) => `„${m.from}“ → „${m.to}“`).join('\n')}\n\nDas Dashboard legt per n8n je Kategorie eine Regel an und wendet sie auf alle Buchungen an – die Kategorie der Buchungen ändert sich in Firefly.`)) return;
       b.disabled = true;
       act(async () => {
+        for (const m of later) data = await call({ from: [m.from], to: m.to, firefly: true });
         const n = await sendToFirefly();
-        note = `<span class="good">✓ ${n} Regel${n === 1 ? '' : 'n'} in Firefly abgeglichen und angewendet.</span>`;
+        note = `<span class="good">✓ In Firefly übertragen: ${later.map((m) => `„${esc(m.from)}“ → „${esc(m.to)}“`).join(', ')} (${n} Regel${n === 1 ? '' : 'n'} in der Gruppe, auf alle Buchungen angewendet).</span>`;
       });
     }
   });

@@ -1519,3 +1519,5 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
   .cm-form .btn { flex: 1 1 auto; }
 }
 .cm-merged .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cm-acts { display: flex; align-items: center; gap: 12px; flex: none; }
+@media (max-width: 760px) { .cm-merged .row { flex-wrap: wrap; } .cm-acts { width: 100%; justify-content: space-between; } }
