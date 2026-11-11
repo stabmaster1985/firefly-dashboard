@@ -26,6 +26,8 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   </tr>
 </table>
 
+<p align="center"><img src="docs/screenshots/zuordnen.png" width="720" alt="Zuordnen: automatische Kategorien aus Händlern – Abdeckung, offene Händler, Zuordnungen"><br><b>Zuordnen</b> – Kategorien automatisch aus den Händlern (Netto, Aldi, Lidl → Lebensmittel)</p>
+
 <p align="center"><img src="docs/screenshots/handy.png" width="600" alt="Am Handy: Übersicht hell und Labor dunkel"><br><b>Am Handy</b> – hell und dunkel, installierbar als App</p>
 
 <sub>Alle Bilder zeigen die Demo-Daten (<code>npm run demo</code>), keine echten Finanzen.</sub>
@@ -146,6 +148,15 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
     Empfänger; Klick filtert die Buchungsliste auf genau diese offenen Buchungen. „Passt so“ geht
     einzeln in der Zeile oder gesammelt (Häkchen bzw. „Alle angezeigten auswählen“). Die
     Gruppenliste filtert nach „Offen“, „Nicht in Firefly“ und „Geändert seit Übertragung"
+- **Zuordnen** – automatische Kategorien: Buchungen ohne Kategorie in Firefly bekommen im
+  Dashboard eine, abgeleitet aus dem Händler – Netto, Aldi und Lidl laufen so unter „Lebensmittel“
+  zusammen. Reihenfolge: deine Zuordnung je Händler → deine Regeln aus dem Labor → gelernt aus
+  deinen schon kategorisierten Buchungen → eingebaute Händlerliste (Aldi, Rewe, Shell, Telekom …)
+  → KI-Bewertung. Die Seite zeigt die Abdeckung (Kategorie aus Firefly / automatisch / offen),
+  die offenen Händler nach Betrag und alle automatischen Zuordnungen zum Korrigieren; eine
+  Zuordnung gilt für alle Buchungen des Händlers, auch künftige. Wirkt in Übersicht, Kategorien,
+  Jahresrückblick, Händler, Fragen, Berichten und MQTT; in den Buchungsdetails steht
+  „automatisch“. Firefly bleibt unverändert (Zuordnungen in `DATA_DIR/autocat.json`)
 - **Prüfen** – Datenqualität auf einen Blick:
   - **Import-Status je Konto**: letzte Buchung und üblicher Abstand; „überfällig“, wenn ein Konto
     deutlich länger als sonst keine Buchung hat (CSV-Import vergessen?). Eine Automation mit
@@ -653,8 +664,9 @@ auf <http://localhost:8080>.
 | `DASHBOARD_USER` / `DASHBOARD_PASSWORD` | nein | Passwortschutz mit Anmeldeseite – **empfohlen**, sobald das Dashboard nicht nur lokal läuft. „Angemeldet bleiben“ hält 180 Tage je Gerät und verlängert sich bei Benutzung; Neustarts und Updates melden niemanden ab (Schlüssel in `DATA_DIR/session-secret`). Passwort ändern meldet alle Geräte ab. Für Skripte geht weiterhin HTTP Basic Auth. |
 | `FIREFLY_PUBLIC_URL` | nein | Basis für „In Firefly öffnen“-Links |
 | `CACHE_SECONDS` | nein | Gültigkeit für Daten des laufenden Zeitraums (Standard 60 s; danach wird sofort die letzte Antwort gezeigt und im Hintergrund erneuert) |
-| `CACHE_HISTORY_HOURS` | nein | Gültigkeit für abgeschlossene Zeiträume (Standard 12 h). Buchungslisten über mehrere Monate werden je Kalendermonat abgefragt; abgeschlossene Monate liegen zusätzlich in `DATA_DIR/cache` und überstehen Neustarts und Updates (nach Änderungen per n8n wird alles verworfen) |
+| `CACHE_HISTORY_HOURS` | nein | Gültigkeit für abgeschlossene Zeiträume (Standard 12 h). Buchungslisten über mehrere Monate werden je Kalendermonat abgefragt; der Zwischenspeicher liegt zusätzlich in `DATA_DIR/cache` und übersteht Neustarts und Updates |
 | `WARM_MINUTES` | nein | Vorwärmen alle N Minuten (Standard 10, `0` = aus) |
+| `LEDGER` | nein | `0` schaltet das Monatsbuch (eigene Summen, automatische Kategorien) ab – dann fragt jede Summe wieder Firefly (Standard an) |
 | `FIREFLY_CONCURRENCY` | nein | Höchstzahl gleichzeitiger Anfragen an Firefly (Standard 4) |
 | `OLLAMA_URL` / `OLLAMA_MODEL` | nein | Vorgabe für die KI-Analyse im Labor (Standard `http://ollama:11434`, Modell im Labor wählbar) |
 | `OLLAMA_WAIT_MINUTES` | nein | Vorgabe für die Wartezeit aufs erste Wort (5, 10, 20 oder 30; Standard 10, im Labor änderbar) |
@@ -670,14 +682,22 @@ auf <http://localhost:8080>.
 
 ## Geschwindigkeit
 
-Firefly III braucht pro Abfrage oft mehrere hundert Millisekunden und bearbeitet nur wenige
-gleichzeitig. Das Dashboard gleicht das aus:
+Firefly III braucht pro Abfrage oft mehrere hundert Millisekunden – auf kleinen Servern auch
+Sekunden – und bearbeitet nur wenige gleichzeitig. Das Dashboard gleicht das aus:
 
-- **Zwischenspeicher mit Gedächtnis:** Abgeschlossene Monate ändern sich kaum und bleiben 12 h
-  gültig, der laufende Zeitraum 60 s. Ist ein Eintrag abgelaufen, wird trotzdem sofort die
-  letzte Antwort gezeigt und im Hintergrund erneuert.
-- **Vorwärmen:** Beim Start und alle 10 Minuten lädt der Server die üblichen Daten (letzte
-  13 Monate, Konten, Kategorien, Buchungen für „Wiederkehrend“) selbst vor.
+- **Monatsbuch statt Einzelabfragen:** Der Server lädt die Ein- und Ausgänge je Kalendermonat
+  einmal (zwei Abfragen) und rechnet alle Summen selbst – Einnahmen, Ausgaben, je Kategorie, je
+  Tag – statt Firefly für jede Summe einzeln zu fragen. Jeder Zeitraum (Gehaltsmonat, Vorjahr,
+  eigener Zeitraum) ist damit sofort da, sobald seine Monate geladen sind. Eine **Selbstprüfung**
+  vergleicht die eigenen Summen täglich mit Firefly (Seite „Zuordnen“, unten; im Log
+  „Selbstprüfung: …“). `LEDGER=0` schaltet auf Einzelabfragen zurück.
+- **Zwischenspeicher mit Gedächtnis:** Abgeschlossene Monate bleiben 12 h gültig, der laufende
+  60 s. Ist ein Eintrag abgelaufen, wird sofort die letzte Antwort gezeigt und im Hintergrund
+  erneuert. Der Zwischenspeicher liegt auch auf der Platte (`DATA_DIR/cache`) und übersteht
+  Neustarts und Updates. Nach einer Änderung per n8n wird nichts gelöscht: Die letzten Wochen
+  werden frisch geholt, Älteres wird sofort gezeigt und im Hintergrund erneuert.
+- **Vorladen:** Beim Start und alle 10 Minuten lädt der Server die letzten 37 Monate, Konten,
+  Kategorien und Tags selbst vor.
 - **Weniger und leichtere Abfragen:** gleiche Anfragen laufen nur einmal, große Listen in
   250er-Paketen, Antworten komprimiert, im Browser 3 Minuten gemerkt.
 - Unten in der Seitenleiste steht die Antwortzeit von Firefly und die Trefferquote des

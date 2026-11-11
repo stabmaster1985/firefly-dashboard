@@ -22,6 +22,8 @@ import { createCleanup } from './lib/cleanup.js';
 import { createAuth } from './lib/auth.js';
 import { createExcluded } from './lib/excluded.js';
 import { createMqtt } from './lib/mqtt.js';
+import { createAutoCat } from './lib/autocat.js';
+import { createLedger } from './lib/ledger.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
@@ -60,7 +62,7 @@ const ALLOWED = [
   /^search\/transactions$/,
   /^insight\/(expense|income)\/(category|no-category|total|budget|no-budget|expense|revenue|asset|tag|bill)$/,
   /^chart\/account\/overview$/,
-  /^categories(\/\d+(\/transactions)?)?$/,
+  /^categories(\/\d+(\/transactions)?|\/auto:[^/]+)?$/,
   /^tags(\/[^/]+(\/transactions)?)?$/,
   /^currencies(\/default|\/primary)?$/,
 ];
@@ -93,13 +95,22 @@ const firefly = createFirefly({
 // Alles, was auswertet (Oberfläche, Fragen, KI, Berichte), liest über diese Schicht.
 const excluded = createExcluded(DATA_DIR, { firefly });
 
+// Automatische Kategorien (Händler → Kategorie) und das Monatsbuch: Summen und Buchungslisten rechnet der
+// Server selbst aus den einmal geladenen Monaten – schnell für jeden Zeitraum. LEDGER=0 schaltet es ab
+// (dann fragt wieder jede Summe Firefly).
+const autocat = createAutoCat(DATA_DIR);
+const view = createLedger({ firefly, excluded, autocat, enabled: process.env.LEDGER !== '0' });
+
 // Home Assistant per MQTT (optional, MQTT_ENABLED) – rechnet über dieselbe Schicht wie die Oberfläche
-const mqtt = createMqtt({ dataDir: DATA_DIR, firefly: excluded });
+const mqtt = createMqtt({ dataDir: DATA_DIR, firefly: view });
 
 // Daten in Firefly geändert (Automation, Abgleich): Zwischenspeicher verwerfen, Kennzahlen bald neu senden
-const dataChanged = () => {
-  firefly.invalidate();
+const dataChanged = ({ trigger, context } = {}) => {
+  // Kategorie/Tags einer Buchung geändert: nur Buchungslisten (und nur ihr Monat) sind überholt – sonst alles
+  if (trigger === 'categorize' || trigger === 'tags') firefly.invalidate({ scope: 'meta', day: context?.datum || context?.daten?.datum || null });
+  else firefly.invalidate();
   mqtt.soon();
+  setTimeout(() => warmNow?.(), 3000); // überholte Monate gleich im Hintergrund erneuern
 };
 
 // Automationen (Webhooks) – eigene, lokal gespeicherte Konfiguration.
@@ -118,7 +129,7 @@ const handleSyncJob = createSyncJob(DATA_DIR, { firefly: { ...firefly, invalidat
 const handleCleanup = createCleanup(DATA_DIR);
 
 // KI-Analyse mit einem lokalen Ollama (optional, Labor)
-const handleAi = createAi({ dataDir: DATA_DIR, firefly: excluded });
+const handleAi = createAi({ dataDir: DATA_DIR, firefly: view });
 
 // Laufende Version und Prüfung auf neue Commits (GitHub)
 const version = createVersion({ root: ROOT, repo: UPDATE_REPO, enabled: UPDATE_CHECK });
@@ -132,19 +143,19 @@ function send(res, status, body, headers = {}) {
   res.end(body);
 }
 
-// Gehaltstage, die Browser melden (für das Vorwärmen von Gehaltsmonaten)
-const monthStarts = new Set();
+// Gehaltstage, die Browser melden (X-Month-Start) – für das Vorladen der Stichtage von Gehaltsmonaten
+const paydays = new Set();
 let warmNow = null;
-function noteMonthStart(req) {
+function notePayday(req) {
   const day = Number(req.headers['x-month-start']);
-  if (!(day >= 2 && day <= 28) || monthStarts.has(day)) return;
-  if (monthStarts.size >= 3) monthStarts.delete(monthStarts.values().next().value);
-  monthStarts.add(day);
-  setTimeout(() => warmNow?.(), 5000); // neuen Gehaltstag zeitnah vorladen
+  if (!(day >= 2 && day <= 28) || paydays.has(day)) return;
+  if (paydays.size >= 3) paydays.delete(paydays.values().next().value);
+  paydays.add(day);
+  setTimeout(() => warmNow?.(), 5000);
 }
 
 async function proxy(req, res, url) {
-  noteMonthStart(req);
+  notePayday(req);
   const apiPath = url.pathname.replace(/^\/api\//, '');
   if (req.method !== 'GET') {
     return send(res, 405, JSON.stringify({ message: 'Nur lesender Zugriff erlaubt.' }), {
@@ -158,7 +169,7 @@ async function proxy(req, res, url) {
   }
 
   try {
-    const result = await excluded.get(apiPath, url.searchParams, { fresh: req.headers['x-no-cache'] === '1', alle: req.headers['x-ffd-alle'] === '1' });
+    const result = await view.get(apiPath, url.searchParams, { fresh: req.headers['x-no-cache'] === '1', alle: ['1', 'auto'].includes(req.headers['x-ffd-alle']), auto: req.headers['x-ffd-alle'] === 'auto' });
     const gzip = result.gz && /\bgzip\b/.test(req.headers['accept-encoding'] || '');
     send(res, result.status, gzip ? result.gz : result.body, {
       'Content-Type': result.type,
@@ -224,6 +235,10 @@ const server = http.createServer(async (req, res) => {
     if (req.method !== 'GET') res.on('finish', () => mqtt.soon(2000)); // Summen ändern sich
     return excluded.handle(req, res, url);
   }
+  if (url.pathname === '/local/autocat' || url.pathname === '/local/ledger') {
+    if (req.method !== 'GET') res.on('finish', () => mqtt.soon(2000)); // Kategorien-Summen ändern sich
+    return view.handle(req, res, url);
+  }
   if (url.pathname === '/local/mqtt') return mqtt.handle(req, res, url).catch((err) => send(res, 500, JSON.stringify({ message: err.message }), { 'Content-Type': MIME['.json'] }));
   if (url.pathname.startsWith('/local/cleanup/')) return handleCleanup(req, res, url);
   if (url.pathname === '/local/groups' || url.pathname.startsWith('/local/groups/')) return handleGroups(req, res, url);
@@ -242,9 +257,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 // Ziele, Einstellungen, Monatsabschluss und Warnungen
-const handleAutomation = createAutomation({ dataDir: DATA_DIR, firefly: excluded, actions: handleActions });
+const handleAutomation = createAutomation({ dataDir: DATA_DIR, firefly: view, actions: handleActions });
 
-if (WARM_MINUTES > 0) warmNow = startWarmer(firefly, { minutes: WARM_MINUTES, monthStarts: () => [...monthStarts] });
+if (WARM_MINUTES > 0) warmNow = startWarmer(firefly, { minutes: WARM_MINUTES, ledger: view, paydays: () => [...paydays] });
 
 server.listen(PORT, HOST, () => {
   console.log(`Firefly Dashboard läuft auf http://localhost:${PORT}`);

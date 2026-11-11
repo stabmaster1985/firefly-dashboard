@@ -48,11 +48,13 @@ export async function overview(view, { period }) {
   // summary/basic ist Fireflys teuerste Abfrage (rechnet über den ganzen Zeitraum) – nur noch für das
   // Nettovermögen, und das ist ein Stand am Ende: also nur über dessen Monat. Einnahmen, Ausgaben und
   // Saldo kommen aus den Summen je Monat (lange zwischengespeichert), wie schon der Vergleich.
+  // Das Nettovermögen ist ein Stand am Stichtag (heute bzw. Ende des Zeitraums): Abfrage über genau diesen Tag –
+  // billig für Firefly und für alle laufenden Zeiträume derselbe (vorgeladene) Eintrag.
   const endRef = end > today() ? today() : end;
-  const sameMonth = start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth();
-  const netRange = sameMonth ? { start, end } : { start: new Date(endRef.getFullYear(), endRef.getMonth(), 1), end: new Date(endRef.getFullYear(), endRef.getMonth() + 1, 0) };
-  const summary = Promise.all([api.get('summary/basic', netRange), totalsOf('income', start, end), totalsOf('expense', start, end)]).then(([net, inc, exp]) => {
-    const s = Object.fromEntries(Object.entries(net || {}).filter(([k]) => k.startsWith('net-worth-in-')));
+  const netRange = { start: endRef, end: endRef };
+  const netWorth = api.get('summary/basic', netRange).then((net) => Object.fromEntries(Object.entries(net || {}).filter(([k]) => k.startsWith('net-worth-in-'))));
+  const summary = Promise.all([totalsOf('income', start, end), totalsOf('expense', start, end)]).then(([inc, exp]) => {
+    const s = {};
     for (const code of new Set([...inc.keys(), ...exp.keys()])) {
       const i = inc.get(code) || 0;
       const o = exp.get(code) || 0;
@@ -75,10 +77,11 @@ export async function overview(view, { period }) {
   const tile = (id, render) => fill($(id), () => both, render, skeleton(2, 22));
   const prevOf = (prev, key, code) => (prev ? prev[key === 'earned' ? 0 : 1].get(code) || 0 : 0);
 
-  tile('s-networth', (el, [s]) => {
+  // eigener Ladevorgang: Der Stand zu einem vergangenen Stichtag kommt von Firefly und kann dauern
+  fill($('s-networth'), () => netWorth, (el, s) => {
     const [main, ...rest] = api.summaryValues(s, 'net-worth');
     el.innerHTML = stat('Nettovermögen', money(main?.value, main?.code), rest.map((r) => money(r.value, r.code)).join(' · ') || `Stand ${fmtDate(end > today() ? today() : end)}`);
-  });
+  }, skeleton(2, 22));
   tile('s-earned', (el, [s, prev, fcIn]) => {
     const [main] = api.summaryValues(s, 'earned');
     const cur = main?.value || 0;
@@ -149,8 +152,8 @@ export async function overview(view, { period }) {
       <div style="min-width:0"><div class="title">${esc(a.titel)}</div><div class="subtitle">${esc(a.text)}</div></div><div></div></div>`);
     const none = cur.find((c) => c.id === '0');
     if (none) {
-      rows.push(`<a class="row plain" href="#/kategorien/0"><div class="avatar hint-kategorie">?</div>
-        <div style="min-width:0"><div class="title">${money(none.value, code)} ohne Kategorie</div><div class="subtitle">Vorschläge zum Kategorisieren ansehen →</div></div><div></div></a>`);
+      rows.push(`<a class="row plain" href="#/zuordnen"><div class="avatar hint-kategorie">?</div>
+        <div style="min-width:0"><div class="title">${money(none.value, code)} ohne Kategorie</div><div class="subtitle">Händler einer Kategorie zuordnen →</div></div><div></div></a>`);
     }
     for (const c of checks) {
       rows.push(`<a class="row plain" href="#/pruefen"><div class="avatar ${c.cls}">${esc(c.icon)}</div>
@@ -336,9 +339,9 @@ export async function transactions(view, { period, params }) {
       if (state.q.trim()) {
         const parts = [state.q.trim(), `date_after:${isoDate(start)}`, `date_before:${isoDate(end)}`];
         if (state.type !== 'all') parts.push(`type:${state.type}`);
-        res = await api.get('search/transactions', { query: parts.join(' '), page: state.page, limit: 50, _alle: true });
+        res = await api.get('search/transactions', { query: parts.join(' '), page: state.page, limit: 50, _alle: 'auto' });
       } else {
-        res = await api.get('transactions', { start, end, type: state.type, page: state.page, limit: 50, _alle: true });
+        res = await api.get('transactions', { start, end, type: state.type, page: state.page, limit: 50, _alle: 'auto' });
       }
       if (my !== token || !body.isConnected) return;
       const pag = res.meta?.pagination || {};
@@ -372,7 +375,7 @@ export async function transactions(view, { period, params }) {
         <td class="pick-cell"><input type="checkbox" data-txpick="${i}" ${picked.has(jid(t)) ? 'checked' : ''} aria-label="auswählen"></td>
         <td class="date hide-sm">${fmtDate(t.date)}</td>
         <td><div class="desc">${esc(t.description)}${t.ffd_ausgeblendet ? ' <span class="badge warn">ausgeblendet</span>' : ''}</div><div class="flow"><span class="show-sm">${fmtDate(t.date)} · </span>${esc(t.source_name)} → ${esc(t.destination_name)}</div>${t.notes ? `<div class="flow note">${esc(t.notes)}</div>` : ''}</td>
-        <td class="hide-sm">${t.category_name ? `<span class="cat">${esc(t.category_name)}</span>` : ''}${(t.tags || []).map((x) => ` <span class="tag">${esc(x)}</span>`).join('')}</td>
+        <td class="hide-sm">${t.category_name ? `<span class="cat${t.ffd_auto ? ' auto' : ''}"${t.ffd_auto ? ' title="automatisch zugeordnet"' : ''}>${esc(t.category_name)}</span>` : ''}${(t.tags || []).map((x) => ` <span class="tag">${esc(x)}</span>`).join('')}</td>
         <td class="num">${signedAmount(t)}</td></tr>`)
       .join('');
     more.innerHTML = hasMore ? '<button class="btn" id="tx-load">Mehr laden</button>' : '';

@@ -44,7 +44,7 @@ export async function cleanup(view) {
   try {
     [txs, categories, importPlan, mergePlan, rulesAction, editAction] = await Promise.all([
       loadHistory({ alle: true }),
-      api.getAll('categories').then((list) => list.map((c) => ({ id: String(c.id), name: c.attributes?.name || '' }))),
+      api.getAll('categories', { _alle: true }).then((list) => list.map((c) => ({ id: String(c.id), name: c.attributes?.name || '' }))),
       fetch('/local/cleanup/import').then((r) => r.json()),
       fetch('/local/cleanup/merge').then((r) => r.json()),
       actionFor('rules'),

@@ -66,6 +66,14 @@ export const PAGES = {
     firefly: READ_ONLY,
     cards: ['p-months', 'p-years', 'p-cats', 'p-tx'],
   },
+  assign: {
+    title: 'Kategorien zuordnen',
+    what: 'Buchungen ohne Kategorie in Firefly bekommen im Dashboard automatisch eine – aus dem Händler abgeleitet. So laufen z. B. Netto, Aldi und Lidl unter „Lebensmittel“ zusammen.',
+    app: 'Die Reihenfolge: deine Zuordnung je Händler → deine Regeln aus dem Labor → gelernt aus deinen kategorisierten Buchungen → eingebaute Händlerliste → KI-Bewertung. Die automatische Kategorie gilt in Übersicht, Kategorien, Jahresrückblick, Händler, Fragen, Berichten und MQTT. In den Buchungsdetails steht „automatisch“.',
+    firefly: 'Nichts – Firefly bleibt unverändert, dort haben die Buchungen weiter keine Kategorie. Wer sie auch in Firefly haben will: im Labor Regeln nach Firefly übertragen.',
+    tips: ['Oben steht, wie viel der Ausgaben abgedeckt ist. Die offenen Händler sind nach Betrag sortiert – die ersten zehn bringen am meisten.', 'Eine Zuordnung gilt für alle Buchungen des Händlers, auch künftige.', 'Kategorie frei eintippen legt eine neue an (nur im Dashboard).', 'Die Selbstprüfung vergleicht die vom Dashboard gerechneten Summen mit Firefly.'],
+    cards: [],
+  },
   check: {
     title: 'Prüfen',
     what: 'Datenqualität: Hast du einen Import vergessen? Gibt es doppelte Buchungen?',

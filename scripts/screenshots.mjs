@@ -171,6 +171,9 @@ await desk.click(`[data-open="${giro}"]`);
 await desk.waitForTimeout(300);
 await shot('csv-abgleich');
 
+await open('zuordnen');
+await shot('zuordnen');
+
 await open('aufraeumen');
 await desk.click('[data-fold="a-import"] .card-fold').catch(() => {});
 await desk.waitForTimeout(300);

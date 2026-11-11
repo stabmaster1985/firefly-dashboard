@@ -107,8 +107,9 @@ export async function lab(view, { params }) {
   let rulesAction;
   try {
     [allTxs, stored, [categorizeAction, rulesAction], dismissed] = await Promise.all([
-      api.getAll('transactions', { start: from, end: t0, type: base.type })
-        .then((groups) => api.flattenTransactions(groups).filter((t) => t.type === base.type)),
+      // roh: Kategorien wie in Firefly (die automatische Zuordnung baut auf den Regeln hier auf)
+      api.getAll('transactions', { start: from, end: t0, type: base.type, _alle: true })
+        .then((groups) => api.flattenTransactions(groups).filter((t) => t.type === base.type && !t.ffd_ausgeblendet)),
       fetch('/local/rules').then((r) => r.json()),
       fetch('/local/actions').then((r) => r.json())
         .then((l) => ['categorize', 'rules'].map((trigger) => l.find((a) => a.trigger === trigger) || null))

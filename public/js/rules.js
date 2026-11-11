@@ -38,15 +38,22 @@ export const AUTO_TAGS = {
 
 /** Gängige Händler → Kategorie (Stichworte, kleingeschrieben). */
 const MERCHANTS = [
-  ['Lebensmittel', ['rewe', 'edeka', 'aldi', 'lidl', 'kaufland', 'netto', 'penny', 'norma', 'globus', 'tegut', 'denns', 'alnatura', 'hit markt', 'marktkauf', 'wochenmarkt', 'bäckerei', 'baeckerei']],
+  ['Lebensmittel', ['rewe', 'edeka', 'aldi', 'lidl', 'kaufland', 'netto', 'penny', 'norma', 'globus', 'tegut', 'denns', 'alnatura', 'hit markt', 'marktkauf', 'wochenmarkt', 'bäckerei', 'baeckerei',
+    'nahkauf', 'famila', 'combi', 'e center', 'e-center', 'trinkgut', 'getränke', 'getraenke', 'metzgerei', 'fleischerei', 'bio company', 'biomarkt', 'supermarkt']],
   ['Drogerie', ['dm-drogerie', 'dm drogerie', 'rossmann', 'müller drogerie', 'budni']],
-  ['Mobilität', ['aral', 'shell', 'esso', 'jet ', 'jet-', 'totalenergies', 'agip', 'avia', 'star tankstelle', 'deutsche bahn', 'db vertrieb', 'db fernverkehr', 'bvg', 'mvv', 'hvv', 'vrr', 'flixbus', 'uber', 'bolt', 'freenow', 'free now', 'sixt', 'share now', 'parkhaus', 'deutschlandticket']],
-  ['Shopping', ['amazon', 'zalando', 'otto ', 'ebay', 'about you', 'mediamarkt', 'saturn', 'ikea', 'h&m', 'zara', 'decathlon', 'thalia', 'vinted', 'etsy', 'galaxus', 'kleinanzeigen']],
+  ['Mobilität', ['aral', 'shell', 'esso', 'jet ', 'jet-', 'totalenergies', 'agip', 'avia', 'star tankstelle', 'deutsche bahn', 'db vertrieb', 'db fernverkehr', 'bvg', 'mvv', 'hvv', 'vrr', 'flixbus', 'uber', 'bolt', 'freenow', 'free now', 'sixt', 'share now', 'parkhaus', 'deutschlandticket',
+    'tankstelle', 'orlen', 'westfalen tank', 'adac', 'tüv', 'tuev', 'dekra', 'kfz']],
+  ['Shopping', ['amazon', 'zalando', 'otto ', 'ebay', 'about you', 'mediamarkt', 'media markt', 'saturn', 'ikea', 'h&m', 'zara', 'decathlon', 'thalia', 'vinted', 'etsy', 'galaxus', 'kleinanzeigen',
+    'tchibo', 'c&a', 'deichmann', 'action', 'tedi', 'woolworth', 'kik ', 'takko', 'primark', 'douglas', 'temu', 'shein', 'aliexpress']],
   ['Abos', ['netflix', 'spotify', 'disney', 'dazn', 'sky deutschland', 'apple.com', 'google play', 'youtube', 'audible', 'prime video', 'chatgpt', 'openai', 'icloud']],
-  ['Restaurant', ['lieferando', 'mcdonald', 'burger king', 'starbucks', 'subway', 'wolt', 'pizzeria', 'restaurant', 'café', 'cafe ', 'sushi', 'döner', 'doener']],
+  ['Restaurant', ['lieferando', 'mcdonald', 'burger king', 'starbucks', 'subway', 'wolt', 'pizzeria', 'restaurant', 'café', 'cafe ', 'sushi', 'döner', 'doener',
+    'imbiss', 'bistro', 'gasthaus', 'gasthof', 'eiscafe', 'eiscafé', 'kfc', 'nordsee', 'vapiano', 'domino', 'pizza']],
+  ['Haus & Garten', ['obi ', 'bauhaus', 'hornbach', 'toom', 'hagebau', 'globus baumarkt', 'dehner', 'gartencenter', 'baumarkt']],
+  ['Freizeit', ['kino', 'cinemaxx', 'cinestar', 'uci ', 'fitness', 'mcfit', 'clever fit', 'schwimmbad', 'zoo ', 'museum', 'theater', 'eventim', 'ticketmaster', 'steam', 'playstation', 'nintendo', 'xbox']],
+  ['Bargeld', ['geldautomat', 'bargeldauszahlung', 'bargeldabhebung']],
   ['Nebenkosten', ['telekom', 'vodafone', 'o2 ', 'telefonica', '1&1', 'congstar', 'stadtwerke', 'e.on', 'eon ', 'vattenfall', 'enbw', 'rundfunk', 'gez']],
   ['Versicherung', ['huk', 'allianz', 'axa', 'ergo', 'devk', 'generali', 'signal iduna', 'versicherung']],
-  ['Gesundheit', ['apotheke', 'docmorris', 'shop-apotheke', 'zahnarzt', 'praxis', 'physiotherapie', 'optiker', 'fielmann']],
+  ['Gesundheit', ['apotheke', 'docmorris', 'shop-apotheke', 'zahnarzt', 'praxis', 'physiotherapie', 'optiker', 'fielmann', 'arzt', 'klinik', 'sanitätshaus']],
 ];
 /** Wie die Kategorien bei dir heißen könnten – eigene Namen haben Vorrang. */
 const SYNONYMS = {
@@ -59,6 +66,9 @@ const SYNONYMS = {
   Nebenkosten: ['nebenkosten', 'strom', 'internet', 'telefon', 'wohnen'],
   Versicherung: ['versicherung'],
   Gesundheit: ['gesundheit', 'arzt', 'apotheke'],
+  'Haus & Garten': ['haus & garten', 'garten', 'baumarkt', 'heimwerk'],
+  Freizeit: ['freizeit', 'hobby', 'unterhaltung'],
+  Bargeld: ['bargeld', 'abhebung'],
 };
 const ONLINE = ['paypal', 'amazon', 'zalando', 'ebay', 'klarna', 'otto ', 'etsy', 'vinted', 'apple.com', 'google'];
 
@@ -239,6 +249,42 @@ export function applyRules(t, rules, { autoTags = [], recurringParties = new Set
   if (auto.has('gross') && t.type === 'withdrawal' && t.amount >= bigFrom) tags.add(AUTO_TAGS.gross);
   if (auto.has('klein') && t.type === 'withdrawal' && t.amount < 10) tags.add(AUTO_TAGS.klein);
   return { category, changed: category !== (t.category_name || null), tags: [...tags], hits, source, label };
+}
+
+// ---- Händlerliste für die automatische Zuordnung ------------------------------------
+// Strenger als die Regel-Vorschläge (die bestätigst du einzeln): Stichworte müssen an einer
+// Wortgrenze beginnen, kurze auch dort enden – „Leon“ ist nicht „eon“, „Ergotherapie“ nicht „ergo“.
+const escapeRe = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const MERCHANT_RES = MERCHANTS.map(([category, words]) => [category, words.map((w) => {
+  const word = w.trim();
+  const end = word.length <= 5 || /[ -]$/.test(w) ? '(?![\\p{L}\\p{N}])' : '';
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${escapeRe(word)}${end}`, 'iu');
+})]);
+const merchantCatMemo = new Map();
+/** Kategorie laut Händlerliste (Name aus der Liste, z. B. „Lebensmittel“) oder null. */
+export function listedCategory(t) {
+  const party = isIntermediary(counterpartyOf(t)) ? '' : counterpartyOf(t);
+  const text = `${party}\n${t.description || ''}\n${t.notes || ''}`;
+  if (merchantCatMemo.has(text)) return merchantCatMemo.get(text);
+  let found = null;
+  // Empfänger zuerst (am verlässlichsten), dann Beschreibung und Notizen
+  for (const field of [party, t.description || '', t.notes || '']) {
+    if (!field) continue;
+    const hit = MERCHANT_RES.find(([, res]) => res.some((re) => re.test(field)));
+    if (hit) {
+      found = hit[0];
+      break;
+    }
+  }
+  if (merchantCatMemo.size > 20000) merchantCatMemo.clear();
+  merchantCatMemo.set(text, found);
+  return found;
+}
+/** Name aus der Händlerliste → wie die Kategorie bei dir heißt (gleicher Name oder Synonym), sonst der Listenname. */
+export function ownCategoryName(category, knownCategories) {
+  const exact = knownCategories.find((c) => lower(c) === lower(category));
+  if (exact) return exact;
+  return knownCategories.find((c) => (SYNONYMS[category] || [lower(category)]).some((syn) => lower(c).includes(syn))) || category;
 }
 
 let seq = 0;

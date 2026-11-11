@@ -27,7 +27,6 @@ const DIMS = {
     noneInsight: 'no-category',
     noneLabel: 'Ohne Kategorie',
     query: (r) => (r.id === NO_CATEGORY ? 'has_no_category:true' : `category_is:"${r.name}"`),
-    transactions: (id, params) => api.getAll(`categories/${encodeURIComponent(id)}/transactions`, params),
     belongs: (t, id, name) => (t.category_id == null ? t.category_name === name : String(t.category_id) === String(id)),
     lookupName: (id) => api.get(`categories/${encodeURIComponent(id)}`).then((r) => r?.data?.attributes?.name),
   },
@@ -38,7 +37,6 @@ const DIMS = {
     insight: 'tag',
     noneInsight: null, // „ohne Tag“ wäre meist fast alles – weggelassen
     query: (r) => `tag_is:"${r.name}"`,
-    transactions: (id, params) => api.getAll(`tags/${encodeURIComponent(id)}/transactions`, params),
     belongs: (t, id, name) => (t.tags || []).includes(name),
     lookupName: (id) => api.get(`tags/${encodeURIComponent(id)}`).then((r) => r?.data?.attributes?.tag),
   },
@@ -661,13 +659,10 @@ async function detail(view, { period, params, id, dimKey }) {
   // Name früh bestimmen – für Titel und Buchungsfilter
   const nameP = totals.then(async (d) => d.name || (isNone ? 'Ohne Kategorie' : await D.lookupName(id).catch(() => null)) || String(id));
 
+  // Buchungen des Zeitraums (der Server hält sie je Monat bereit) – hier nur nach Kategorie bzw. Tag filtern.
+  // So erscheinen auch automatisch zugeordnete Buchungen bei ihrer Kategorie.
   const txs = nameP.then((name) =>
-    (isNone
-      ? api.getAll('search/transactions', {
-        query: `has_no_category:true type:${K.txType} date_after:${isoDate(start)} date_before:${isoDate(end)}`,
-      })
-      : D.transactions(id, { start, end, type: K.txType })
-    ).then((groups) =>
+    api.getAll('transactions', { start, end, type: K.txType }).then((groups) =>
       api.flattenTransactions(groups).filter((t) => t.type === K.txType && (isNone ? !t.category_name : D.belongs(t, id, name)))));
 
   nameP.then((name) => {

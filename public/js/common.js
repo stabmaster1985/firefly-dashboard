@@ -136,6 +136,8 @@ export function fireflyTxUrl(t, mode = 'show') {
 }
 
 /** Detailliste einer Buchung (alle vorhandenen Felder) mit Links in Firefly. */
+const AUTO_QUELLE = { zuordnung: 'deine Zuordnung', regel: 'deine Regel', gelernt: 'aus deinen Buchungen gelernt', liste: 'Händlerliste', ki: 'KI' };
+
 export function txDetails(t) {
   const account = (name, id, type) => {
     if (!name) return null;
@@ -155,7 +157,8 @@ export function txDetails(t) {
     ['Von', t.source_name && `${account(t.source_name, t.source_id, t.source_type)}${iban(t.source_iban)}`],
     ['An', t.destination_name && `${account(t.destination_name, t.destination_id, t.destination_type)}${iban(t.destination_iban)}`],
     ['Kategorie', t.category_name
-      ? `<a class="plain" href="#/kategorien/${encodeURIComponent(t.category_id ?? '0')}">${esc(t.category_name)}</a>`
+      ? `<a class="plain" href="#/kategorien/${encodeURIComponent(t.category_id ?? '0')}">${esc(t.category_name)}</a>${t.ffd_auto
+        ? ` <a class="badge auto" href="#/zuordnen" title="Automatisch zugeordnet (${esc(AUTO_QUELLE[t.ffd_auto] || t.ffd_auto)}) – in Firefly hat die Buchung keine Kategorie. Klick: Zuordnungen ansehen und ändern.">automatisch</a>` : ''}`
       : t.type === 'withdrawal' ? '<a class="plain" href="#/kategorien/0">Ohne Kategorie</a>' : null],
     ['Budget', t.budget_name && esc(t.budget_name)],
     ['Rechnung', t.bill_name && esc(t.bill_name)],

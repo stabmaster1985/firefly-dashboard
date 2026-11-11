@@ -46,56 +46,30 @@ function query(params = {}) {
 const memo = new Map();
 const MEMO_MS = 3 * 60 * 1000;
 
-/** Summen-Abfragen (insight/…) über mehrere Monate: je Monat holen und addieren – Firefly rechnet
- *  Summen bei jeder Abfrage über alle Buchungen des Zeitraums neu, Monatssummen hält der Server lange. */
-function mergeInsight(lists) {
-  const out = new Map();
-  for (const list of lists) {
-    for (const x of Array.isArray(list) ? list : []) {
-      const key = `${x.id ?? x.name ?? x.tag ?? ''}|${x.currency_code ?? ''}`;
-      const v = Number(x.difference_float ?? x.difference) || 0;
-      const cur = out.get(key);
-      if (cur) cur.difference_float += v;
-      else out.set(key, { ...x, difference_float: v });
-    }
-  }
-  return [...out.values()].map((x) => ({ ...x, difference: String(Math.round(x.difference_float * 100) / 100) }));
-}
-
 /**
  * GET über den Proxy. Ausgeblendete Buchungen fehlen in Listen und Summen; mit params._alle
- * kommen Listen vollständig, Ausgeblendetes markiert (t.ffd_ausgeblendet) – für Abgleich & Pflege.
+ * kommen Listen roh: vollständig, Ausgeblendetes markiert (t.ffd_ausgeblendet), Kategorien wie in Firefly
+ * (ohne automatische Zuordnung) – für Abgleich, Pflege und Labor. Summen (insight/…) rechnet der Server
+ * für jeden Zeitraum selbst, sie müssen nicht zerlegt werden.
  */
 export function get(path, params) {
-  if (/^insight\//.test(path) && params?.start && params?.end) {
-    const chunks = pastMonthChunks(params.start, params.end);
-    if (chunks.length > 1) {
-      const url = `/api/${path}${query(params)}#monate`;
-      const hit = memo.get(url);
-      if (!fresh && hit && Date.now() - hit.at < MEMO_MS) return hit.promise;
-      const promise = Promise.all(chunks.map(([start, end]) => get(path, { ...params, start, end }))).then(mergeInsight);
-      memo.set(url, { promise, at: Date.now() });
-      promise.catch(() => memo.delete(url));
-      return promise;
-    }
-  }
   const url = `/api/${path}${query(params)}`;
-  const key = params?._alle ? `${url}#alle` : url;
+  const key = params?._alle ? `${url}#alle${params._alle === 'auto' ? '+auto' : ''}` : url;
   const hit = memo.get(key);
   if (!fresh && hit && Date.now() - hit.at < MEMO_MS) return hit.promise;
-  const promise = load(url, { alle: Boolean(params?._alle) });
+  const promise = load(url, { alle: params?._alle === 'auto' ? 'auto' : params?._alle ? '1' : '' });
   memo.set(key, { promise, at: Date.now() });
   promise.catch(() => memo.delete(key));
   if (memo.size > 800) memo.delete(memo.keys().next().value);
   return promise;
 }
 
-async function load(url, { alle = false } = {}) {
+async function load(url, { alle = '' } = {}) {
   let res;
   try {
     const headers = {};
     if (fresh) headers['X-No-Cache'] = '1';
-    if (alle) headers['X-FFD-Alle'] = '1';
+    if (alle) headers['X-FFD-Alle'] = alle; // '1' roh, 'auto' roh + automatische Kategorien
     if (monthStart > 1) headers['X-Month-Start'] = String(monthStart);
     res = await fetch(url, { headers });
   } catch (err) {

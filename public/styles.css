@@ -1333,3 +1333,33 @@ tr.tx-hidden td.num { text-decoration: line-through; }
 .arch-link { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0 0; font-size: 13px; }
 .arch-link label { display: flex; align-items: center; gap: 8px; flex: 1 1 260px; min-width: 0; max-width: 420px; }
 .arch-link select { height: 32px; flex: 1 1 auto; width: 100%; min-width: 0; }
+
+/* Seite „Zuordnen“: automatische Kategorien */
+.badge.auto { color: var(--accent); text-decoration: none; }
+.badge.auto::before { display: none; }
+.cat.auto { border-style: dashed; }
+.z-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; margin-bottom: 12px; }
+.z-head h2 { margin: 0; font-size: 16px; }
+.z-bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--surface-2); }
+.z-bar span { display: block; min-width: 2px; }
+.z-ff { background: var(--positive); }
+.z-au { background: var(--accent); }
+.z-of { background: var(--status-warning, #d99a00); }
+.z-legend { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 10px; font-size: 14px; }
+.z-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
+.z-note { margin: 12px 0 0; font-size: 13px; max-width: 90ch; }
+.z-list .row.z-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(260px, 380px); gap: 8px 16px; align-items: center; cursor: default; }
+.z-form { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+.z-form .input { flex: 1 1 auto; min-width: 0; height: 32px; }
+.z-opts { display: grid; gap: 10px; margin: 12px 0 0 28px; }
+.z-opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; }
+.z-opt.muted { display: block; }
+.z-opt select { height: 26px; }
+.z-check { margin-top: 16px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 13px; }
+.z-check.good { color: var(--positive); }
+.z-check.bad { color: var(--negative); }
+@media (max-width: 760px) {
+  .z-list .row.z-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .z-list .row.z-row .z-form { grid-column: 1 / -1; flex-wrap: wrap; }
+  .z-opts { margin-left: 0; }
+}
