@@ -16,6 +16,7 @@ import { merchants } from './merchants.js';
 import { askPage } from './ask.js';
 import { partyDetail } from './party.js';
 import { assignPage } from './zuordnen.js';
+import { initNav, navRendered, resetSheet } from './nav.js';
 import { openHelp, helpPage } from './helpui.js';
 import { applyCardFilter, setFolded } from './common.js';
 import { destroyCharts } from './charts.js';
@@ -100,6 +101,7 @@ async function render() {
   // Handy: „Mehr“ markieren, wenn die aktuelle Seite nur im ausgeklappten Menü steht; Menü schließen
   const activeLink = document.querySelector('.nav a.active');
   document.getElementById('nav-more').classList.toggle('active', Boolean(activeLink && !activeLink.hasAttribute('data-primary')));
+  navRendered();
   setNavOpen(false);
   document.querySelector('.period-wrap').hidden = Boolean(route.noPeriod);
   forecastBtn.hidden = Boolean(route.noPeriod);
@@ -206,10 +208,12 @@ setInterval(updatePerf, 30_000);
 
 // ---- Bedienelemente -------------------------------------------------------
 
-// Handy-Navigation: vier Hauptpunkte + „Mehr“ (alle Punkte als Raster) – kein seitliches Wischen
-// am unteren Bildschirmrand nötig, das dort mit der Gesten-Steuerung des Telefons kollidiert
+// Handy-Navigation: vier selbst gewählte Punkte + „Mehr“ (alle Punkte nach Gruppen, mit Suche) – kein
+// seitliches Wischen am unteren Bildschirmrand nötig, das dort mit der Gesten-Steuerung kollidiert
+initNav({ onNavigate: () => setNavOpen(false) });
 function setNavOpen(open) {
   document.querySelector('.sidebar').classList.toggle('nav-open', open);
+  if (!open) resetSheet();
   const btn = document.getElementById('nav-more');
   btn.setAttribute('aria-expanded', String(open));
   btn.querySelector('span').textContent = open ? 'Schließen' : 'Mehr';
