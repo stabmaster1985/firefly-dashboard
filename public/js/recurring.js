@@ -191,17 +191,31 @@ export function upcomingBetween(items, from, to) {
   return out.sort((a, b) => a.date - b.date);
 }
 
+/** Rhythmus → kurzer Schlüssel für die Adresse (Filter). */
+const RHYTHM_KEYS = { wöchentlich: 'woche', 'alle 2 Wochen': '2wochen', monatlich: 'monat', 'alle 2 Monate': '2monate', vierteljährlich: 'quartal', halbjährlich: 'halbjahr', jährlich: 'jahr' };
+const RANGES = [14, 30, 60, 90];
+
 export async function recurring(view, { params }) {
   const kind = params.get('art') === 'einnahmen' ? 'income' : 'expense';
   const showAll = params.get('alle') === '1';
   const levelKey = LEVELS[params.get('stufe')] ? params.get('stufe') : storage('ffd-recurring-level', 'normal');
   store('ffd-recurring-level', levelKey);
+  const rhythms = new Set((params.get('rhythmus') || '').split(',').filter((k) => Object.values(RHYTHM_KEYS).includes(k)));
+  const days = RANGES.includes(Number(params.get('tage'))) ? Number(params.get('tage')) : Number(storage('ffd-recurring-days', '30')) || 30;
+  store('ffd-recurring-days', String(days));
   const t0 = today();
   const hrefWith = (changes) => {
     const qs = new URLSearchParams(params);
     Object.entries(changes).forEach(([k, v]) => (v ? qs.set(k, v) : qs.delete(k)));
     return `#/wiederkehrend${qs.toString() ? `?${qs}` : ''}`;
   };
+  const toggleRhythm = (key) => {
+    const next = new Set(rhythms);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return hrefWith({ rhythmus: [...next].join(',') });
+  };
+  const word = kind === 'income' ? 'Eingänge' : 'Zahlungen';
 
   view.innerHTML = `
     <div class="toolbar">
@@ -218,13 +232,16 @@ export async function recurring(view, { params }) {
       </div>
       <span class="meta-line" id="r-diag">Analysiere die Buchungen der letzten 24 Monate …</span>
     </div>
+    <div class="toolbar r-rhythms" id="r-rhythms" role="group" aria-label="Rhythmus"></div>
     <div class="grid">
       <section class="card span-3" id="r-month"></section>
       <section class="card span-3" id="r-year"></section>
       <section class="card span-3" id="r-count"></section>
       <section class="card span-3" id="r-next"></section>
+      ${card('r-soon', kind === 'income' ? 'Demnächst erwartet' : 'Demnächst fällig', { filter: true, meta: `<span class="chips small" role="group" aria-label="Zeitraum">${RANGES.map((d) => `<a class="chip" href="${hrefWith({ tage: String(d) })}" aria-pressed="${d === days}">${d} Tage</a>`).join('')}</span>` })}
       ${card('r-table', kind === 'income' ? 'Regelmäßige Einnahmen' : 'Regelmäßige Zahlungen', { filter: true, meta: '<span id="r-meta"></span>' })}
-    </div>`;
+    </div>
+    <div class="pick-bar r-pick" id="r-pick" hidden></div>`;
   const $ = (id) => view.querySelector(`#${id}`);
 
   const data = loadRecurring(kind, levelKey);
@@ -232,55 +249,169 @@ export async function recurring(view, { params }) {
     $('r-diag').textContent = `${stats.transactions} Buchungen seit ${fmtDate(from)} geprüft${oldest ? ` (älteste: ${fmtDate(oldest)})` : ''} · ${stats.found} Muster gefunden`;
   }).catch((err) => ($('r-diag').textContent = `Analyse fehlgeschlagen: ${err.message}`));
 
-  const tile = (id, render) => fill($(id), () => data.then((d) => d.items), render, skeleton(2, 22));
+  const rKey = (r) => RHYTHM_KEYS[r.rhythm.label] || r.rhythm.label;
+  const statusOk = (r) => showAll || r.active;
+  const inFilter = (r) => statusOk(r) && (!rhythms.size || rhythms.has(rKey(r)));
+  const filterNote = rhythms.size ? Object.entries(RHYTHM_KEYS).filter(([, k]) => rhythms.has(k)).map(([l]) => l).join(', ') : '';
+
+  // Rhythmus-Filter mit Anzahl je Rhythmus (nur die, die vorkommen)
+  data.then(({ items }) => {
+    const counts = new Map();
+    items.filter(statusOk).forEach((r) => counts.set(rKey(r), (counts.get(rKey(r)) || 0) + 1));
+    const total = items.filter(statusOk).length;
+    $('r-rhythms').innerHTML = `<span class="muted">Rhythmus:</span>
+      <a class="chip" href="${hrefWith({ rhythmus: '' })}" aria-pressed="${!rhythms.size}">Alle <span class="count">${total}</span></a>
+      ${Object.entries(RHYTHM_KEYS).filter(([, k]) => counts.has(k) || rhythms.has(k))
+    .map(([label, k]) => `<a class="chip" href="${toggleRhythm(k)}" aria-pressed="${rhythms.has(k)}">${esc(label)} <span class="count">${counts.get(k) || 0}</span></a>`).join('')}
+      ${rhythms.size ? '<span class="muted">mehrere wählbar</span>' : ''}`;
+  }).catch(() => {});
+
+  const filtered = data.then((d) => d.items.filter(inFilter));
+  const tile = (id, render) => fill($(id), () => filtered, render, skeleton(2, 22));
+  const sub = (txt) => `${txt}${filterNote ? ` · ${filterNote}` : ''}`;
   tile('r-month', (el, list) => {
     const active = list.filter((r) => r.active);
-    el.innerHTML = stat('Pro Monat', money(sum(active, (r) => r.perYear) / 12, mainCurrency(active, 'code')), 'aktive, umgerechnet');
+    el.innerHTML = stat('Pro Monat', money(sum(active, (r) => r.perYear) / 12, mainCurrency(active, 'code')), sub('aktive, umgerechnet'));
   });
   tile('r-year', (el, list) => {
     const active = list.filter((r) => r.active);
-    el.innerHTML = stat('Pro Jahr', money(sum(active, (r) => r.perYear), mainCurrency(active, 'code')), 'aktive, hochgerechnet');
+    el.innerHTML = stat('Pro Jahr', money(sum(active, (r) => r.perYear), mainCurrency(active, 'code')), sub('aktive, hochgerechnet'));
   });
   tile('r-count', (el, list) => {
     const active = list.filter((r) => r.active).length;
-    el.innerHTML = stat('Erkannt', String(active), `${list.length - active} vermutlich beendet`);
+    el.innerHTML = stat('Erkannt', String(active), sub(`${list.length - active} vermutlich beendet`));
   });
   tile('r-next', (el, list) => {
-    const soon = upcomingBetween(list, t0, addDays(t0, 30));
-    el.innerHTML = stat('Nächste 30 Tage', money(sum(soon, (r) => r.amount), mainCurrency(soon, 'code')), `${soon.length} erwartete ${kind === 'income' ? 'Eingänge' : 'Zahlungen'}`);
+    const soon = upcomingBetween(list, t0, addDays(t0, days - 1));
+    el.innerHTML = stat(`Nächste ${days} Tage`, money(sum(soon, (r) => r.amount), mainCurrency(soon, 'code')), sub(`${soon.length} erwartete ${word}`));
   });
 
+  // ---- Demnächst fällig: Termine nach Datum, Zwischensumme je Monat, laufende Summe ----
+  fill($('r-soon'), () => filtered, (el, list) => {
+    const soon = upcomingBetween(list, t0, addDays(t0, days - 1));
+    if (!soon.length) return (el.innerHTML = `<div class="empty">In den nächsten ${days} Tagen keine erwarteten ${word}${filterNote ? ` (${esc(filterNote)})` : ''}.</div>`);
+    const code = mainCurrency(soon, 'code');
+    const months = new Map();
+    for (const r of soon) {
+      const k = `${r.date.getFullYear()}-${r.date.getMonth()}`;
+      if (!months.has(k)) months.set(k, []);
+      months.get(k).push(r);
+    }
+    let running = 0;
+    const rel = (d) => {
+      const n = Math.round((d - t0) / DAY);
+      return n === 0 ? 'heute' : n === 1 ? 'morgen' : `in ${n} Tagen`;
+    };
+    el.innerHTML = `<div class="r-soon-total"><b>${money(sum(soon, (r) => r.amount), code)}</b> <span class="muted">in den nächsten ${days} Tagen · ${soon.length} ${word}</span></div>
+      <div class="table-wrap"><table class="r-soon"><tbody>${[...months.values()].map((list2) => {
+        const head = `<tr class="r-month-head"><td colspan="5"><span>${esc(fmtDate(list2[0].date, { month: 'long', year: 'numeric' }))}</span><span>${money(sum(list2, (r) => r.amount), code)}</span></td></tr>`;
+        return head + list2.map((r) => {
+          running += r.amount;
+          return `<tr>
+            <td class="date">${fmtDate(r.date, { weekday: 'short', day: '2-digit', month: '2-digit' })}<div class="flow">${rel(r.date)}</div></td>
+            <td><div class="desc">${esc(r.name)}</div><div class="flow">${esc(r.category || 'ohne Kategorie')}${r.via ? ` · über ${esc(r.via)}` : ''}</div></td>
+            <td class="hide-sm">${esc(r.rhythm.label)}</td>
+            <td class="num"><b>${money(r.amount, r.code)}</b>${r.changed ? `<div class="flow" title="Letzter Betrag weicht ab">zuletzt ${money(r.lastAmount, r.code)}</div>` : ''}</td>
+            <td class="num hide-sm muted" title="Summe bis hier">Σ ${money(running, code)}</td></tr>`;
+        }).join('');
+      }).join('')}</tbody></table></div>
+      <div class="legend" style="margin-top:12px"><span>Erwartet aus dem bisherigen Rhythmus und dem üblichen Betrag – tatsächliche Termine können sich um ein paar Tage verschieben.</span></div>`;
+  }, skeleton(5));
+
+  // ---- Tabelle mit Auswahl und Summen ----
+  const PICK_KEY = `ffd-recurring-pick-${kind}`;
+  const idOf = (r) => `${r.name}|${r.rhythm.label}`;
+  let picked;
+  try {
+    picked = new Set(JSON.parse(storage(PICK_KEY, '[]')));
+  } catch {
+    picked = new Set();
+  }
+  const savePicked = () => store(PICK_KEY, JSON.stringify([...picked]));
+
   fill($('r-table'), () => data, (el, { items, stats, from }) => {
-    const rows = items.filter((r) => showAll || r.active);
+    const rows = items.filter(inFilter);
     $('r-meta').textContent = `${rows.length} Einträge`;
     if (!rows.length) {
       el.innerHTML = `<div class="empty">
         ${stats.transactions === 0
           ? `Seit ${fmtDate(from)} wurden keine ${kind === 'income' ? 'Einnahmen' : 'Ausgaben'} gefunden – stimmt der Zugriff auf alle Konten?`
-          : `In ${stats.transactions} Buchungen nichts Regelmäßiges gefunden.`}
-        ${levelKey !== 'locker' && stats.transactions ? `<br><a href="${hrefWith({ stufe: 'locker' })}">Mit lockerer Erkennung versuchen →</a>` : ''}
-        ${!showAll && items.length ? `<br><a href="${hrefWith({ alle: '1' })}">${items.length} beendete anzeigen →</a>` : ''}</div>`;
+          : rhythms.size ? `Nichts mit diesem Rhythmus. <a href="${hrefWith({ rhythmus: '' })}">Alle zeigen →</a>` : `In ${stats.transactions} Buchungen nichts Regelmäßiges gefunden.`}
+        ${levelKey !== 'locker' && stats.transactions && !rhythms.size ? `<br><a href="${hrefWith({ stufe: 'locker' })}">Mit lockerer Erkennung versuchen →</a>` : ''}
+        ${!showAll && items.length && !rhythms.size ? `<br><a href="${hrefWith({ alle: '1' })}">${items.length} beendete anzeigen →</a>` : ''}</div>`;
       return;
     }
+    const code = mainCurrency(rows, 'code');
+    const activeRows = rows.filter((r) => r.active);
     const op = kind === 'income' ? 'source_account_is' : 'destination_account_is';
     el.innerHTML = `<div class="table-wrap"><table>
-      <thead><tr><th>${kind === 'income' ? 'Von' : 'Empfänger'}</th><th class="hide-sm">Rhythmus</th><th class="num">Betrag</th>
-        <th class="num hide-sm">Pro Jahr</th><th class="hide-sm">Zuletzt</th><th>Nächste</th></tr></thead>
+      <thead><tr><th class="pick-cell"><input type="checkbox" id="r-pick-all" aria-label="alle angezeigten auswählen"></th><th>${kind === 'income' ? 'Von' : 'Empfänger'}</th><th class="hide-sm">Rhythmus</th><th class="num">Betrag</th>
+        <th class="num hide-sm">Pro Monat</th><th class="num hide-sm">Pro Jahr</th><th class="hide-sm">Zuletzt</th><th>Nächste</th></tr></thead>
       <tbody>${rows
         .map((r) => {
           const q = r.via ? `"${r.name}"` : `${op}:"${r.party || r.name}"`;
           return `<tr data-href="#/buchungen?q=${encodeURIComponent(q)}&von=${isoDate(from)}&bis=${isoDate(t0)}"${r.active ? '' : ' class="inactive"'}>
-          <td><div class="desc">${esc(r.name)}</div><div class="flow">${esc(r.category || 'ohne Kategorie')}${r.via ? ` · über ${esc(r.via)}` : ''} · ${r.count}× seit ${fmtDate(r.first, { month: 'short', year: 'numeric' })}</div></td>
+          <td class="pick-cell"><input type="checkbox" data-pick="${esc(idOf(r))}" ${picked.has(idOf(r)) ? 'checked' : ''} aria-label="${esc(r.name)} auswählen"></td>
+          <td><div class="desc">${esc(r.name)}</div><div class="flow">${esc(r.category || 'ohne Kategorie')}${r.via ? ` · über ${esc(r.via)}` : ''} · ${r.count}× seit ${fmtDate(r.first, { month: 'short', year: 'numeric' })}<span class="show-sm"> · ${esc(r.rhythm.label)}</span></div></td>
           <td class="hide-sm">${esc(r.rhythm.label)}<div class="flow">${r.confidence} % sicher</div></td>
           <td class="num"><b>${money(r.amount, r.code)}</b>${r.changed ? `<div class="flow" title="Letzter Betrag weicht ab">zuletzt ${money(r.lastAmount, r.code)}</div>` : ''}</td>
+          <td class="num hide-sm">${money(r.perYear / 12, r.code)}</td>
           <td class="num hide-sm">${money(r.perYear, r.code)}</td>
           <td class="hide-sm date">${fmtDate(r.last)}</td>
           <td>${r.active ? `<span class="date">${fmtDate(r.next)}</span>` : '<span class="badge">beendet?</span>'}</td>
         </tr>`;
         })
-        .join('')}</tbody></table></div>
-      <div class="legend" style="margin-top:12px"><span>Erkannt anhand regelmäßiger Abstände und ähnlicher Beträge – auch über PayPal & Co. · Zeile anklicken zeigt alle Buchungen</span></div>`;
+        .join('')}</tbody>
+      <tfoot><tr class="r-sum"><td></td><td colspan="2"><b>Summe</b> <span class="muted">${activeRows.length} aktive${filterNote ? ` · ${esc(filterNote)}` : ''}</span></td><td class="num"></td>
+        <td class="num hide-sm"><b>${money(sum(activeRows, (r) => r.perYear) / 12, code)}</b></td><td class="num hide-sm"><b>${money(sum(activeRows, (r) => r.perYear), code)}</b></td><td class="hide-sm"></td><td></td></tr>
+        <tr class="r-sum r-sum-sm"><td></td><td colspan="7"><span class="muted">je Monat</span> <b>${money(sum(activeRows, (r) => r.perYear) / 12, code)}</b> · <span class="muted">je Jahr</span> <b>${money(sum(activeRows, (r) => r.perYear), code)}</b></td></tr></tfoot>
+      </table></div>
+      <div class="legend" style="margin-top:12px"><span>Erkannt anhand regelmäßiger Abstände und ähnlicher Beträge – auch über PayPal & Co. · Zeile anklicken zeigt alle Buchungen · Häkchen: eigene Summe bilden (z. B. alle Versicherungen)</span></div>`;
+
+    // Summenleiste für die Auswahl
+    const byId = new Map(items.map((r) => [idOf(r), r]));
+    const updatePick = () => {
+      const list = [...picked].map((id) => byId.get(id)).filter(Boolean);
+      const bar = $('r-pick');
+      const all = el.querySelector('#r-pick-all');
+      const shownIds = rows.map(idOf);
+      all.checked = shownIds.length > 0 && shownIds.every((id) => picked.has(id));
+      all.indeterminate = !all.checked && shownIds.some((id) => picked.has(id));
+      if (!list.length) {
+        bar.hidden = true;
+        return;
+      }
+      const active = list.filter((r) => r.active);
+      const c = mainCurrency(list, 'code');
+      const soon = upcomingBetween(active, t0, addDays(t0, days - 1));
+      bar.hidden = false;
+      bar.innerHTML = `<span><b>${list.length}</b> ausgewählt</span>
+        <span>je Monat <b>${money(sum(active, (r) => r.perYear) / 12, c)}</b></span>
+        <span>je Jahr <b>${money(sum(active, (r) => r.perYear), c)}</b></span>
+        <span>nächste ${days} Tage <b>${money(sum(soon, (r) => r.amount), c)}</b></span>
+        <button class="link-btn" id="r-pick-clear">Auswahl aufheben</button>`;
+    };
+    updatePick();
+    el.addEventListener('change', (e) => {
+      if (e.target.id === 'r-pick-all') {
+        rows.forEach((r) => (e.target.checked ? picked.add(idOf(r)) : picked.delete(idOf(r))));
+        el.querySelectorAll('[data-pick]').forEach((box) => (box.checked = e.target.checked));
+      } else if (e.target.dataset.pick) {
+        if (e.target.checked) picked.add(e.target.dataset.pick);
+        else picked.delete(e.target.dataset.pick);
+      } else return;
+      savePicked();
+      updatePick();
+    });
+    $('r-pick').addEventListener('click', (e) => {
+      if (e.target.id !== 'r-pick-clear') return;
+      picked.clear();
+      savePicked();
+      el.querySelectorAll('[data-pick]').forEach((box) => (box.checked = false));
+      updatePick();
+    });
     el.addEventListener('click', (e) => {
+      if (e.target.closest('input, label, .pick-cell')) return;
       const tr = e.target.closest('tr[data-href]');
       if (tr) location.hash = tr.dataset.href;
     });

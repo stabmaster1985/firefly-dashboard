@@ -33,8 +33,9 @@ export const PAGES = {
   recurring: {
     title: 'Wiederkehrend',
     what: 'Erkennt Abos, Verträge und regelmäßige Einnahmen automatisch aus den Buchungen der letzten 24 Monate.',
-    app: 'Sucht gleiche Empfänger mit regelmäßigem Rhythmus (monatlich, quartalsweise, jährlich …). „Streng/Normal/Locker“ bestimmt, wie genau Rhythmus und Betrag passen müssen.',
+    app: 'Sucht gleiche Empfänger mit regelmäßigem Rhythmus (monatlich, quartalsweise, jährlich …). „Streng/Normal/Locker“ bestimmt, wie genau Rhythmus und Betrag passen müssen. Der Rhythmus-Filter (mehrere wählbar) wirkt auf Kacheln, „Demnächst fällig“ und die Tabelle.',
     firefly: READ_ONLY,
+    tips: ['„Demnächst fällig“ zeigt alle erwarteten Termine der nächsten 14–90 Tage mit Summe je Monat und laufender Summe.', 'Häkchen in der Tabelle: eigene Summe bilden (z. B. alle Versicherungen) – je Monat, je Jahr und für die nächsten Tage. Die Auswahl merkt sich das Gerät.', 'Unter der Tabelle steht die Summe aller angezeigten (gefilterten) Einträge.'],
     cards: ['r-table'],
   },
   transactions: {

@@ -48,7 +48,11 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
 - **Wiederkehrend** – erkennt regelmäßige Zahlungen (Abos, Versicherungen, Miete …) automatisch
   aus den Buchungen der letzten 24 Monate: Rhythmus, typischer Betrag, Kosten pro Jahr,
   nächste erwartete Zahlung, vermutlich beendete Verträge. Erkennt auch Abos, die über PayPal
-  & Co. laufen; Empfindlichkeit Streng/Normal/Locker umschaltbar
+  & Co. laufen; Empfindlichkeit Streng/Normal/Locker umschaltbar. **Filter nach Rhythmus**
+  (wöchentlich, monatlich, vierteljährlich, jährlich … – mehrere wählbar), **„Demnächst fällig“**
+  (alle erwarteten Termine der nächsten 14/30/60/90 Tage mit Summe je Monat und laufender Summe)
+  und **Summen**: unter der Tabelle für alles Angezeigte (je Monat / je Jahr), per Häkchen für eine
+  eigene Auswahl (z. B. alle Versicherungen)
 - **Prognose** (Schalter oben rechts, standardmäßig aus) – Hochrechnung bis zum Ende des
   laufenden Zeitraums, auf der Übersicht zusätzlich **im Detail**: die einzelnen erwarteten
   Termine (aus den wiederkehrenden Zahlungen) und die geschätzten weiteren Ausgaben je Kategorie. Gerechnet wird mit dem, was in den Vormonaten im restlichen Teil des

@@ -1376,3 +1376,25 @@ tr.tx-hidden td.num { text-decoration: line-through; }
   .z-txs td.z-tx-cat { grid-column: 1 / -1; min-width: 0; border-top: 0; padding-top: 0; }
 }
 .z-tx-form .btn { white-space: nowrap; flex: none; }
+
+/* Wiederkehrend: Rhythmus-Filter, Demnächst fällig, Summen */
+.r-rhythms { gap: 8px; }
+.r-rhythms .chip .count { color: var(--text-muted); font-size: 12px; margin-left: 2px; }
+.r-rhythms .chip[aria-pressed="true"] .count { color: inherit; opacity: 0.75; }
+.r-soon-total { font-size: 15px; margin-bottom: 10px; }
+.r-soon-total b { font-size: 20px; }
+table.r-soon tr.r-month-head td { font-weight: 600; color: var(--text-secondary); background: var(--surface-2); cursor: default; padding-top: 8px; padding-bottom: 8px; }
+table.r-soon tbody tr { cursor: default; }
+table.r-soon tbody tr:hover td { background: none; }
+table.r-soon tr.r-month-head:hover td { background: var(--surface-2); }
+tr.r-sum td { border-top: 2px solid var(--grid); border-bottom: 0; cursor: default; }
+tr.r-sum-sm { display: none; }
+.r-pick { gap: 16px; }
+@media (max-width: 760px) {
+  tr.r-sum:not(.r-sum-sm) { display: none; }
+  tr.r-sum-sm { display: table-row; }
+  .r-pick > span:first-child { flex: 0 1 auto; }
+}
+table.r-soon tr.r-month-head td > span { display: inline-block; }
+table.r-soon tr.r-month-head td { display: table-cell; }
+table.r-soon tr.r-month-head td span + span { float: right; font-variant-numeric: tabular-nums; }
