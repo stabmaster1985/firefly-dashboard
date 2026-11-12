@@ -1568,3 +1568,24 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
 .z-ff-filter select { min-width: 0; max-width: 100%; flex: 1 1 auto; }
 .z-mixed { margin-top: 6px; padding: 6px 10px; border-radius: 8px; font-size: 13px; line-height: 1.4; white-space: normal;
   background: color-mix(in srgb, var(--status-warning) 16%, transparent); color: var(--text-primary); }
+
+/* Falsch zugeordnete Gegenkonten (Aufräumen) */
+.pc-list { display: grid; gap: 10px; }
+.pc-acc { border: 1px solid var(--grid); border-radius: 10px; padding: 10px 12px; }
+.pc-acc > summary { cursor: pointer; overflow-wrap: anywhere; }
+.pc-iban { font-size: 13px; margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--status-warning) 16%, transparent); overflow-wrap: anywhere; }
+.pc-group { padding: 10px 0; border-top: 1px solid var(--grid); margin-top: 10px; }
+.pc-check { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; overflow-wrap: anywhere; }
+.pc-check input { margin-top: 3px; flex-shrink: 0; }
+.pc-fix { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0 0 24px; font-size: 13px; }
+.pc-fix .input { flex: 1 1 200px; min-width: 0; max-width: 360px; height: 32px; }
+.pc-group .table-wrap { margin: 8px 0 0 24px; }
+.pc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 14px; font-size: 13px; }
+.pc-list > .pc-acc { min-width: 0; }
+.pc-group .table-wrap { overflow-x: auto; }
+@media (max-width: 640px) {
+  .pc-acc { padding: 8px 10px; }
+  .pc-fix, .pc-group .table-wrap { margin-left: 0; }
+  .pc-group td.date { white-space: nowrap; }
+  .pc-group .desc { overflow-wrap: anywhere; }
+}

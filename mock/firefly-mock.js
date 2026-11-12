@@ -199,6 +199,11 @@ journals.push({ id: String(nextId++), date: new Date(today.getFullYear(), today.
     [2, 'Supermercato Conad Riva', 'Conad', 54.2, 'Lebensmittel'], [3, 'Ristorante Al Porto Riva del Garda', 'Al Porto', 71, 'Restaurant']];
   for (const [d, desc, party, amount, category] of trip) add(addDays(s, d), 'withdrawal', amount, desc, kk, ext(party), { category });
 }
+// Kartenzahlungen an der Tankstelle, die beim Import auf dem Konto der Werkstatt gelandet sind
+// (gleiche IBAN des Zahlungsdienstleisters) – für „Falsch zugeordnete Gegenkonten“
+for (const [ago, amount] of [[9, 58.4], [23, 61.2], [41, 49.9]]) {
+  add(addDays(today, -ago), 'withdrawal', amount, `Kartenzahlung girocard - ARAL Tankstelle 4711/Musterstadt/DE ${ago}`, giro, ext('Autohaus Becker'), { category: 'KFZ' });
+}
 // Eine aktuelle große Ausgabe (für die Warnungen)
 add(addDays(today, -4), 'withdrawal', 649, 'Neue Waschmaschine', kk, ext('MediaMarkt'), { category: 'Shopping' });
 // Eine doppelt importierte Buchung (für die Dubletten-Erkennung)

@@ -173,12 +173,12 @@ export function loadDismissed() {
         }
       }
     }
-    return { duplicates: new Set(data.duplicates || []), structure: new Set(data.structure || []), reviewed: new Set(data.reviewed || []) };
+    return { duplicates: new Set(data.duplicates || []), structure: new Set(data.structure || []), reviewed: new Set(data.reviewed || []), parties: new Set(data.parties || []) };
   })();
   return dismissedP;
 }
 
-/** Vorschlag ausblenden (Liste „duplicates“, „structure“ oder „reviewed“); key auch als Liste. */
+/** Vorschlag ausblenden (Liste „duplicates“, „structure“, „reviewed“ oder „parties“); key auch als Liste. */
 export async function dismiss(list, key) {
   const sets = await loadDismissed();
   const keys = Array.isArray(key) ? key : [key];

@@ -14,6 +14,7 @@ import { loadHistory } from './check.js';
 import { counterpartyOf, toFireflyRules } from './rules.js';
 import { analyzeImportConfig, mergeGroups } from './cleanupcore.js';
 import { catMergeCard } from './catmerge.js';
+import { partyCheckCard } from './partycheck.js';
 
 const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
 const RULE_GROUP = 'Dashboard: Händler → Kategorie (Import)';
@@ -31,12 +32,14 @@ export async function cleanup(view) {
     <div class="grid">
       ${card('a-import', 'Regeln aus der Import-Konfiguration', { meta: '<span id="a-import-meta"></span>' })}
       ${card('a-merge', 'Ähnliche Gegenkonten zusammenführen', { meta: '<span id="a-merge-meta"></span>' })}
+      ${card('a-wrong', 'Falsch zugeordnete Gegenkonten', { meta: '<span id="a-wrong-meta"></span>' })}
       ${card('a-catmerge', 'Kategorien zusammenführen', { meta: '<span id="a-catmerge-meta"></span>' })}
     </div>`;
   const $ = (id) => view.querySelector(`#${id}`);
   $('a-import').innerHTML = skeleton(4);
   $('a-merge').innerHTML = skeleton(4);
   $('a-catmerge').innerHTML = skeleton(4);
+  $('a-wrong').innerHTML = skeleton(4);
 
   let txs;
   let categories;
@@ -59,6 +62,7 @@ export async function cleanup(view) {
   }
   if (!view.isConnected) return;
   catMergeCard($('a-catmerge'), $('a-catmerge-meta'), { rulesAction });
+  partyCheckCard($('a-wrong'), $('a-wrong-meta'), { txs, editAction }).catch((err) => ($('a-wrong').innerHTML = `<div class="empty">Konnte nicht geprüft werden: ${esc(err.message)}</div>`));
   const catNames = categories.map((c) => c.name).sort((a, b) => a.localeCompare(b, 'de'));
 
   // ======================================================================

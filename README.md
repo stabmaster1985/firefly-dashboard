@@ -666,6 +666,14 @@ Geräten und nach Updates. Nach Firefly geht erst etwas per Knopf.
   (Kategorien, Tags, Beträge bleiben) und benennt das Ziel ggf. um. Danach prüft das Dashboard,
   welche Konten leer sind; **leere Konten löschen** (`typ: konten_loeschen`) erst auf
   ausdrücklichen Klick und nur, was gerade als leer bestätigt wurde.
+- **Falsch zugeordnete Gegenkonten:** findet Kartenzahlungen, bei denen der Händler im
+  Buchungstext nicht zum Gegenkonto passt (z. B. „Kartenzahlung girocard - ARAL Tankstelle …“ beim
+  Konto der Werkstatt) – meist, weil die Bank die IBAN des Zahlungsdienstleisters liefert und
+  Firefly alles mit dieser IBAN einem Konto zuordnet (das Dashboard zeigt die IBAN am Konto an).
+  Je Konto gruppiert nach dem Händler aus dem Text, mit Vorschlag für den richtigen Empfänger
+  (vorhandenes Konto mit gleichem Namen, sonst der Name aus dem Text); „passt so“ blendet Fälle
+  aus (`dismissed.json`). **Empfänger in Firefly korrigieren** schickt `typ: gegenkonto_setzen`
+  ohne IBAN an die Automation „Kategorie übernehmen“ – nur der Empfänger ändert sich.
 - **Kategorien zusammenführen:** Kategorien ankreuzen (mit Buchungen und Summen der letzten 24
   Monate, Vorschläge bei fast gleichen Namen) und ein Ziel wählen – vorhanden oder neu. **Nur im
   Dashboard** wirkt sofort in allen Auswertungen und lässt sich aufheben (gespeichert in
