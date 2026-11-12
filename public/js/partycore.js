@@ -18,7 +18,8 @@ const squeeze = (s) => fold(s).replace(/[^a-z0-9]+/g, '');
 const STOP = new Set(['die', 'der', 'das', 'the', 'und', 'gmbh', 'mbh', 'ag', 'kg', 'co', 'ohg', 'ug', 'ek', 'e', 'k', 'se', 'inc', 'ltd', 'fa', 'firma', 'filiale', 'fil', 'markt', 'de', 'sagt', 'danke']);
 const significant = (s) => words(s).filter((w) => !STOP.has(w) && w.length >= 2);
 
-const CARD = /\b(kartenzahlung|kartenumsatz|girocard|debitk\w*|visa|mastercard|maestro|apple ?pay|google ?pay)\b/i;
+// Kartenzahlung – auch als ELV/OLV-Lastschrift („JET OLV 0609… ELV70142802 …“: Händler steht davor)
+const CARD = /\b(kartenzahlung|kartenumsatz|girocard|debitk\w*|visa|mastercard|maestro|apple ?pay|google ?pay|[eo]lv(?=\s*\d))/i;
 const CARD_TAIL = /^[\s\-–:/.,]*(girocard|kontaktlos|contactless)?[\s\-–:/.,]*/i;
 
 /** Händlername aus einem Kartenzahlungs-Text, z. B. „Kartenzahlung girocard - Takko Fashion 2245/Oer-…“ → „Takko Fashion“. */
@@ -70,6 +71,12 @@ export function textMerchants(t) {
 }
 /** Erste Händler-Angabe aus dem Buchungstext (siehe textMerchants) oder ''. */
 export const textMerchant = (t) => textMerchants(t)[0] || '';
+
+/** Zahlungsdienstleister laut Text, z. B. „Der Einzug erfolgt im Namen und auf Rechnung der PAYONE GmbH“ → „PAYONE GmbH“. */
+export function processorOf(t) {
+  const m = /im Namen und (?:auf|für) Rechnung (?:der|des|von)\s+([^.,;:]{2,40}?)(?=\s+(?:EREF|MREF|CRED|IBAN|BIC)\b|[.,;:]|$)/i.exec(`${t.notes ?? ''} ${t.description ?? ''}`);
+  return m ? m[1].trim() : '';
+}
 
 /** Passt der Händler aus dem Text zum Kontonamen? (gleiches erstes Wort, abgeschnittene Wörter erlaubt) */
 export function sameMerchant(party, text) {
@@ -147,7 +154,8 @@ export function wrongParties(txs, { dismissed = new Set() } = {}) {
     if (!name) continue;
     if (dismissed.has(pairKey(party, name)) || dismissed.has(`j:${t.transaction_journal_id}`)) continue;
     const key = squeeze(significant(name).slice(0, 2).join(' '));
-    const g = row.wrong.get(key) || { name, key: pairKey(party, name), txs: [] };
+    const g = row.wrong.get(key) || { name, key: pairKey(party, name), txs: [], via: '' };
+    g.via ||= processorOf(t);
     g.txs.push(t);
     row.wrong.set(key, g);
     if (t.destination_iban) row.iban = String(t.destination_iban);

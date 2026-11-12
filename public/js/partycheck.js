@@ -67,7 +67,7 @@ export function partyCheckCard(el, metaEl, { txs, editAction }) {
             return `<div class="pc-group" data-g="${esc(g.id)}">
               <label class="pc-check"><input type="checkbox" data-pc-on ${p.on ? 'checked' : ''}${busy ? ' disabled' : ''}>
                 <span><span class="muted">Im Text:</span> <b>${esc(g.name)}</b> <span class="muted">· ${g.txs.length} Buchung${g.txs.length === 1 ? '' : 'en'} · ${money(g.sum)}</span>
-                  <span class="pc-cats">Kategorie: ${catSummary(g.txs)}</span></span></label>
+                  <span class="pc-cats">Kategorie: ${catSummary(g.txs)}${g.via ? ` · abgewickelt über <b>${esc(g.via)}</b> – dessen IBAN/Gläubiger-ID führt Firefly zum falschen Konto` : ''}</span></span></label>
               <div class="pc-fix"><span class="muted">neuer Empfänger</span>
                 <input class="input" data-pc-name list="pc-parties" value="${esc(p.name)}" aria-label="Neuer Empfänger für ${esc(g.name)}"${busy ? ' disabled' : ''}>
                 <button type="button" class="link-btn" data-pc-show>${openTx.has(g.id) ? 'Buchungen ausblenden' : 'Buchungen ansehen'}</button>
