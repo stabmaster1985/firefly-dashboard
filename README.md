@@ -95,6 +95,13 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   `n8n/firefly-buchung-bearbeiten.json`), der die Änderung über die Firefly-API speichert
 - **Kategorie-Detail** – Monatsverlauf mit Durchschnittslinie, Spitzenmonat, Anzahl und Ø pro
   Buchung, Top-Empfänger und alle Buchungen der Kategorie (nach Datum oder Betrag)
+- **Vorschläge zum Kategorisieren** (Detailseite „Ohne Kategorie“) – je Buchung eine Kategorie aus
+  ähnlichen, schon kategorisierten Buchungen; übernehmen oder andere wählen, bei mehreren
+  Buchungen desselben Händlers mit „alle … von“ für alle auf einmal (über n8n). Für künftige
+  Buchungen eines Händlers: **Zuordnen**
+- **Auswahlliste beim Tippen** – alle Felder für Kategorie, Tag oder Gegenkonto zeigen, was es
+  schon gibt, warnen vor fast gleichen Namen („Meintest du? Lebensmittel“) und markieren, was neu
+  angelegt würde – so entstehen keine doppelten Kategorien; funktioniert auch am Handy
 - **Buchungen** – Liste mit Kategorie-Filter und Volltextsuche (inkl. Firefly-Suchoperatoren wie
   `category_is:"Lebensmittel"`, `amount_more:100`, `description_contains:`, `notes_contains:`),
   Filter nach Art, Details per Klick. Treffer lassen sich anhaken (auch alle auf einmal und über

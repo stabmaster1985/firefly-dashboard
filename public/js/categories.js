@@ -5,6 +5,7 @@ import * as api from './api.js';
 import { barChart, legend, seriesColor, cssVar } from './charts.js';
 import { money, percent, esc, fmtDate, fmtMonth, today, isoDate, addDays, storage, store, debounce, CALENDAR } from './util.js';
 import { actionFor, setCategory } from './txedit.js';
+import { merchantOf } from './rules.js';
 import { skeleton, fill, card, stat, signedAmount, mainCurrency, sum, counterparty, downloadCsv, termsMatcher, multiSelect, txAttrs, bindTxDetails } from './common.js';
 import { shareStrip, weekdayChart, sizeChart } from './dist.js';
 import { loadGoals, saveGoal, goalStatus, goalBar } from './goals.js';
@@ -713,41 +714,83 @@ async function detail(view, { period, params, id, dimKey }) {
 
   // Vorschläge für Buchungen ohne Kategorie: ähnliche, bereits kategorisierte Buchungen
   if (isNone && kind === 'expense') {
-    fill($('d-suggest'), () => Promise.all([txs, loadReference(), categorizeAction()]), (el, [list, ref, action]) => {
+    const catNames = api.getAll('categories').then((l) => l.map((c) => ({ id: c.id, name: c.attributes.name }))).catch(() => []);
+    fill($('d-suggest'), () => Promise.all([txs, loadReference(), categorizeAction(), catNames]), (el, [list, ref, action, cats]) => {
       const suggestions = suggestCategories(list, ref);
       $('d-suggest-meta').textContent = `${suggestions.filter((x) => x.category).length} von ${list.length} mit Vorschlag`;
       if (!list.length) return (el.innerHTML = '<div class="empty">Alles kategorisiert. 🎉</div>');
       const ff = window.FFD_CONFIG?.fireflyUrl;
-      el.innerHTML = `<div class="table-wrap scroll"><table><tbody>${suggestions
-        .map((x, i) => `<tr ${txAttrs(i)}>
+      // gleiche Händler zusammen anbieten („alle 5 von REWE“) – nicht für PayPal & Co. ohne Händler im Text
+      const groups = new Map();
+      suggestions.forEach((x, i) => {
+        const m = merchantOf(x.t);
+        x.group = m.key && !m.key.startsWith('via:') ? m.key : `#${i}`;
+        x.merchant = m.name;
+        groups.set(x.group, [...(groups.get(x.group) || []), i]);
+      });
+      const idOf = (name) => cats.find((c) => c.name.toLowerCase() === name.toLowerCase());
+      const done = new Set();
+      el.innerHTML = `<datalist id="d-suggest-cats">${cats.map((c) => `<option value="${esc(c.name)}">`).join('')}</datalist>
+        <div class="table-wrap scroll"><table class="suggest-table"><tbody>${suggestions
+        .map((x, i) => {
+          const same = groups.get(x.group);
+          return `<tr ${txAttrs(i)} data-row="${i}">
           <td class="date">${fmtDate(x.t.date)}</td>
-          <td><div class="desc">${esc(x.t.description)}</div><div class="flow">${esc(counterparty(x.t))} · ${money(x.t.amount, x.t.currency_code)}</div></td>
-          <td>${x.category
-            ? `<div><span class="badge ${x.confidence >= 80 ? 'good' : 'warn'}">${esc(x.category)}</span> <span class="muted">${x.confidence} %</span></div><div class="flow">${esc(x.reason)}</div>`
-            : '<span class="muted">kein Vorschlag</span>'}</td>
-          <td class="num suggest-actions">
-            ${x.category && action ? `<button class="btn small" data-apply="${i}">Übernehmen</button>` : ''}
+          <td><div class="desc">${esc(x.t.description)}</div><div class="flow">${esc(counterparty(x.t))} · ${money(x.t.amount, x.t.currency_code)}</div>
+            ${x.category
+              ? `<div class="flow"><span class="badge ${x.confidence >= 80 ? 'good' : 'warn'}">${esc(x.category)}</span> <span class="muted">${x.confidence} % · ${esc(x.reason)}</span></div>`
+              : '<div class="flow muted">kein Vorschlag</div>'}</td>
+          <td class="suggest-actions">${action
+            ? `<form class="sug-form" data-apply="${i}">
+                <div class="sug-line"><input class="input" name="cat" list="d-suggest-cats" value="${esc(x.category || '')}" placeholder="Kategorie wählen …" aria-label="Kategorie für ${esc(x.t.description)}" required>
+                <button class="btn small">Setzen</button></div>
+                ${same.length > 1 ? `<label class="sug-all"><input type="checkbox" name="all" checked> alle ${same.length} von „${esc(x.merchant)}“</label>` : ''}
+              </form>`
+            : ''}
             ${ff ? `<a class="link-btn" href="${esc(ff)}/transactions/edit/${encodeURIComponent(x.t.groupId)}" target="_blank" rel="noopener">In Firefly ↗</a>` : ''}
-          </td></tr>`)
+          </td></tr>`;
+        })
         .join('')}</tbody></table></div>
         <div class="legend" style="margin-top:12px"><span>${action
-          ? `„Übernehmen“ startet die Automation „${esc(action.name)}“ – sie setzt die Kategorie in Firefly.`
+          ? `„Setzen“ startet die Automation „${esc(action.name)}“ – sie setzt die Kategorie in Firefly, bei „alle … von“ für alle gleichen Buchungen dieser Liste. Beim Tippen zeigt die Liste, welche Kategorien es schon gibt.`
           : 'Tipp: Mit einer Automation „Kategorie übernehmen“ (n8n) lassen sich Vorschläge per Klick in Firefly eintragen.'}
-          Für wiederkehrende Fälle lohnt sich eine Firefly-Regel (Empfänger → Kategorie). Zeile anklicken zeigt alle Details.</span></div>`;
+          Damit auch künftige Buchungen eines Händlers automatisch eine Kategorie bekommen: <a href="#/zuordnen">Zuordnen</a> (dort auch als Firefly-Regel). Zeile anklicken zeigt alle Details.</span></div>`;
       bindTxDetails(el, (i) => suggestions[Number(i)]?.t);
-      el.addEventListener('click', async (e) => {
-        const btn = e.target.closest('[data-apply]');
-        if (!btn) return;
-        const x = suggestions[Number(btn.dataset.apply)];
+      // Klicks im Formular sollen nicht die Buchungsdetails öffnen
+      el.querySelectorAll('.sug-form').forEach((f) => f.addEventListener('click', (e) => e.stopPropagation()));
+      el.addEventListener('submit', async (e) => {
+        const form = e.target.closest('[data-apply]');
+        if (!form) return;
+        e.preventDefault();
+        const x = suggestions[Number(form.dataset.apply)];
+        const name = form.cat.value.trim();
+        if (!name) return;
+        const known = idOf(name);
+        const label = known ? known.name : name;
+        const rows = (form.all?.checked ? groups.get(x.group) : [Number(form.dataset.apply)]).filter((i) => !done.has(i));
+        const btn = form.querySelector('button');
         btn.disabled = true;
-        btn.textContent = 'Sende …';
-        try {
-          const res = await setCategory(action, x.t, x.category, x.categoryId);
-          btn.textContent = res.ok ? 'Gesendet ✓' : `Fehler ${res.status || ''}`;
-          btn.classList.toggle('done', Boolean(res.ok));
-        } catch {
-          btn.textContent = 'Fehler';
+        let ok = 0;
+        for (const i of rows) {
+          btn.textContent = rows.length > 1 ? `${ok + 1}/${rows.length} …` : 'Sende …';
+          try {
+            const res = await setCategory(action, suggestions[i].t, label, known?.id ?? null);
+            if (!res.ok) continue;
+            ok += 1;
+            done.add(i);
+            const tr = el.querySelector(`tr[data-row="${i}"]`);
+            tr?.classList.add('sug-done');
+            const cell = tr?.querySelector('.sug-form');
+            if (cell) cell.outerHTML = `<span class="badge good">✓ ${esc(label)}</span>`;
+          } catch { /* nächste Buchung */ }
+        }
+        if (ok < rows.length) {
           btn.disabled = false;
+          btn.textContent = ok ? `${ok}/${rows.length} – nochmal` : 'Fehler – nochmal';
+        }
+        if (!known && ok) {
+          cats.push({ id: null, name: label });
+          el.querySelector('#d-suggest-cats')?.insertAdjacentHTML('beforeend', `<option value="${esc(label)}">`);
         }
       });
     }, skeleton(5));

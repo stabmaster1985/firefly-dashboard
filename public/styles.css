@@ -1529,3 +1529,28 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
 .z-ff-actions label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .z-ff-actions select { height: 32px; }
 .z-ff-single { margin-top: 14px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+
+/* Auswahlliste für Eingabefelder (combo.js) */
+.combo-pop { position: fixed; z-index: 70; overflow-y: auto; overscroll-behavior: contain; background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18); padding: 4px; font-size: 14px; text-align: left; }
+.combo-item { padding: 8px 10px; border-radius: 7px; cursor: pointer; overflow-wrap: anywhere; }
+.combo-item:hover, .combo-item.active { background: var(--accent-soft); }
+.combo-item.exact { font-weight: 600; }
+.combo-item.exact::after { content: ' ✓'; color: var(--positive); }
+.combo-item.similar { color: var(--text-primary); background: color-mix(in srgb, var(--status-warning) 14%, transparent); margin-bottom: 2px; }
+.combo-head { padding: 6px 10px 2px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.combo-new { padding: 8px 10px; color: var(--text-secondary); border-bottom: 1px solid var(--grid); margin-bottom: 2px; }
+@media (max-width: 640px) { .combo-item { padding: 11px 10px; } }
+
+/* Vorschläge zum Kategorisieren */
+.suggest-table .suggest-actions { white-space: normal; min-width: 260px; }
+.sug-line { display: flex; gap: 6px; align-items: center; }
+.sug-line .input { flex: 1; min-width: 0; }
+.sug-all { display: flex; gap: 6px; align-items: center; margin-top: 6px; font-size: 13px; color: var(--text-secondary); cursor: pointer; }
+.suggest-table tr.sug-done { opacity: 0.6; }
+@media (max-width: 640px) {
+  .suggest-table tr { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; padding: 10px 0; border-bottom: 1px solid var(--grid); }
+  .suggest-table td { border: 0; padding: 0; }
+  .suggest-table .suggest-actions { grid-column: 1 / -1; min-width: 0; }
+}
+.combo-new.end { border-bottom: 0; border-top: 1px solid var(--grid); margin: 2px 0 0; font-size: 13px; color: var(--text-muted); }

@@ -1,6 +1,7 @@
 // Einstieg: Routing, Zeitraum, Theme und Verbindungsprüfung.
 
 import './session.js'; // zuerst: leitet bei abgelaufener Anmeldung zur Anmeldeseite
+import './combo.js'; // eigene Auswahlliste für alle Felder mit Vorschlägen (Kategorien, Tags …)
 import * as api from './api.js';
 import * as views from './views.js';
 import { categories, categoryDetail, tags, tagDetail, forecastEnabled } from './categories.js';
