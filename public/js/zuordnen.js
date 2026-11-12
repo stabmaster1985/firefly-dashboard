@@ -8,7 +8,7 @@ import { money, esc, fmtDate, percent } from './util.js';
 import { card, skeleton, txAttrs, bindTxDetails, signedAmount } from './common.js';
 import { actionFor, runAction, setCategory } from './txedit.js';
 import { toFireflyRules } from './rules.js';
-import { isoDate, today } from './util.js';
+import { isoDate, today, storage, store } from './util.js';
 
 const FF_GROUP = 'Dashboard: Händler → Kategorie (Zuordnen)';
 /** Kurze, feste Kennung je Händler für die Regel-Markierung („id:…“ ohne Leerzeichen). */
@@ -40,12 +40,14 @@ export async function assignPage(view) {
   let rulesAction = null;
   let editAction = null;
   let ffPick = null; // ausgewählte Händler (Schlüssel) – beim ersten Laden vorbelegt
+  const ffSeen = new Map(); // Händler → Stand bei der letzten Vorbelegung
   let ffRange = 'all';
   let ffNote = '';
   let ffBusy = '';
   let data;
   let shownOpen = 40;
   let shownAuto = 40;
+  let autoFilter = storage('ffd-z-auto', 'pruefen'); // pruefen | fest | alle
   const openKeys = new Set(); // aufgeklappte Händler (Buchungen sichtbar)
   const bookings = new Map(); // Händler → { anzahl, buchungen } | 'laden' | Fehlertext
 
@@ -57,7 +59,16 @@ export async function assignPage(view) {
   const ffCandidates = () => data.automatisch.filter((m) => m.cond && m.category && m.quelle !== 'buchung');
   function renderFirefly() {
     const cands = ffCandidates();
-    if (!ffPick) ffPick = new Set(cands.filter((m) => !UP_TO_DATE(m) && ['zuordnung', 'import', 'liste', 'gelernt'].includes(m.quelle)).map((m) => m.key));
+    // Vorbelegung: nicht aktuelle Zuordnungen aus verlässlichen Quellen. Neu bestätigte/geänderte Händler
+    // (Stand je Händler geändert) werden auch nachträglich angehakt.
+    ffPick ||= new Set();
+    for (const m of cands) {
+      const sig = `${m.quelle}|${m.category}|${m.ff?.sentAt || ''}`;
+      if (ffSeen.get(m.key) === sig) continue;
+      ffSeen.set(m.key, sig);
+      if (!UP_TO_DATE(m) && ['zuordnung', 'import', 'liste', 'gelernt'].includes(m.quelle)) ffPick.add(m.key);
+      else ffPick.delete(m.key);
+    }
     const keys = new Set(cands.map((m) => m.key));
     const elsewhere = data.firefly.filter((f) => !keys.has(f.key)); // übertragen – Firefly hat die Buchungen inzwischen kategorisiert
     const sent = data.firefly.filter((f) => f.sentAt).length;
@@ -201,18 +212,35 @@ export async function assignPage(view) {
       ${data.offen.length > shownOpen ? `<button class="btn" id="z-open-more" style="margin-top:12px">Weitere ${Math.min(40, data.offen.length - shownOpen)} zeigen</button>` : ''}`
       : '<div class="empty">Alle Ausgaben der letzten 24 Monate haben eine Kategorie. 🎉</div>';
 
-    // ---- automatisch ----
-    $('z-auto-meta').textContent = data.automatisch.length ? `${data.automatisch.length} Händler · ${money(s.automatisch, code)}` : '';
+    // ---- automatisch: standardmäßig nur, was du noch nicht bestätigt oder geändert hast ----
+    const todo = data.automatisch.filter((m) => !m.fest);
+    const fest = data.automatisch.filter((m) => m.fest);
+    const autoList = autoFilter === 'fest' ? fest : autoFilter === 'alle' ? data.automatisch : todo;
+    const onlyHere = fest.filter((m) => m.cond && m.category && !UP_TO_DATE(m));
+    const ffState = (m) => (!m.cond ? '' : UP_TO_DATE(m) ? '<span class="badge good" title="Als Regel in Firefly">in Firefly</span>'
+      : m.ff?.sentAt ? '<span class="badge warn" title="In Firefly steht noch eine andere Kategorie">Firefly: geändert</span>'
+      : m.fest ? '<span class="badge" title="Gilt bisher nur im Dashboard – vorgemerkt unter „In Firefly übernehmen“">nur Dashboard</span>' : '');
+    $('z-auto-meta').textContent = data.automatisch.length ? `${todo.length} zu prüfen · ${fest.length} bestätigt · ${money(s.automatisch, code)}` : '';
     $('z-auto').innerHTML = data.automatisch.length ? `
-      <p class="muted" style="margin-top:0">Passt etwas nicht? Kategorie ändern – deine Zuordnung hat Vorrang vor Regeln, Händlerliste und KI.</p>
-      <div class="list z-list">${data.automatisch.slice(0, shownAuto).map((m) => `<div class="row z-row" data-key="${esc(m.key)}">
-        <div style="min-width:0"><div class="title">${esc(m.name)} ${quelle(m.quelle)}</div>
+      <div class="chips z-auto-filter" role="group" aria-label="Anzeigen">
+        <button type="button" class="chip" data-auto-filter="pruefen" aria-pressed="${autoFilter === 'pruefen'}">Zu prüfen ${todo.length}</button>
+        <button type="button" class="chip" data-auto-filter="fest" aria-pressed="${autoFilter === 'fest'}">Von dir bestätigt ${fest.length}</button>
+        <button type="button" class="chip" data-auto-filter="alle" aria-pressed="${autoFilter === 'alle'}">Alle ${data.automatisch.length}</button>
+      </div>
+      <p class="muted" style="margin-top:8px">${autoFilter === 'fest'
+    ? 'Deine Zuordnungen – sie haben Vorrang vor Regeln, Händlerliste und KI.'
+    : 'Passt die Kategorie? „✓ Passt“ bestätigt sie, sonst ändern. Bestätigte und geänderte verschwinden aus dieser Liste (zu finden unter „Von dir bestätigt“).'}</p>
+      ${onlyHere.length ? `<p class="z-ff-hint">${onlyHere.length === 1 ? 'Eine deiner Zuordnungen gilt' : `${onlyHere.length} deiner Zuordnungen gelten`} bisher nur im Dashboard – für Firefly vorgemerkt (angehakt) unter <button type="button" class="link-btn" data-goto-ff>In Firefly übernehmen ↓</button></p>` : ''}
+      ${autoList.length ? `<div class="list z-list">${autoList.slice(0, shownAuto).map((m) => `<div class="row z-row" data-key="${esc(m.key)}">
+        <div style="min-width:0"><div class="title">${esc(m.name)} ${quelle(m.quelle)} ${ffState(m)}</div>
           <div class="subtitle"><button class="link-btn z-show" type="button" data-show="${esc(m.key)}" aria-expanded="${openKeys.has(m.key)}">${openKeys.has(m.key) ? '▾' : '▸'} ${m.n} Buchung${m.n === 1 ? '' : 'en'} ansehen</button> · zuletzt ${fmtDate(m.last)}${m.beispiel ? ` · ${esc(m.beispiel)}` : ''}</div></div>
         <div class="amount">${money(m.auto, code)}</div>
         ${m.key ? `<form class="z-form" data-assign="${esc(m.key)}" data-name="${esc(m.name)}">${catInput(m.category, 'name="category" required')}<button class="btn small" type="submit">Ändern</button>
+          ${!m.fest && m.category ? `<button class="btn small primary" type="button" data-ok="${esc(m.key)}" data-name="${esc(m.name)}" data-category="${esc(m.category)}" title="Kategorie bestätigen – gilt dann als deine Zuordnung">✓ Passt</button>` : ''}
           ${m.fest ? `<button class="link-btn" type="button" data-reset="${esc(m.key)}" title="Deine Zuordnung entfernen – dann gelten wieder Regeln, Händlerliste und KI">zurücksetzen</button>` : ''}</form>` : '<div class="z-form"></div>'}
       </div>${txBlock(m.key)}`).join('')}</div>
-      ${data.automatisch.length > shownAuto ? `<button class="btn" id="z-auto-more" style="margin-top:12px">Weitere ${Math.min(40, data.automatisch.length - shownAuto)} zeigen</button>` : ''}`
+      ${autoList.length > shownAuto ? `<button class="btn" id="z-auto-more" style="margin-top:12px">Weitere ${Math.min(40, autoList.length - shownAuto)} zeigen</button>` : ''}`
+    : `<div class="empty">${autoFilter === 'pruefen' ? 'Alles geprüft. 🎉' : 'Noch nichts bestätigt.'}</div>`}`
       : '<div class="empty">Noch nichts automatisch zugeordnet.</div>';
 
     // Buchungszeilen aufklappbar (Details, „In Firefly öffnen“, Ausblenden)
@@ -295,6 +323,17 @@ export async function assignPage(view) {
     const t = e.target.closest('button');
     if (!t) return;
     if (t.dataset.reset) return update(call('POST', { key: t.dataset.reset, category: null }));
+    if (t.dataset.ok) {
+      t.disabled = true;
+      return update(call('POST', { key: t.dataset.ok, name: t.dataset.name, category: t.dataset.category }));
+    }
+    if (t.dataset.autoFilter) {
+      autoFilter = t.dataset.autoFilter;
+      store('ffd-z-auto', autoFilter);
+      shownAuto = 40;
+      return render();
+    }
+    if (t.dataset.gotoFf !== undefined) return $('z-ff').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
     if (t.id === 'z-ff-send') {
       const list = ffCandidates().filter((m) => ffPick.has(m.key));
       if (!list.length || !window.confirm(`${list.length} Regel${list.length === 1 ? '' : 'n'} „Händler → Kategorie“ in Firefly anlegen${ffRange === 'none' ? '' : ' und auf vorhandene Ausgaben ohne Kategorie anwenden'}?`)) return;

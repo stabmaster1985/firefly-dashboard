@@ -1554,3 +1554,7 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
   .suggest-table .suggest-actions { grid-column: 1 / -1; min-width: 0; }
 }
 .combo-new.end { border-bottom: 0; border-top: 1px solid var(--grid); margin: 2px 0 0; font-size: 13px; color: var(--text-muted); }
+.z-auto-filter { margin-bottom: 4px; }
+.z-ff-hint { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; background: var(--accent-soft); font-size: 14px; }
+.z-ff-hint .link-btn { font-size: inherit; color: var(--accent); font-weight: 600; }
+.z-form .btn { white-space: nowrap; flex-shrink: 0; }

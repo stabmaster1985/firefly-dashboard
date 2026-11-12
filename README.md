@@ -185,7 +185,9 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   Konfiguration) → gelernt aus deinen schon kategorisierten Buchungen → eingebaute Händlerliste
   (Aldi, Rewe, Shell, Telekom …) → KI-Bewertung. Kategorien aus Firefly (z. B. beim Import gesetzt)
   bleiben immer, wie sie sind. Die Seite zeigt die Abdeckung (Kategorie aus Firefly / automatisch /
-  offen), die offenen Händler nach Betrag und alle automatischen Zuordnungen zum Korrigieren; eine
+  offen), die offenen Händler nach Betrag und die automatischen Zuordnungen zum Prüfen – standardmäßig
+  nur, was du noch nicht bestätigt („✓ Passt“) oder geändert hast, so wird die Liste kürzer
+  (Bestätigtes unter „Von dir bestätigt“, mit Status „nur Dashboard“ / „in Firefly“); eine
   Zuordnung gilt für alle Buchungen des Händlers, auch künftige. „Buchungen ansehen“ klappt die
   einzelnen Buchungen eines Händlers auf (mit Herkunft der Kategorie und allen Details); einzelne
   lassen sich dort abweichend zuordnen („nur diese“). **PayPal & Co.:** Steht im Buchungstext, bei
@@ -197,7 +199,8 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   Firefly die Kategorie künftig schon beim Import. Einzeln zugeordnete Buchungen setzt das Dashboard
   per Automation „Kategorie übernehmen“ direkt in Firefly. Wirkt in Übersicht, Kategorien,
   Jahresrückblick, Händler, Fragen, Berichten und MQTT; in den Buchungsdetails steht
-  „automatisch“. Firefly bleibt unverändert (Zuordnungen in `DATA_DIR/autocat.json`)
+  „automatisch“. Bis zum Übertragen bleibt Firefly unverändert (Zuordnungen in `DATA_DIR/autocat.json`;
+  deine Zuordnungen sind für „In Firefly übernehmen“ vorgemerkt)
 - **Prüfen** – Datenqualität auf einen Blick:
   - **Import-Status je Konto**: letzte Buchung und üblicher Abstand; „überfällig“, wenn ein Konto
     deutlich länger als sonst keine Buchung hat (CSV-Import vergessen?). Eine Automation mit

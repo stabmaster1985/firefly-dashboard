@@ -778,12 +778,13 @@ async function detail(view, { period, params, id, dimKey }) {
             if (!res.ok) continue;
             ok += 1;
             done.add(i);
-            const tr = el.querySelector(`tr[data-row="${i}"]`);
-            tr?.classList.add('sug-done');
-            const cell = tr?.querySelector('.sug-form');
-            if (cell) cell.outerHTML = `<span class="badge good">✓ ${esc(label)}</span>`;
+            // erledigte Buchung verschwindet – so sieht man, dass es weniger werden
+            el.querySelector(`tr[data-row="${i}"]`)?.remove();
           } catch { /* nächste Buchung */ }
         }
+        const left = suggestions.length - done.size;
+        $('d-suggest-meta').textContent = left ? `noch ${left} offen · ${done.size} erledigt` : `${done.size} erledigt`;
+        if (!left) el.querySelector('.table-wrap').outerHTML = `<div class="empty">Alle ${done.size} kategorisiert. 🎉 Firefly übernimmt die Änderungen gleich – die Seite zeigt sie beim nächsten Laden.</div>`;
         if (ok < rows.length) {
           btn.disabled = false;
           btn.textContent = ok ? `${ok}/${rows.length} – nochmal` : 'Fehler – nochmal';
