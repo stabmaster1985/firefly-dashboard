@@ -39,6 +39,12 @@ export function partyCheckCard(el, metaEl, { txs, editAction }) {
 
   const chosen = () => results.flatMap((r) => r.groups.filter((g) => picks.get(g.id)?.on && picks.get(g.id).name.trim()));
 
+  /** Kategorien einer Gruppe, z. B. „Tanken 3×, ohne 1×“ – zeigt Widersprüche (Konto ATU, Text Hornbach, Kategorie Tanken). */
+  const catSummary = (list) => {
+    const m = new Map();
+    list.forEach((t) => m.set(t.category_name || '', (m.get(t.category_name || '') || 0) + 1));
+    return [...m].sort((a, b) => b[1] - a[1]).map(([c, n]) => `${c ? `<b>${esc(c)}</b>` : '<i>ohne</i>'}${list.length > 1 ? ` ${n}×` : ''}`).join(', ');
+  };
   function render() {
     openAcc ||= new Set(results.length <= 5 ? results.map((r) => r.party) : []);
     const wrong = results.reduce((a, r) => a + r.wrongCount, 0);
@@ -60,7 +66,8 @@ export function partyCheckCard(el, metaEl, { txs, editAction }) {
             const p = picks.get(g.id);
             return `<div class="pc-group" data-g="${esc(g.id)}">
               <label class="pc-check"><input type="checkbox" data-pc-on ${p.on ? 'checked' : ''}${busy ? ' disabled' : ''}>
-                <span><span class="muted">Im Text:</span> <b>${esc(g.name)}</b> <span class="muted">· ${g.txs.length} Buchung${g.txs.length === 1 ? '' : 'en'} · ${money(g.sum)}</span></span></label>
+                <span><span class="muted">Im Text:</span> <b>${esc(g.name)}</b> <span class="muted">· ${g.txs.length} Buchung${g.txs.length === 1 ? '' : 'en'} · ${money(g.sum)}</span>
+                  <span class="pc-cats">Kategorie: ${catSummary(g.txs)}</span></span></label>
               <div class="pc-fix"><span class="muted">neuer Empfänger</span>
                 <input class="input" data-pc-name list="pc-parties" value="${esc(p.name)}" aria-label="Neuer Empfänger für ${esc(g.name)}"${busy ? ' disabled' : ''}>
                 <button type="button" class="link-btn" data-pc-show>${openTx.has(g.id) ? 'Buchungen ausblenden' : 'Buchungen ansehen'}</button>

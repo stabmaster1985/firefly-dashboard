@@ -46,19 +46,30 @@ function merchantFromCardText(text) {
   return '';
 }
 
-/** Händler laut Buchungstext (Beschreibung, sonst Notizen) – nur bei Kartenzahlungen, sonst ''. */
-export function textMerchant(t) {
-  for (const field of ['description', 'notes']) {
-    const name = merchantFromCardText(t[field]);
-    if (name) return name;
-  }
-  // Beschreibung ist nur „Kartenzahlung …“, der Händler steht in den Notizen (VR-Banken)
-  if (CARD.test(String(t.description ?? ''))) {
-    const name = pick(t.notes);
-    if (usable(name)) return name;
-  }
-  return '';
+// Händler-Angabe der VR-Banken im Verwendungszweck: „HORNBACH BAUMARKT//GERMERING/DE 2026-…“ (auch ohne „Kartenzahlung“)
+const SHOP_LINE = /^\s*([^/\n]{3,60}?)\s*\/\/\s*[^/\n]+\/[A-Z]{2}\b/;
+
+/**
+ * Alle Händler-Angaben im Buchungstext – Beschreibung und Notizen getrennt (bei Kartenzahlungen und
+ * bei Notizen im Format „HÄNDLER//ORT/DE“). Leere Liste, wenn nichts Verwertbares drinsteht.
+ */
+export function textMerchants(t) {
+  const out = [];
+  const add = (name) => {
+    if (name && usable(name) && !out.some((x) => squeeze(x) === squeeze(name))) out.push(name);
+  };
+  const desc = String(t.description ?? '');
+  const notes = String(t.notes ?? '');
+  add(merchantFromCardText(desc));
+  add(merchantFromCardText(notes));
+  const shop = SHOP_LINE.exec(notes) || SHOP_LINE.exec(desc);
+  if (shop) add(pick(shop[1]));
+  // Beschreibung ist nur „Kartenzahlung …“, der Händler steht vorn in den Notizen
+  if (CARD.test(desc) && !out.length) add(pick(notes));
+  return out;
 }
+/** Erste Händler-Angabe aus dem Buchungstext (siehe textMerchants) oder ''. */
+export const textMerchant = (t) => textMerchants(t)[0] || '';
 
 /** Passt der Händler aus dem Text zum Kontonamen? (gleiches erstes Wort, abgeschnittene Wörter erlaubt) */
 export function sameMerchant(party, text) {
@@ -97,8 +108,9 @@ export function wrongParties(txs, { dismissed = new Set() } = {}) {
     let row = byParty.get(party);
     if (!row) byParty.set(party, (row = { party, total: 0, iban: '', wrong: new Map() }));
     row.total += 1;
-    const name = textMerchant(t);
-    if (!name || sameMerchant(party, name)) continue;
+    // jede Angabe im Text zählt – steht in der Beschreibung „ATU“, in den Notizen aber „Hornbach“, ist das verdächtig
+    const name = textMerchants(t).find((n) => !sameMerchant(party, n));
+    if (!name) continue;
     if (dismissed.has(pairKey(party, name)) || dismissed.has(`j:${t.transaction_journal_id}`)) continue;
     const key = squeeze(significant(name).slice(0, 2).join(' '));
     const g = row.wrong.get(key) || { name, key: pairKey(party, name), txs: [] };

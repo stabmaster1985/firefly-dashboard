@@ -1589,3 +1589,4 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
   .pc-group td.date { white-space: nowrap; }
   .pc-group .desc { overflow-wrap: anywhere; }
 }
+.pc-cats { display: block; font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
