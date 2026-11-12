@@ -5,7 +5,7 @@
 
 import * as api from './api.js';
 import { money, esc, fmtDate, percent } from './util.js';
-import { card, skeleton, txAttrs, bindTxDetails, signedAmount } from './common.js';
+import { card, skeleton, txAttrs, bindTxDetails, signedAmount, setFolded } from './common.js';
 import { actionFor, runAction, setCategory } from './txedit.js';
 import { toFireflyRules } from './rules.js';
 import { isoDate, today, storage, store } from './util.js';
@@ -72,7 +72,8 @@ export async function assignPage(view) {
     const keys = new Set(cands.map((m) => m.key));
     const elsewhere = data.firefly.filter((f) => !keys.has(f.key)); // übertragen – Firefly hat die Buchungen inzwischen kategorisiert
     const sent = data.firefly.filter((f) => f.sentAt).length;
-    $('z-ff-meta').textContent = sent ? `${sent} Regel${sent === 1 ? '' : 'n'} in Firefly` : '';
+    const marked = cands.filter((m) => ffPick.has(m.key)).length;
+    $('z-ff-meta').textContent = [marked ? `${marked} vorgemerkt` : '', sent ? `${sent} Regel${sent === 1 ? '' : 'n'} in Firefly` : ''].filter(Boolean).join(' · ');
     const status = (m) => (UP_TO_DATE(m) ? '<span class="badge good">in Firefly</span>'
       : m.ff?.sentAt ? `<span class="badge warn" title="In Firefly steht noch „${esc(m.ff.category)}“">geändert</span>` : '');
     const n = [...ffPick].filter((k) => keys.has(k)).length;
@@ -333,7 +334,11 @@ export async function assignPage(view) {
       shownAuto = 40;
       return render();
     }
-    if (t.dataset.gotoFf !== undefined) return $('z-ff').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (t.dataset.gotoFf !== undefined) {
+      const sec = $('z-ff').closest('.card');
+      if (sec.classList.contains('folded')) setFolded(sec, false); // zugeklappte Karte wirkt sonst leer
+      return sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     if (t.id === 'z-ff-send') {
       const list = ffCandidates().filter((m) => ffPick.has(m.key));
       if (!list.length || !window.confirm(`${list.length} Regel${list.length === 1 ? '' : 'n'} „Händler → Kategorie“ in Firefly anlegen${ffRange === 'none' ? '' : ' und auf vorhandene Ausgaben ohne Kategorie anwenden'}?`)) return;
