@@ -92,24 +92,58 @@ export const pairKey = (party, name) => `p:${squeeze(party)}|${squeeze(name)}`.s
  * Konten mit Buchungen, deren Text auf einen anderen Händler zeigt.
  * Ergebnis: [{ party, iban, total, groups: [{ name, key, suggestion, txs }] }] – meiste falsche zuerst.
  */
+// Erste Wörter, die keinen bestimmten Händler bezeichnen – nicht als „anderes Konto im Text“ werten
+const GENERIC_FIRST = new Set(['kartenzahlung', 'lastschrift', 'einkauf', 'rechnung', 'zahlung', 'deutsche', 'stadt', 'gemeinde', 'kreis',
+  'autohaus', 'apotheke', 'praxis', 'tankstelle', 'baeckerei', 'backerei', 'restaurant', 'hotel', 'markt', 'bank', 'sparkasse', 'volksbank',
+  'raiffeisenbank', 'paypal', 'klarna', 'online', 'shop', 'service', 'verein', 'gmbh', 'firma', 'herr', 'frau', 'familie', 'dr', 'zahnarzt',
+  'kartenumsatz', 'girocard', 'debitk', 'visa', 'mastercard', 'gutschrift', 'dauerauftrag', 'ueberweisung', 'sepa', 'basislastschrift',
+  // Branchenwörter („Pizzeria Bella“ ≠ jede Pizzeria)
+  'pizzeria', 'ristorante', 'trattoria', 'gelateria', 'cafe', 'caffe', 'bistro', 'imbiss', 'grill', 'doener', 'kebab', 'sushi', 'gasthaus', 'gasthof',
+  'metzgerei', 'fleischerei', 'konditorei', 'friseur', 'kiosk', 'getraenke', 'blumen', 'buchhandlung', 'optik', 'optiker', 'reisebuero', 'pension',
+  'physiotherapie', 'tierarzt', 'tierklinik', 'kosmetik', 'reinigung', 'waschanlage', 'waschpark', 'parkhaus', 'parken', 'taxi', 'fahrschule',
+  'schuhhaus', 'modehaus', 'kaufhaus', 'baumarkt', 'supermarkt', 'drogerie', 'buchladen', 'kino', 'theater', 'museum', 'schwimmbad', 'fitness',
+  'studio', 'zentrum', 'center', 'station', 'store']);
+
 export function wrongParties(txs, { dismissed = new Set() } = {}) {
   const byParty = new Map(); // Konto → { total, wrong: Map(name → txs) }
   const partyNames = new Map(); // erstes Wort → { Name: Anzahl } – vorhandene Konten für den Vorschlag
+  const list = [];
   for (const t of txs) {
     if (t.type !== 'withdrawal') continue;
     const party = counterpartyOf(t);
     if (!party || /^\(.*\)$/.test(party.trim()) || isIntermediary(party)) continue;
+    list.push([t, party]);
     const first = significant(party)[0];
     if (first) {
       const m = partyNames.get(first) || new Map();
       m.set(party, (m.get(party) || 0) + 1);
       partyNames.set(first, m);
     }
+  }
+  // Kennwörter vorhandener Konten (z. B. „hornbach“ → „HORNBACH Baumarkt“) – mind. 2 Buchungen, 4 Buchstaben
+  const known = new Map();
+  for (const [word, m] of partyNames) {
+    if (word.length < 4 || GENERIC_FIRST.has(word) || /\d/.test(word)) continue;
+    const [name, n] = [...m].sort((a, b) => b[1] - a[1])[0];
+    if (n >= 2) known.set(word, name);
+  }
+  /** Nennt der Text (Beschreibung oder Notizen) irgendwo ein anderes vorhandenes Konto? */
+  const otherAccount = (t, party) => {
+    const own = new Set(significant(party));
+    for (const w of new Set(words(`${t.description ?? ''} ${t.notes ?? ''}`))) {
+      if (w.length < 4 || own.has(w)) continue;
+      const name = known.get(w);
+      if (name && name !== party && !sameMerchant(party, name)) return name;
+    }
+    return '';
+  };
+  for (const [t, party] of list) {
     let row = byParty.get(party);
     if (!row) byParty.set(party, (row = { party, total: 0, iban: '', wrong: new Map() }));
     row.total += 1;
-    // jede Angabe im Text zählt – steht in der Beschreibung „ATU“, in den Notizen aber „Hornbach“, ist das verdächtig
-    const name = textMerchants(t).find((n) => !sameMerchant(party, n));
+    // jede Angabe im Text zählt – steht in der Beschreibung „ATU“, in den Notizen aber „Hornbach“, ist das verdächtig;
+    // sonst: nennt der Text ein anderes Konto, das es schon gibt?
+    const name = textMerchants(t).find((n) => !sameMerchant(party, n)) || otherAccount(t, party);
     if (!name) continue;
     if (dismissed.has(pairKey(party, name)) || dismissed.has(`j:${t.transaction_journal_id}`)) continue;
     const key = squeeze(significant(name).slice(0, 2).join(' '));

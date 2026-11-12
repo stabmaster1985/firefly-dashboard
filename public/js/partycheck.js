@@ -48,11 +48,11 @@ export function partyCheckCard(el, metaEl, { txs, editAction }) {
   function render() {
     openAcc ||= new Set(results.length <= 5 ? results.map((r) => r.party) : []);
     const wrong = results.reduce((a, r) => a + r.wrongCount, 0);
-    metaEl.textContent = results.length ? `${results.length} Konto${results.length === 1 ? '' : 'en'} · ${wrong} Buchung${wrong === 1 ? '' : 'en'}` : 'nichts gefunden';
+    metaEl.textContent = results.length ? `${results.length} ${results.length === 1 ? 'Konto' : 'Konten'} · ${wrong} Buchung${wrong === 1 ? '' : 'en'}` : 'nichts gefunden';
     const sel = chosen();
     const nSel = sel.reduce((a, g) => a + g.txs.length, 0);
     el.innerHTML = `
-      <p class="muted" style="margin-top:0">Kartenzahlungen, bei denen der Händler im Buchungstext nicht zum Gegenkonto passt – z. B. Tanken bei der Werkstatt.
+      <p class="muted" style="margin-top:0">Buchungen, bei denen der Händler im Buchungstext (Beschreibung oder Notiz) nicht zum Gegenkonto passt – z. B. Tanken bei der Werkstatt oder „Hornbach“ in der Notiz beim Konto ATU.
         Meist liefert die Bank bei Kartenzahlungen die IBAN des Zahlungsdienstleisters, und Firefly ordnet über diese IBAN alles demselben Konto zu.
         Geprüft werden die Ausgaben der letzten 24 Monate.<br><b>So geht’s:</b> „neuer Empfänger“ prüfen oder anpassen, Gruppe angehakt lassen, unten „Empfänger in Firefly korrigieren“.</p>
       ${note ? `<div class="cm-note">${note}</div>` : ''}
