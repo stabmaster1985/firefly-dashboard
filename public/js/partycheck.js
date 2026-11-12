@@ -18,6 +18,7 @@ export function partyCheckCard(el, metaEl, { txs, editAction }) {
   const done = new Set(); // korrigierte Journal-IDs
   const picks = new Map(); // Gruppen-Kennung → { on, name }
   const openTx = new Set(); // aufgeklappte Gruppen
+  let openAcc = null; // aufgeklappte Konten – bleiben beim Neuzeichnen offen
   let note = '';
   let busy = '';
 
@@ -32,6 +33,7 @@ export function partyCheckCard(el, metaEl, { txs, editAction }) {
   const chosen = () => results.flatMap((r) => r.groups.filter((g) => picks.get(g.id)?.on && picks.get(g.id).name.trim()));
 
   function render() {
+    openAcc ||= new Set(results.length <= 5 ? results.map((r) => r.party) : []);
     const wrong = results.reduce((a, r) => a + r.wrongCount, 0);
     metaEl.textContent = results.length ? `${results.length} Konto${results.length === 1 ? '' : 'en'} · ${wrong} Buchung${wrong === 1 ? '' : 'en'}` : 'nichts gefunden';
     const sel = chosen();
@@ -43,7 +45,7 @@ export function partyCheckCard(el, metaEl, { txs, editAction }) {
       ${note ? `<div class="cm-note">${note}</div>` : ''}
       ${!results.length ? '<div class="empty">Keine Auffälligkeiten – die Gegenkonten passen zu den Buchungstexten. 🎉</div>' : `
       <div class="pc-list">${results.map((r) => `
-        <details class="pc-acc"${results.length <= 5 ? ' open' : ''}>
+        <details class="pc-acc" data-acc="${esc(r.party)}"${openAcc.has(r.party) ? ' open' : ''}>
           <summary><b>${esc(r.party)}</b> <span class="muted">· ${r.wrongCount} von ${r.total} Buchungen passen nicht zum Namen</span></summary>
           ${r.iban ? `<p class="pc-iban">Dieses Konto hat in Firefly die IBAN <code>${esc(r.iban)}</code>. Gehört sie dem Zahlungsdienstleister und nicht dem Geschäft, landen dort weiter fremde Kartenzahlungen – dann die IBAN am Konto in Firefly entfernen (Konten → Ausgabenkonten → bearbeiten).</p>` : ''}
           ${r.groups.map((g) => {
@@ -109,6 +111,13 @@ export function partyCheckCard(el, metaEl, { txs, editAction }) {
     render();
   }
 
+  // „toggle“ steigt nicht auf – daher in der Capture-Phase
+  el.addEventListener('toggle', (e) => {
+    const d = e.target;
+    if (!d.matches?.('details[data-acc]')) return;
+    if (d.open) openAcc.add(d.dataset.acc);
+    else openAcc.delete(d.dataset.acc);
+  }, true);
   el.addEventListener('change', (e) => {
     const g = e.target.closest('[data-g]');
     if (!g) return;
