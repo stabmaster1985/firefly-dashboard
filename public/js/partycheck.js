@@ -34,7 +34,7 @@ export function partyCheckCard(el, metaEl, { txs, editAction }) {
     results = wrongParties(txs.filter((t) => !done.has(String(t.transaction_journal_id))), { dismissed })
       .map((r) => ({ ...r, groups: r.groups.map((g) => ({ ...g, id: `${r.party}|${g.key}` })) }));
     const saved = loadNames();
-    for (const r of results) for (const g of r.groups) if (!picks.has(g.id)) picks.set(g.id, { on: true, name: saved[g.id] ?? g.suggestion, suggestion: g.suggestion });
+    for (const r of results) for (const g of r.groups) if (!picks.has(g.id)) picks.set(g.id, { on: !g.unnamed, name: saved[g.id] ?? g.suggestion, suggestion: g.suggestion }); // ohne Händlernamen: nur Vermutung → nicht vorab angehakt
   }
 
   const chosen = () => results.flatMap((r) => r.groups.filter((g) => picks.get(g.id)?.on && picks.get(g.id).name.trim()));
@@ -66,8 +66,11 @@ export function partyCheckCard(el, metaEl, { txs, editAction }) {
             const p = picks.get(g.id);
             return `<div class="pc-group" data-g="${esc(g.id)}">
               <label class="pc-check"><input type="checkbox" data-pc-on ${p.on ? 'checked' : ''}${busy ? ' disabled' : ''}>
-                <span><span class="muted">Im Text:</span> <b>${esc(g.name)}</b> <span class="muted">· ${g.txs.length} Buchung${g.txs.length === 1 ? '' : 'en'} · ${money(g.sum)}</span>
-                  <span class="pc-cats">Kategorie: ${catSummary(g.txs)}${g.via ? ` · abgewickelt über <b>${esc(g.via)}</b> – dessen IBAN/Gläubiger-ID führt Firefly zum falschen Konto` : ''}</span></span></label>
+                <span>${g.unnamed
+    ? `<b>Kein Händler im Text</b> <span class="muted">(nur Nummern und IBAN des Zahlungsdienstleisters) · ${g.txs.length} Buchung${g.txs.length === 1 ? '' : 'en'} · ${money(g.sum)}</span>
+                  <span class="pc-cats">Kategorie <b>${esc(g.category)}</b> passt nicht zum Konto (sonst meist „${esc(g.usual || '–')}“). Vorschlag aus der Kategorie – nur eine Vermutung. Den echten Namen zeigt die Bank-CSV im <a href="#/abgleich">CSV-Abgleich</a> („abweichender Empfänger“).</span>`
+    : `<span class="muted">Im Text:</span> <b>${esc(g.name)}</b> <span class="muted">· ${g.txs.length} Buchung${g.txs.length === 1 ? '' : 'en'} · ${money(g.sum)}</span>`}
+                  <span class="pc-cats">${g.unnamed ? '' : `Kategorie: ${catSummary(g.txs)}`}${g.via ? ` · abgewickelt über <b>${esc(g.via)}</b> – dessen IBAN/Gläubiger-ID führt Firefly zum falschen Konto` : ''}</span></span></label>
               <div class="pc-fix"><span class="muted">neuer Empfänger</span>
                 <input class="input" data-pc-name list="pc-parties" value="${esc(p.name)}" aria-label="Neuer Empfänger für ${esc(g.name)}"${busy ? ' disabled' : ''}>
                 <button type="button" class="link-btn" data-pc-show>${openTx.has(g.id) ? 'Buchungen ausblenden' : 'Buchungen ansehen'}</button>

@@ -72,6 +72,9 @@ export function textMerchants(t) {
 /** Erste Händler-Angabe aus dem Buchungstext (siehe textMerchants) oder ''. */
 export const textMerchant = (t) => textMerchants(t)[0] || '';
 
+/** Lastschrift über einen Zahlungsdienstleister ohne Händlernamen: ELV/OLV-Kennung oder „im Namen und auf Rechnung“. */
+export const anonymousDebit = (t) => /\b[EO]LV\s*\d{5,}/i.test(`${t.notes ?? ''} ${t.description ?? ''}`) || Boolean(processorOf(t));
+
 /** Zahlungsdienstleister laut Text, z. B. „Der Einzug erfolgt im Namen und auf Rechnung der PAYONE GmbH“ → „PAYONE GmbH“. */
 export function processorOf(t) {
   const m = /im Namen und (?:auf|für) Rechnung (?:der|des|von)\s+([^.,;:]{2,40}?)(?=\s+(?:EREF|MREF|CRED|IBAN|BIC)\b|[.,;:]|$)/i.exec(`${t.notes ?? ''} ${t.description ?? ''}`);
@@ -115,6 +118,7 @@ export function wrongParties(txs, { dismissed = new Set() } = {}) {
   const byParty = new Map(); // Konto → { total, wrong: Map(name → txs) }
   const partyNames = new Map(); // erstes Wort → { Name: Anzahl } – vorhandene Konten für den Vorschlag
   const list = [];
+  const catParties = new Map(); // Kategorie → { Konto: Anzahl } – für den Vorschlag bei Buchungen ohne Händlernamen
   for (const t of txs) {
     if (t.type !== 'withdrawal') continue;
     const party = counterpartyOf(t);
@@ -146,12 +150,23 @@ export function wrongParties(txs, { dismissed = new Set() } = {}) {
   };
   for (const [t, party] of list) {
     let row = byParty.get(party);
-    if (!row) byParty.set(party, (row = { party, total: 0, iban: '', wrong: new Map() }));
+    if (!row) byParty.set(party, (row = { party, total: 0, iban: '', wrong: new Map(), cats: new Map(), unnamed: [] }));
     row.total += 1;
+    const cat = t.category_name || '';
+    row.cats.set(cat, (row.cats.get(cat) || 0) + 1);
+    if (cat) {
+      const m = catParties.get(cat) || new Map();
+      m.set(party, (m.get(party) || 0) + 1);
+      catParties.set(cat, m);
+    }
     // jede Angabe im Text zählt – steht in der Beschreibung „ATU“, in den Notizen aber „Hornbach“, ist das verdächtig;
     // sonst: nennt der Text ein anderes Konto, das es schon gibt?
     const name = textMerchants(t).find((n) => !sameMerchant(party, n)) || otherAccount(t, party);
-    if (!name) continue;
+    if (!name) {
+      // nur Nummern und die IBAN eines Zahlungsdienstleisters, kein Händlername („3009… ELV70142803 30.09 08:22 ME1 EREF …“)
+      if (!textMerchants(t).length && anonymousDebit(t) && !dismissed.has(`j:${t.transaction_journal_id}`)) row.unnamed.push(t);
+      continue;
+    }
     if (dismissed.has(pairKey(party, name)) || dismissed.has(`j:${t.transaction_journal_id}`)) continue;
     const key = squeeze(significant(name).slice(0, 2).join(' '));
     const g = row.wrong.get(key) || { name, key: pairKey(party, name), txs: [], via: '' };
@@ -170,6 +185,27 @@ export function wrongParties(txs, { dismissed = new Set() } = {}) {
     }
     return name;
   };
+  // Ohne Händlernamen: Hinweis gibt nur die Kategorie. Verdächtig sind Buchungen, deren Kategorie nicht die übliche des
+  // Kontos ist (A.T.U.: „Auto“ üblich, „Tanken“ auffällig). Vorschlag: das Konto, das in dieser Kategorie am häufigsten
+  // vorkommt – nur als Vorschlag, nicht vorab angehakt.
+  for (const r of byParty.values()) {
+    if (!r.unnamed.length || r.cats.size < 2) continue;
+    const usual = [...r.cats].filter(([c]) => c).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const byCat = new Map();
+    for (const t of r.unnamed) {
+      const cat = t.category_name || '';
+      if (!cat || cat === usual) continue;
+      byCat.set(cat, [...(byCat.get(cat) || []), t]);
+    }
+    for (const [cat, txsOfCat] of byCat) {
+      const key = pairKey(r.party, `kategorie:${cat}`);
+      if (dismissed.has(key)) continue;
+      const others = [...(catParties.get(cat) || [])].filter(([n]) => n !== r.party).sort((a, b) => b[1] - a[1]);
+      const total = others.reduce((a, [, n]) => a + n, 0);
+      const best = others[0] && others[0][1] / total >= 0.5 ? others[0] : null; // nur, wenn ein Konto die Kategorie klar prägt
+      r.wrong.set(`kategorie:${cat}`, { name: `ohne Händlernamen – Kategorie „${cat}“`, key, txs: txsOfCat, via: processorOf(txsOfCat[0]), unnamed: true, category: cat, usual, guess: best ? best[0] : '' });
+    }
+  }
   return [...byParty.values()]
     .filter((r) => r.wrong.size)
     .map((r) => ({
@@ -177,8 +213,8 @@ export function wrongParties(txs, { dismissed = new Set() } = {}) {
       iban: r.iban,
       total: r.total,
       groups: [...r.wrong.values()]
-        .map((g) => ({ ...g, suggestion: suggest(g.name, r.party), sum: g.txs.reduce((a, t) => a + (Number(t.amount) || 0), 0) }))
-        .sort((a, b) => b.txs.length - a.txs.length),
+        .map((g) => ({ ...g, suggestion: g.unnamed ? g.guess : suggest(g.name, r.party), sum: g.txs.reduce((a, t) => a + (Number(t.amount) || 0), 0) }))
+        .sort((a, b) => Number(Boolean(a.unnamed)) - Number(Boolean(b.unnamed)) || b.txs.length - a.txs.length),
     }))
     .map((r) => ({ ...r, wrongCount: r.groups.reduce((a, g) => a + g.txs.length, 0) }))
     .sort((a, b) => b.wrongCount - a.wrongCount);

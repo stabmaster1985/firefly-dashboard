@@ -204,6 +204,9 @@ journals.push({ id: String(nextId++), date: new Date(today.getFullYear(), today.
 for (const [ago, amount] of [[9, 58.4], [23, 61.2], [41, 49.9]]) {
   add(addDays(today, -ago), 'withdrawal', amount, `Kartenzahlung girocard - ARAL Tankstelle 4711/Musterstadt/DE ${ago}`, giro, ext('Autohaus Becker'), { category: 'KFZ' });
 }
+// ELV-Lastschrift über einen Zahlungsdienstleister ohne Händlernamen, ebenfalls bei der Werkstatt gelandet
+add(addDays(today, -15), 'withdrawal', 52.3, 'Basislastschrift', giro, ext('Autohaus Becker'), { category: 'Mobilität',
+  notes: '150908221754367241200059090 ELV70142803 15.09 08:22 ME1 EREF: 15090822175436724120005909070142803 MREF: 7014280399502409300822 CRED: DE00ZZZ00000000000 IBAN: DE00123456780000000000 BIC: TESTDEFFXXX' });
 // Eine aktuelle große Ausgabe (für die Warnungen)
 add(addDays(today, -4), 'withdrawal', 649, 'Neue Waschmaschine', kk, ext('MediaMarkt'), { category: 'Shopping' });
 // Eine doppelt importierte Buchung (für die Dubletten-Erkennung)
