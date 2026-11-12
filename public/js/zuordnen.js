@@ -64,6 +64,7 @@ export async function assignPage(view) {
     liste: 'Eingebaute Händlerliste des Dashboards (z. B. Rossmann → Drogerie) – abschaltbar unter Einstellungen.',
     ki: 'KI-Bewertung aus dem Labor – abschaltbar unter Einstellungen.',
   };
+  const mixedNote = (m) => (m.gemischt ? `<div class="z-mixed">⚠ In Firefly stehen Buchungen dieses Empfängers in verschiedenen Kategorien (${m.gemischt.map((c) => `${esc(c.name)} ${c.n}×`).join(', ')}) – vermutlich stecken verschiedene Händler dahinter. Eine Zuordnung für den ganzen Händler (und die Firefly-Regel) träfe alle gleich; besser einzeln („Buchungen ansehen“ → „nur diese“).</div>` : '');
   const quelle = (q) => (q ? `<span class="badge auto" title="${esc(QUELLE_INFO[q] || 'Quelle der Zuordnung')}">${esc(data.quellen[q] || q)}</span>` : '');
   /** Händler in „Automatisch zugeordnet“ anzeigen und zum Bearbeiten markieren. */
   function editMerchant(key) {
@@ -103,7 +104,7 @@ export async function assignPage(view) {
       const sig = `${m.quelle}|${m.category}|${m.ff?.sentAt || ''}`;
       if (ffSeen.get(m.key) === sig) continue;
       ffSeen.set(m.key, sig);
-      if (!UP_TO_DATE(m) && m.quelle === 'zuordnung') ffPick.add(m.key); // nur, was du selbst bestätigt/zugeordnet hast
+      if (!UP_TO_DATE(m) && m.quelle === 'zuordnung' && !m.gemischt) ffPick.add(m.key); // nur, was du selbst bestätigt/zugeordnet hast
       else ffPick.delete(m.key);
     }
     const keys = new Set(cands.map((m) => m.key));
@@ -111,7 +112,7 @@ export async function assignPage(view) {
     const sent = data.firefly.filter((f) => f.sentAt).length;
     const marked = cands.filter((m) => ffPick.has(m.key)).length;
     $('z-ff-meta').textContent = [marked ? `${marked} vorgemerkt` : '', sent ? `${sent} Regel${sent === 1 ? '' : 'n'} in Firefly` : ''].filter(Boolean).join(' · ');
-    const status = (m) => (UP_TO_DATE(m) ? '<span class="badge good">in Firefly</span>'
+    const status = (m) => (m.gemischt ? `<span class="badge bad" title="${esc(`In Firefly in verschiedenen Kategorien: ${m.gemischt.map((c) => c.name).join(', ')} – vermutlich verschiedene Händler`)}">⚠ verschiedene Händler?</span> ` : '') + (UP_TO_DATE(m) ? '<span class="badge good">in Firefly</span>'
       : m.ff?.sentAt ? `<span class="badge warn" title="In Firefly steht noch „${esc(m.ff.category)}“">geändert</span>` : '');
     const n = [...ffPick].filter((k) => keys.has(k)).length;
     // Filter: Status und Quelle (Text über das Filterfeld der Karte)
@@ -262,7 +263,7 @@ export async function assignPage(view) {
       <p class="muted" style="margin-top:0">Größte zuerst. Eine Zuordnung gilt für alle Buchungen dieses Händlers – auch für künftige.</p>
       <div class="list z-list">${data.offen.slice(0, shownOpen).map((m) => `<div class="row z-row" data-key="${esc(m.key)}">
         <div style="min-width:0"><div class="title">${esc(m.name)}</div>
-          <div class="subtitle"><button class="link-btn z-show" type="button" data-show="${esc(m.key)}" aria-expanded="${openKeys.has(m.key)}">${openKeys.has(m.key) ? '▾' : '▸'} ${m.n} Buchung${m.n === 1 ? '' : 'en'} ansehen</button> · zuletzt ${fmtDate(m.last)}${m.beispiel ? ` · ${esc(m.beispiel)}` : ''}</div></div>
+          <div class="subtitle"><button class="link-btn z-show" type="button" data-show="${esc(m.key)}" aria-expanded="${openKeys.has(m.key)}">${openKeys.has(m.key) ? '▾' : '▸'} ${m.n} Buchung${m.n === 1 ? '' : 'en'} ansehen</button> · zuletzt ${fmtDate(m.last)}${m.beispiel ? ` · ${esc(m.beispiel)}` : ''}</div>${mixedNote(m)}</div>
         <div class="amount">${money(m.offen, code)}</div>
         ${m.key ? `<form class="z-form" data-assign="${esc(m.key)}" data-name="${esc(m.name)}">${catInput('', 'name="category" required')}<button class="btn primary small" type="submit">Zuordnen</button></form>`
     : '<div class="muted z-form">kein Händler erkennbar – Buchungen ansehen und einzeln zuordnen</div>'}
@@ -274,7 +275,7 @@ export async function assignPage(view) {
     const todo = data.automatisch.filter((m) => !m.fest);
     const fest = data.automatisch.filter((m) => m.fest);
     const autoList = autoFilter === 'fest' ? fest : autoFilter === 'alle' ? data.automatisch : todo;
-    const onlyHere = fest.filter((m) => m.cond && m.category && !UP_TO_DATE(m));
+    const onlyHere = fest.filter((m) => m.cond && m.category && !UP_TO_DATE(m) && !m.gemischt);
     const ffState = (m) => (!m.cond ? '' : UP_TO_DATE(m) ? '<span class="badge good" title="Als Regel in Firefly">in Firefly</span>'
       : m.ff?.sentAt ? '<span class="badge warn" title="In Firefly steht noch eine andere Kategorie">Firefly: geändert</span>'
       : m.fest ? '<span class="badge" title="Gilt bisher nur im Dashboard – vorgemerkt unter „In Firefly übernehmen“">nur Dashboard</span>' : '');
@@ -291,10 +292,10 @@ export async function assignPage(view) {
       ${onlyHere.length ? `<p class="z-ff-hint">${onlyHere.length === 1 ? 'Eine deiner Zuordnungen gilt' : `${onlyHere.length} deiner Zuordnungen gelten`} bisher nur im Dashboard – für Firefly vorgemerkt (angehakt) unter <button type="button" class="link-btn" data-goto-ff>In Firefly übernehmen ↓</button></p>` : ''}
       ${autoList.length ? `<div class="list z-list">${autoList.slice(0, shownAuto).map((m) => `<div class="row z-row" data-key="${esc(m.key)}">
         <div style="min-width:0"><div class="title">${esc(m.name)} ${quelle(m.quelle)} ${ffState(m)}</div>
-          <div class="subtitle"><button class="link-btn z-show" type="button" data-show="${esc(m.key)}" aria-expanded="${openKeys.has(m.key)}">${openKeys.has(m.key) ? '▾' : '▸'} ${m.n} Buchung${m.n === 1 ? '' : 'en'} ansehen</button> · zuletzt ${fmtDate(m.last)}${m.beispiel ? ` · ${esc(m.beispiel)}` : ''}</div></div>
+          <div class="subtitle"><button class="link-btn z-show" type="button" data-show="${esc(m.key)}" aria-expanded="${openKeys.has(m.key)}">${openKeys.has(m.key) ? '▾' : '▸'} ${m.n} Buchung${m.n === 1 ? '' : 'en'} ansehen</button> · zuletzt ${fmtDate(m.last)}${m.beispiel ? ` · ${esc(m.beispiel)}` : ''}</div>${mixedNote(m)}</div>
         <div class="amount">${money(m.auto, code)}</div>
         ${m.key ? `<form class="z-form" data-assign="${esc(m.key)}" data-name="${esc(m.name)}">${catInput(m.category, 'name="category" required')}<button class="btn small" type="submit">Ändern</button>
-          ${!m.fest && m.category ? `<button class="btn small primary" type="button" data-ok="${esc(m.key)}" data-name="${esc(m.name)}" data-category="${esc(m.category)}" title="Kategorie bestätigen – gilt dann als deine Zuordnung">✓ Passt</button>` : ''}
+          ${!m.fest && m.category && m.quelle !== 'buchung' ? `<button class="btn small primary" type="button" data-ok="${esc(m.key)}" data-name="${esc(m.name)}" data-category="${esc(m.category)}" title="Kategorie bestätigen – gilt dann als deine Zuordnung">✓ Passt</button>` : ''}
           ${m.fest ? `<button class="link-btn" type="button" data-reset="${esc(m.key)}" title="Deine Zuordnung entfernen – dann gelten wieder Regeln, Händlerliste und KI">zurücksetzen</button>` : ''}</form>` : '<div class="z-form"></div>'}
       </div>${txBlock(m.key)}`).join('')}</div>
       ${autoList.length > shownAuto ? `<button class="btn" id="z-auto-more" style="margin-top:12px">Weitere ${Math.min(40, autoList.length - shownAuto)} zeigen</button>` : ''}`
@@ -404,6 +405,8 @@ export async function assignPage(view) {
     }
     if (t.id === 'z-ff-send') {
       const list = ffCandidates().filter((m) => ffPick.has(m.key));
+      const mixed = list.filter((m) => m.gemischt);
+      if (mixed.length && !window.confirm(`Achtung: Hinter ${mixed.map((m) => m.name).join(', ')} stecken vermutlich verschiedene Händler (in Firefly verschiedene Kategorien). Die Regel gibt künftig allen Buchungen ohne Kategorie bei diesem Empfänger dieselbe Kategorie. Trotzdem übertragen?`)) return;
       if (!list.length || !window.confirm(`${list.length} Regel${list.length === 1 ? '' : 'n'} „Händler → Kategorie“ in Firefly anlegen${ffRange === 'none' ? '' : ' und auf vorhandene Ausgaben ohne Kategorie anwenden'}?`)) return;
       return ffDo('Übertrage nach Firefly … (rückwirkend anwenden kann ein paar Minuten dauern)', async () => {
         const res = await call('POST', { ff: { add: list.map((m) => ({ key: m.key, name: m.name, category: m.category, cond: m.cond })) } });

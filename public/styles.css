@@ -1566,3 +1566,5 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
 .z-ff-filter select { height: 32px; }
 .z-ff-filter label { max-width: 100%; min-width: 0; }
 .z-ff-filter select { min-width: 0; max-width: 100%; flex: 1 1 auto; }
+.z-mixed { margin-top: 6px; padding: 6px 10px; border-radius: 8px; font-size: 13px; line-height: 1.4; white-space: normal;
+  background: color-mix(in srgb, var(--status-warning) 16%, transparent); color: var(--text-primary); }
