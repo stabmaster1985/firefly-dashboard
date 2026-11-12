@@ -57,7 +57,16 @@ export async function assignPage(view) {
   // ---- In Firefly übernehmen: Händler-Zuordnungen als Firefly-Regeln, Einzelzuordnungen per n8n ----
   const UP_TO_DATE = (m) => m.ff && m.ff.sentAt && m.ff.category === m.category;
   const ffCandidates = () => data.automatisch.filter((m) => m.cond && m.category && m.quelle !== 'buchung');
+  /** Karte „In Firefly übernehmen“ – ein Fehler darin zeigt sich in der Karte, statt sie leer zu lassen. */
   function renderFirefly() {
+    try {
+      renderFireflyCard();
+    } catch (err) {
+      console.error(err);
+      $('z-ff').innerHTML = `<div class="empty bad">Die Liste konnte nicht angezeigt werden: ${esc(err.message)}. Bitte melden.</div>`;
+    }
+  }
+  function renderFireflyCard() {
     const cands = ffCandidates();
     // Vorbelegung: nicht aktuelle Zuordnungen aus verlässlichen Quellen. Neu bestätigte/geänderte Händler
     // (Stand je Händler geändert) werden auch nachträglich angehakt.
@@ -82,7 +91,8 @@ export async function assignPage(view) {
         sie greifen bei künftigen Importen und auf Wunsch rückwirkend, <b>nur bei Ausgaben ohne Kategorie</b> (vorhandene Kategorien bleiben).
         Danach stehen die Kategorien in Firefly selbst.</p>
       ${ffNote ? `<div class="cm-note">${ffNote}</div>` : ''}
-      ${!rulesAction ? '<div class="empty">Dafür unter <a href="#/automationen">Automationen</a> eine Automation mit Auslöser „Firefly-Regeln anlegen“ einrichten (Vorlage n8n/firefly-buchung-bearbeiten.json).</div>' : `
+      ${!rulesAction ? `<div class="cm-note"><b>Zum Übertragen fehlt die Automation „Firefly-Regeln anlegen“.</b> Unter <a href="#/automationen">Automationen</a> eine Automation mit diesem Auslöser einrichten (Vorlage n8n/firefly-buchung-bearbeiten.json, dieselbe wie für „Kategorie übernehmen“ – nur der Auslöser ist ein anderer).</div>
+        ${cands.length ? `<p class="muted">Vorgemerkt (${[...ffPick].filter((k) => keys.has(k)).length} von ${cands.length}):</p><ul class="z-ff-plain">${cands.filter((m) => ffPick.has(m.key)).slice(0, 50).map((m) => `<li>${esc(m.name)} → ${esc(m.category)}</li>`).join('')}</ul>` : ''}` : `
       ${cands.length ? `<div class="table-wrap z-ff-table"><table><thead><tr><th class="pick-cell"><input type="checkbox" id="z-ff-all" aria-label="alle auswählen"></th><th>Händler</th><th>Kategorie</th><th class="num hide-sm">24 Monate</th></tr></thead>
         <tbody>${cands.map((m) => `<tr style="cursor:default">
           <td class="pick-cell"><input type="checkbox" data-ff="${esc(m.key)}" ${ffPick.has(m.key) ? 'checked' : ''} aria-label="${esc(m.name)}"></td>
@@ -245,11 +255,11 @@ export async function assignPage(view) {
       : '<div class="empty">Noch nichts automatisch zugeordnet.</div>';
 
     // Buchungszeilen aufklappbar (Details, „In Firefly öffnen“, Ausblenden)
-    view.querySelectorAll('[data-txs]').forEach((box) => bindTxDetails(box, (k) => {
+    try { view.querySelectorAll('[data-txs]').forEach((box) => bindTxDetails(box, (k) => {
       const [key, i] = [k.slice(0, k.lastIndexOf('|')), Number(k.slice(k.lastIndexOf('|') + 1))];
       const b = bookings.get(key);
       return b && typeof b === 'object' ? b.buchungen[i] : null;
-    }));
+    })); } catch (err) { console.error(err); }
 
     renderFirefly();
 

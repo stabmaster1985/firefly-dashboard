@@ -1558,3 +1558,4 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
 .z-ff-hint { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; background: var(--accent-soft); font-size: 14px; }
 .z-ff-hint .link-btn { font-size: inherit; color: var(--accent); font-weight: 600; }
 .z-form .btn { white-space: nowrap; flex-shrink: 0; }
+.z-ff-plain { margin: 4px 0 0; padding-left: 20px; font-size: 14px; columns: 2 220px; }
