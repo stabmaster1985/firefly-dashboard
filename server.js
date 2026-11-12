@@ -123,7 +123,7 @@ const handleGroups = createGroups(DATA_DIR);
 // CSV-Abgleich: welche CSV-Zeilen schon übertragen wurden
 const handleCsvSync = createCsvSync(DATA_DIR);
 const handleCsvArchive = createCsvArchive(DATA_DIR);
-const handleSyncJob = createSyncJob(DATA_DIR, { firefly: { ...firefly, invalidate: dataChanged }, actions: handleActions, csvMemory: (items) => handleCsvSync.remember(items.map((i) => ({ fp: i.fp, j: i.j, name: i.name }))) });
+const handleSyncJob = createSyncJob(DATA_DIR, { firefly: { ...firefly, invalidate: dataChanged }, actions: handleActions, csvMemory: (items) => handleCsvSync.remember(items.filter((i) => i.fp).map((i) => ({ fp: i.fp, j: i.j, name: i.name }))) }); // ohne Fingerabdruck: kein CSV-Gedächtnis (z. B. Gegenkonten korrigieren)
 
 // Daten aufräumen: vorbereitete Pläne (Regeln aus der Import-Konfiguration, Konten zusammenführen)
 const handleCleanup = createCleanup(DATA_DIR);

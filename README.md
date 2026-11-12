@@ -672,8 +672,9 @@ Geräten und nach Updates. Nach Firefly geht erst etwas per Knopf.
   Firefly alles mit dieser IBAN einem Konto zuordnet (das Dashboard zeigt die IBAN am Konto an).
   Je Konto gruppiert nach dem Händler aus dem Text, mit Vorschlag für den richtigen Empfänger
   (vorhandenes Konto mit gleichem Namen, sonst der Name aus dem Text); „kein Fehler – ausblenden“
-  blendet Fehlalarme aus, ohne zu korrigieren (`dismissed.json`). **Empfänger in Firefly korrigieren** schickt `typ: gegenkonto_setzen`
-  ohne IBAN an die Automation „Kategorie übernehmen“ – nur der Empfänger ändert sich.
+  blendet Fehlalarme aus, ohne zu korrigieren (`dismissed.json`). **Empfänger in Firefly korrigieren** übergibt einen Auftrag an den Server
+  (wie der CSV-Abgleich: `typ: gegenkonto_setzen` im Hintergrund, ohne IBAN, danach Prüfung in
+  Firefly) – nur der Empfänger ändert sich.
 - **Kategorien zusammenführen:** Kategorien ankreuzen (mit Buchungen und Summen der letzten 24
   Monate, Vorschläge bei fast gleichen Namen) und ein Ziel wählen – vorhanden oder neu. **Nur im
   Dashboard** wirkt sofort in allen Auswertungen und lässt sich aufheben (gespeichert in

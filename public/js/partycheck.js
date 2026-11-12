@@ -6,11 +6,9 @@
 
 import * as api from './api.js';
 import { esc, money, fmtDate, storage, store } from './util.js';
-import { runAction } from './txedit.js';
 import { wrongParties } from './partycore.js';
 import { counterpartyOf } from './rules.js';
 
-const CHUNK = 50;
 const NAMES_KEY = 'ffd-pc-names'; // eingetippte Empfänger je Gruppe – überstehen ein Neuladen (je Gerät)
 const loadNames = () => {
   try {
@@ -52,6 +50,7 @@ export function partyCheckCard(el, metaEl, { txs, editAction }) {
         Meist liefert die Bank bei Kartenzahlungen die IBAN des Zahlungsdienstleisters, und Firefly ordnet über diese IBAN alles demselben Konto zu.
         Geprüft werden die Ausgaben der letzten 24 Monate.<br><b>So geht’s:</b> „neuer Empfänger“ prüfen oder anpassen, Gruppe angehakt lassen, unten „Empfänger in Firefly korrigieren“.</p>
       ${note ? `<div class="cm-note">${note}</div>` : ''}
+      ${jobLine()}
       ${!results.length ? '<div class="empty">Keine Auffälligkeiten – die Gegenkonten passen zu den Buchungstexten. 🎉</div>' : `
       <div class="pc-list">${results.map((r) => `
         <details class="pc-acc" data-acc="${esc(r.party)}"${openAcc.has(r.party) ? ' open' : ''}>
@@ -82,42 +81,81 @@ export function partyCheckCard(el, metaEl, { txs, editAction }) {
       ${busy ? `<p class="muted">${esc(busy)}</p>` : ''}`}`;
   }
 
+  // ---- Übertragen: als Auftrag auf dem Server (wie im CSV-Abgleich) ----
+  // n8n antwortet dabei sofort und speichert im Hintergrund; der Server prüft danach jede Buchung
+  // in Firefly und schickt Fehlendes erneut. So gibt es keinen Abbruch durch einen Proxy vor n8n
+  // („504 Gateway Time-out“), und Handy/PC dürfen zwischendurch aus sein.
+  const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
+  let job = null;
+  let poll = null;
+  const jobLine = () => {
+    if (!job) return '';
+    const stand = `${job.ok} von ${job.total} umgestellt${job.fehlt ? `, ${job.fehlt} fehlen noch` : ''}`;
+    if (job.status === 'laeuft') return `<div class="cm-note">⏳ Läuft auf dem Server: ${stand}. ${esc(job.message || '')} <span class="muted">Das Gerät darf aus sein; Stand und Anhalten auch unter <a href="#/abgleich">CSV-Abgleich</a> („Übertragung auf dem Server“).</span></div>`;
+    if (job.status === 'pausiert') return `<div class="cm-note"><span class="bad">Angehalten:</span> ${esc(job.message || '')} – fortsetzen unter <a href="#/abgleich">CSV-Abgleich</a> („Übertragung auf dem Server“).</div>`;
+    return '';
+  };
+  async function refreshJob() {
+    const body = await fetch('/local/syncjob', { headers: { 'X-No-Cache': '1' } }).then((r) => r.json()).catch(() => null);
+    const was = job?.status;
+    job = body?.job || null;
+    if (job?.status === 'fertig' && was === 'laeuft') {
+      note = job.fehlt
+        ? `<span class="bad">${job.ok} umgestellt, ${job.fehlt} nach mehreren Versuchen nicht in Firefly – in n8n unter „Executions“ nachsehen.</span>`
+        : `<span class="good">✓ Alle ${job.ok} Empfänger in Firefly umgestellt und geprüft.</span>`;
+      api.forget();
+    }
+    if (job?.status !== 'laeuft' && poll) {
+      clearInterval(poll);
+      poll = null;
+    }
+    if (!el.isConnected) {
+      clearInterval(poll);
+      poll = null;
+      return;
+    }
+    render();
+  }
+  const watch = () => {
+    poll ||= setInterval(refreshJob, 5000);
+  };
+
   async function send() {
     const groups = chosen();
     const list = groups.flatMap((g) => g.txs.map((t) => ({ t, name: picks.get(g.id).name.trim() })));
-    if (!list.length || !window.confirm(`Bei ${list.length} Buchung${list.length === 1 ? '' : 'en'} den Empfänger in Firefly ändern?`)) return;
-    let ok = 0;
-    let failed = '';
-    for (let i = 0; i < list.length; i += CHUNK) {
-      const part = list.slice(i, i + CHUNK);
-      busy = `Übertrage ${Math.min(i + CHUNK, list.length)} von ${list.length} …`;
-      render();
-      const res = await runAction(editAction, {
-        typ: 'gegenkonto_setzen',
-        aenderungen: part.map(({ t, name }) => ({
-          transaction_group_id: t.groupId,
-          transaction_journal_id: t.transaction_journal_id,
-          art: t.type,
-          datum: String(t.date).slice(0, 10),
-          betrag: t.amount,
-          name,
-          name_alt: counterpartyOf(t) || null,
-        })),
-      }).catch((err) => ({ ok: false, response: err.message }));
-      if (!res.ok) {
-        failed = `n8n antwortet mit ${res.status || 'Fehler'}: ${String(res.response || '').slice(0, 160)}`;
-        break;
-      }
-      ok += part.length;
-      part.forEach(({ t }) => done.add(String(t.transaction_journal_id)));
-    }
+    if (!list.length || !window.confirm(`Bei ${list.length} Buchung${list.length === 1 ? '' : 'en'} den Empfänger in Firefly ändern?\n\nDas läuft als Auftrag auf dem Server weiter – auch wenn du die Seite schließt.`)) return;
+    busy = 'Übergebe den Auftrag an den Server …';
+    render();
+    const items = list.map(({ t, name }) => ({
+      j: t.transaction_journal_id,
+      g: t.groupId,
+      fp: '', // kein CSV-Fingerabdruck – nur der Empfänger wird umgestellt
+      name,
+      payload: {
+        transaction_group_id: t.groupId,
+        transaction_journal_id: t.transaction_journal_id,
+        art: t.type,
+        datum: String(t.date).slice(0, 10),
+        betrag: t.amount,
+        name,
+        name_alt: counterpartyOf(t) || null,
+      },
+      check: { party: name, before: counterpartyOf(t) || '' },
+    }));
+    const res = await fetch('/local/syncjob', { method: 'POST', headers, body: JSON.stringify({ actionId: editAction.id, portion: 10, parallel: 1, items }) });
+    const body = await res.json().catch(() => ({}));
     busy = '';
-    note = failed
-      ? `<span class="bad">${ok ? `${ok} von ${list.length} korrigiert, dann Fehler – ` : ''}${esc(failed)}</span>`
-      : `<span class="good">✓ ${ok} Buchung${ok === 1 ? '' : 'en'} an Firefly geschickt – die neuen Empfänger stehen dort gleich.</span>`;
-    api.forget();
+    if (!res.ok) {
+      note = `<span class="bad">Nicht gestartet: ${esc(body.message || `HTTP ${res.status}`)}</span>`;
+      return render();
+    }
+    list.forEach(({ t }) => done.add(String(t.transaction_journal_id))); // aus der Liste nehmen – der Server erledigt den Rest
+    for (const g of groups) picks.delete(g.id);
+    note = '';
+    job = body.job;
     analyse();
     render();
+    watch();
   }
 
   // „toggle“ steigt nicht auf – daher in der Capture-Phase
@@ -178,9 +216,11 @@ export function partyCheckCard(el, metaEl, { txs, editAction }) {
     }
   });
 
-  return api.loadDismissed().then((d) => {
+  return api.loadDismissed().then(async (d) => {
     dismissed = d.parties || new Set();
     analyse();
     render();
+    await refreshJob(); // läuft schon ein Auftrag? Dann Stand zeigen
+    if (job?.status === 'laeuft') watch();
   });
 }
