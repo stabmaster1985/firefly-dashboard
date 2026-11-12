@@ -52,7 +52,33 @@ export async function assignPage(view) {
   const bookings = new Map(); // Händler → { anzahl, buchungen } | 'laden' | Fehlertext
 
   const catInput = (value, attrs) => `<input class="input" list="z-cats" value="${esc(value || '')}" placeholder="Kategorie wählen oder neu eingeben" aria-label="Kategorie" ${attrs}>`;
-  const quelle = (q) => (q ? `<span class="badge auto" title="Quelle der Zuordnung">${esc(data.quellen[q] || q)}</span>` : '');
+  // Woher eine Zuordnung kommt – als Erklärung an jedem Quellen-Etikett
+  const QUELLE_INFO = {
+    buchung: 'Du hast diese Buchung einzeln zugeordnet („nur diese“).',
+    zuordnung: 'Du hast diesen Händler selbst zugeordnet oder bestätigt.',
+    regel: 'Eine deiner Regeln im Labor (Kategorie setzen) trifft auf diesen Händler zu.',
+    import: 'Aus der Tabelle „Händler → Kategorie“ deiner Data-Importer-Konfiguration (Seite Aufräumen).',
+    gelernt: 'Gelernt: Andere Buchungen dieses Händlers haben in Firefly meist diese Kategorie.',
+    liste: 'Eingebaute Händlerliste des Dashboards (z. B. Rossmann → Drogerie) – abschaltbar unter Einstellungen.',
+    ki: 'KI-Bewertung aus dem Labor – abschaltbar unter Einstellungen.',
+  };
+  const quelle = (q) => (q ? `<span class="badge auto" title="${esc(QUELLE_INFO[q] || 'Quelle der Zuordnung')}">${esc(data.quellen[q] || q)}</span>` : '');
+  /** Händler in „Automatisch zugeordnet“ anzeigen und zum Bearbeiten markieren. */
+  function editMerchant(key) {
+    const list = autoFilter === 'alle' ? data.automatisch : data.automatisch.filter((m) => (autoFilter === 'fest' ? m.fest : !m.fest));
+    if (!list.some((m) => m.key === key)) autoFilter = 'alle';
+    const all = autoFilter === 'alle' ? data.automatisch : list;
+    shownAuto = Math.max(shownAuto, all.findIndex((m) => m.key === key) + 1);
+    render();
+    const sec = $('z-auto').closest('.card');
+    if (sec.classList.contains('folded')) setFolded(sec, false);
+    const row = [...$('z-auto').querySelectorAll('.z-row')].find((r) => r.dataset.key === key);
+    if (!row) return;
+    row.hidden = false;
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.classList.add('z-flash');
+    setTimeout(() => row.classList.remove('z-flash'), 2500);
+  }
 
   // ---- In Firefly übernehmen: Händler-Zuordnungen als Firefly-Regeln, Einzelzuordnungen per n8n ----
   const UP_TO_DATE = (m) => m.ff && m.ff.sentAt && m.ff.category === m.category;
@@ -68,14 +94,14 @@ export async function assignPage(view) {
   }
   function renderFireflyCard() {
     const cands = ffCandidates();
-    // Vorbelegung: nicht aktuelle Zuordnungen aus verlässlichen Quellen. Neu bestätigte/geänderte Händler
+    // Vorbelegung: deine eigenen, noch nicht übertragenen Zuordnungen. Neu bestätigte/geänderte Händler
     // (Stand je Händler geändert) werden auch nachträglich angehakt.
     ffPick ||= new Set();
     for (const m of cands) {
       const sig = `${m.quelle}|${m.category}|${m.ff?.sentAt || ''}`;
       if (ffSeen.get(m.key) === sig) continue;
       ffSeen.set(m.key, sig);
-      if (!UP_TO_DATE(m) && ['zuordnung', 'import', 'liste', 'gelernt'].includes(m.quelle)) ffPick.add(m.key);
+      if (!UP_TO_DATE(m) && m.quelle === 'zuordnung') ffPick.add(m.key); // nur, was du selbst bestätigt/zugeordnet hast
       else ffPick.delete(m.key);
     }
     const keys = new Set(cands.map((m) => m.key));
@@ -92,11 +118,11 @@ export async function assignPage(view) {
         Danach stehen die Kategorien in Firefly selbst.</p>
       ${ffNote ? `<div class="cm-note">${ffNote}</div>` : ''}
       ${!rulesAction ? `<div class="cm-note"><b>Zum Übertragen fehlt die Automation „Firefly-Regeln anlegen“.</b> Unter <a href="#/automationen">Automationen</a> eine Automation mit diesem Auslöser einrichten (Vorlage n8n/firefly-buchung-bearbeiten.json, dieselbe wie für „Kategorie übernehmen“ – nur der Auslöser ist ein anderer).</div>
-        ${cands.length ? `<p class="muted">Vorgemerkt (${[...ffPick].filter((k) => keys.has(k)).length} von ${cands.length}):</p><ul class="z-ff-plain">${cands.filter((m) => ffPick.has(m.key)).slice(0, 50).map((m) => `<li>${esc(m.name)} → ${esc(m.category)}</li>`).join('')}</ul>` : ''}` : `
+        ${cands.length ? `<p class="muted">Vorgemerkt sind deine bestätigten Zuordnungen (${[...ffPick].filter((k) => keys.has(k)).length} von ${cands.length} Händlern):</p><ul class="z-ff-plain">${cands.filter((m) => ffPick.has(m.key)).slice(0, 50).map((m) => `<li>${esc(m.name)} → ${esc(m.category)} ${quelle(m.quelle)} <button type="button" class="link-btn" data-edit="${esc(m.key)}">bearbeiten</button></li>`).join('')}</ul>` : ''}` : `
       ${cands.length ? `<div class="table-wrap z-ff-table"><table><thead><tr><th class="pick-cell"><input type="checkbox" id="z-ff-all" aria-label="alle auswählen"></th><th>Händler</th><th>Kategorie</th><th class="num hide-sm">24 Monate</th></tr></thead>
         <tbody>${cands.map((m) => `<tr style="cursor:default">
           <td class="pick-cell"><input type="checkbox" data-ff="${esc(m.key)}" ${ffPick.has(m.key) ? 'checked' : ''} aria-label="${esc(m.name)}"></td>
-          <td><div class="desc">${esc(m.name)} ${status(m)}</div><div class="flow">${esc(data.quellen[m.quelle] || m.quelle || '')} · ${esc(m.cond.field === 'party' ? 'Empfänger' : m.cond.field === 'notes' ? 'Notizen' : 'Beschreibung')} ${m.cond.op === 'equals' ? 'ist' : 'enthält'} „${esc(m.cond.value)}“</div></td>
+          <td><div class="desc">${esc(m.name)} ${status(m)}</div><div class="flow">${quelle(m.quelle)} <button type="button" class="link-btn" data-edit="${esc(m.key)}">bearbeiten</button> · ${esc(m.cond.field === 'party' ? 'Empfänger' : m.cond.field === 'notes' ? 'Notizen' : 'Beschreibung')} ${m.cond.op === 'equals' ? 'ist' : 'enthält'} „${esc(m.cond.value)}“</div></td>
           <td>${esc(m.category)}</td>
           <td class="num hide-sm">${money(m.auto, data.waehrung)}</td></tr>`).join('')}</tbody></table></div>
         <div class="z-ff-actions">
@@ -106,7 +132,7 @@ export async function assignPage(view) {
             <option value="none"${ffRange === 'none' ? ' selected' : ''}>nein, nur künftige Importe</option></select></label>
           <button class="btn primary" type="button" id="z-ff-send"${n && !ffBusy ? '' : ' disabled'}>${n} als Regel${n === 1 ? '' : 'n'} nach Firefly</button>
         </div>
-        <p class="muted small-text">KI-Zuordnungen sind anfangs nicht angehakt – erst prüfen („Buchungen ansehen“ oben). Bereits übertragene Regeln bleiben bestehen; „geändert“ heißt: im Dashboard jetzt eine andere Kategorie – erneut übertragen ändert die Regel.</p>`
+        <p class="muted small-text">Angehakt sind nur deine bestätigten Zuordnungen („✓ Passt“ oder geändert). Andere (Händlerliste, gelernt, Import, KI) erst prüfen – „bearbeiten“ springt zum Händler – oder selbst anhaken. Bereits übertragene Regeln bleiben bestehen; „geändert“ heißt: im Dashboard jetzt eine andere Kategorie – erneut übertragen ändert die Regel.</p>`
     : '<div class="empty">Keine automatischen Zuordnungen mit erkennbarem Händler.</div>'}
       ${elsewhere.length ? `<details class="r-hidden"><summary>${elsewhere.length} Regel${elsewhere.length === 1 ? '' : 'n'} schon in Firefly wirksam (die Buchungen haben dort ihre Kategorie)</summary>
         <ul>${elsewhere.map((f) => `<li>${esc(f.name)} → ${esc(f.category)} <button class="link-btn" type="button" data-ff-remove="${esc(f.key)}">Regel entfernen</button></li>`).join('')}</ul></details>` : ''}
@@ -161,7 +187,10 @@ export async function assignPage(view) {
     if (typeof b === 'string') return `<div class="z-txs"><div class="empty">Konnte nicht geladen werden: ${esc(b)}</div></div>`;
     const herkunft = (t) => (t.ffd_quelle === 'firefly' ? '<span class="badge" title="Kategorie steht so in Firefly">Firefly</span>' : t.ffd_quelle ? quelle(t.ffd_quelle) : '<span class="badge warn">offen</span>');
     const text = (t) => [t.description, t.notes && t.notes !== t.description ? t.notes : ''].filter(Boolean).join(' · ');
+    const m = data.automatisch.find((x) => x.key === key);
+    const origin = m?.quelle && QUELLE_INFO[m.quelle] ? `<p class="z-origin"><b>Woher kommt „${esc(m.category || '')}“?</b> ${esc(QUELLE_INFO[m.quelle])}${m.quelle === 'gelernt' ? ' Welche das sind, zeigen die Zeilen mit „Firefly“.' : ''}</p>` : '';
     return `<div class="z-txs" data-txs="${esc(key)}">
+      ${origin}
       ${b.anzahl > b.buchungen.length ? `<p class="muted">Die neuesten ${b.buchungen.length} von ${b.anzahl} Buchungen.</p>` : ''}
       <div class="table-wrap"><table><tbody>${b.buchungen.map((t, i) => `<tr ${txAttrs(`${key}|${i}`)}>
         <td class="date">${fmtDate(t.date)}</td>
@@ -334,6 +363,7 @@ export async function assignPage(view) {
     const t = e.target.closest('button');
     if (!t) return;
     if (t.dataset.reset) return update(call('POST', { key: t.dataset.reset, category: null }));
+    if (t.dataset.edit) return editMerchant(t.dataset.edit);
     if (t.dataset.ok) {
       t.disabled = true;
       return update(call('POST', { key: t.dataset.ok, name: t.dataset.name, category: t.dataset.category }));

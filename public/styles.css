@@ -1559,3 +1559,5 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
 .z-ff-hint .link-btn { font-size: inherit; color: var(--accent); font-weight: 600; }
 .z-form .btn { white-space: nowrap; flex-shrink: 0; }
 .z-ff-plain { margin: 4px 0 0; padding-left: 20px; font-size: 14px; columns: 2 220px; }
+.z-row.z-flash { background: var(--accent-soft); border-radius: 10px; transition: background 0.4s; }
+.z-origin { margin: 0 0 8px; font-size: 13px; color: var(--text-secondary); }
