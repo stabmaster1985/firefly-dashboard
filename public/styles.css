@@ -1561,3 +1561,8 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
 .z-ff-plain { margin: 4px 0 0; padding-left: 20px; font-size: 14px; columns: 2 220px; }
 .z-row.z-flash { background: var(--accent-soft); border-radius: 10px; transition: background 0.4s; }
 .z-origin { margin: 0 0 8px; font-size: 13px; color: var(--text-secondary); }
+.z-ff-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 10px; font-size: 14px; }
+.z-ff-filter label { display: flex; align-items: center; gap: 8px; }
+.z-ff-filter select { height: 32px; }
+.z-ff-filter label { max-width: 100%; min-width: 0; }
+.z-ff-filter select { min-width: 0; max-width: 100%; flex: 1 1 auto; }

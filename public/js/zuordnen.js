@@ -32,7 +32,7 @@ export async function assignPage(view) {
       <section class="card span-12" id="z-cover">${skeleton(3)}</section>
       ${card('z-open', 'Noch nicht zugeordnet', { filter: true, meta: '<span id="z-open-meta"></span>' })}
       ${card('z-auto', 'Automatisch zugeordnet', { filter: true, meta: '<span id="z-auto-meta"></span>' })}
-      ${card('z-ff', 'In Firefly übernehmen', { meta: '<span id="z-ff-meta"></span>' })}
+      ${card('z-ff', 'In Firefly übernehmen', { filter: true, meta: '<span id="z-ff-meta"></span>' })}
       ${card('z-set', 'Einstellungen', { meta: 'Woraus die Kategorien abgeleitet werden' })}
     </div>`;
   const $ = (id) => view.querySelector(`#${id}`);
@@ -42,6 +42,8 @@ export async function assignPage(view) {
   let ffPick = null; // ausgewählte Händler (Schlüssel) – beim ersten Laden vorbelegt
   const ffSeen = new Map(); // Händler → Stand bei der letzten Vorbelegung
   let ffRange = 'all';
+  let ffView = storage('ffd-z-ff-view', 'offen'); // offen | angehakt | firefly | alle
+  let ffSource = ''; // Quelle oder '' = alle
   let ffNote = '';
   let ffBusy = '';
   let data;
@@ -112,6 +114,22 @@ export async function assignPage(view) {
     const status = (m) => (UP_TO_DATE(m) ? '<span class="badge good">in Firefly</span>'
       : m.ff?.sentAt ? `<span class="badge warn" title="In Firefly steht noch „${esc(m.ff.category)}“">geändert</span>` : '');
     const n = [...ffPick].filter((k) => keys.has(k)).length;
+    // Filter: Status und Quelle (Text über das Filterfeld der Karte)
+    const inFf = (m) => Boolean(m.ff?.sentAt);
+    const views = {
+      offen: { label: 'Noch nicht in Firefly', test: (m) => !UP_TO_DATE(m) },
+      angehakt: { label: 'Angehakt', test: (m) => ffPick.has(m.key) },
+      firefly: { label: 'Schon in Firefly', test: inFf },
+      alle: { label: 'Alle', test: () => true },
+    };
+    if (!views[ffView]) ffView = 'offen';
+    const bySource = (m) => !ffSource || m.quelle === ffSource;
+    const shown = cands.filter((m) => views[ffView].test(m) && bySource(m));
+    const sources = [...new Set(cands.map((m) => m.quelle).filter(Boolean))];
+    const filterBar = `<div class="z-ff-filter">
+        <div class="chips" role="group" aria-label="Status">${Object.entries(views).map(([k, v]) => `<button type="button" class="chip" data-ff-view="${k}" aria-pressed="${ffView === k}">${v.label} ${cands.filter((m) => v.test(m) && bySource(m)).length}</button>`).join('')}</div>
+        ${sources.length > 1 ? `<label>Quelle <select class="input select" data-ff-source><option value="">alle</option>${sources.map((q) => `<option value="${esc(q)}"${q === ffSource ? ' selected' : ''}>${esc(data.quellen[q] || q)} (${cands.filter((m) => m.quelle === q).length})</option>`).join('')}</select></label>` : ''}
+      </div>`;
     $('z-ff').innerHTML = `
       <p class="muted" style="margin-top:0">Macht aus den Zuordnungen Firefly-Regeln (Gruppe „${esc(FF_GROUP)}“): „Händler → Kategorie“ –
         sie greifen bei künftigen Importen und auf Wunsch rückwirkend, <b>nur bei Ausgaben ohne Kategorie</b> (vorhandene Kategorien bleiben).
@@ -119,12 +137,12 @@ export async function assignPage(view) {
       ${ffNote ? `<div class="cm-note">${ffNote}</div>` : ''}
       ${!rulesAction ? `<div class="cm-note"><b>Zum Übertragen fehlt die Automation „Firefly-Regeln anlegen“.</b> Unter <a href="#/automationen">Automationen</a> eine Automation mit diesem Auslöser einrichten (Vorlage n8n/firefly-buchung-bearbeiten.json, dieselbe wie für „Kategorie übernehmen“ – nur der Auslöser ist ein anderer).</div>
         ${cands.length ? `<p class="muted">Vorgemerkt sind deine bestätigten Zuordnungen (${[...ffPick].filter((k) => keys.has(k)).length} von ${cands.length} Händlern):</p><ul class="z-ff-plain">${cands.filter((m) => ffPick.has(m.key)).slice(0, 50).map((m) => `<li>${esc(m.name)} → ${esc(m.category)} ${quelle(m.quelle)} <button type="button" class="link-btn" data-edit="${esc(m.key)}">bearbeiten</button></li>`).join('')}</ul>` : ''}` : `
-      ${cands.length ? `<div class="table-wrap z-ff-table"><table><thead><tr><th class="pick-cell"><input type="checkbox" id="z-ff-all" aria-label="alle auswählen"></th><th>Händler</th><th>Kategorie</th><th class="num hide-sm">24 Monate</th></tr></thead>
-        <tbody>${cands.map((m) => `<tr style="cursor:default">
+      ${cands.length ? `${filterBar}${shown.length ? `<div class="table-wrap z-ff-table"><table><thead><tr><th class="pick-cell"><input type="checkbox" id="z-ff-all" aria-label="alle angezeigten auswählen" title="alle angezeigten"></th><th>Händler</th><th>Kategorie</th><th class="num hide-sm">24 Monate</th></tr></thead>
+        <tbody>${shown.map((m) => `<tr style="cursor:default">
           <td class="pick-cell"><input type="checkbox" data-ff="${esc(m.key)}" ${ffPick.has(m.key) ? 'checked' : ''} aria-label="${esc(m.name)}"></td>
           <td><div class="desc">${esc(m.name)} ${status(m)}</div><div class="flow">${quelle(m.quelle)} <button type="button" class="link-btn" data-edit="${esc(m.key)}">bearbeiten</button> · ${esc(m.cond.field === 'party' ? 'Empfänger' : m.cond.field === 'notes' ? 'Notizen' : 'Beschreibung')} ${m.cond.op === 'equals' ? 'ist' : 'enthält'} „${esc(m.cond.value)}“</div></td>
           <td>${esc(m.category)}</td>
-          <td class="num hide-sm">${money(m.auto, data.waehrung)}</td></tr>`).join('')}</tbody></table></div>
+          <td class="num hide-sm">${money(m.auto, data.waehrung)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Keine Händler in dieser Auswahl.</div>'}
         <div class="z-ff-actions">
           <label>rückwirkend anwenden <select class="input select" data-ff-range>
             <option value="all"${ffRange === 'all' ? ' selected' : ''}>alle Buchungen ohne Kategorie</option>
@@ -141,8 +159,8 @@ export async function assignPage(view) {
       ${ffBusy ? `<p class="muted">${esc(ffBusy)}</p>` : ''}`;
     const all = $('z-ff').querySelector('#z-ff-all');
     if (all) {
-      all.checked = cands.length > 0 && cands.every((m) => ffPick.has(m.key));
-      all.indeterminate = !all.checked && cands.some((m) => ffPick.has(m.key));
+      all.checked = shown.length > 0 && shown.every((m) => ffPick.has(m.key));
+      all.indeterminate = !all.checked && shown.some((m) => ffPick.has(m.key));
     }
   }
 
@@ -364,6 +382,11 @@ export async function assignPage(view) {
     if (!t) return;
     if (t.dataset.reset) return update(call('POST', { key: t.dataset.reset, category: null }));
     if (t.dataset.edit) return editMerchant(t.dataset.edit);
+    if (t.dataset.ffView) {
+      ffView = t.dataset.ffView;
+      store('ffd-z-ff-view', ffView);
+      return renderFirefly();
+    }
     if (t.dataset.ok) {
       t.disabled = true;
       return update(call('POST', { key: t.dataset.ok, name: t.dataset.name, category: t.dataset.category }));
@@ -441,7 +464,12 @@ export async function assignPage(view) {
       return renderFirefly();
     }
     if (e.target.id === 'z-ff-all') {
-      ffCandidates().forEach((m) => (e.target.checked ? ffPick.add(m.key) : ffPick.delete(m.key)));
+      // nur die angezeigten (Status, Quelle und Filterfeld)
+      $('z-ff').querySelectorAll('tbody tr:not([hidden]) input[data-ff]').forEach((i) => (e.target.checked ? ffPick.add(i.dataset.ff) : ffPick.delete(i.dataset.ff)));
+      return renderFirefly();
+    }
+    if (e.target.matches('[data-ff-source]')) {
+      ffSource = e.target.value;
       return renderFirefly();
     }
     if (e.target.matches('[data-ff-range]')) {
