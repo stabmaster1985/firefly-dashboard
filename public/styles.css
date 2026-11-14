@@ -1349,7 +1349,7 @@ tr.tx-hidden td.num { text-decoration: line-through; }
 .z-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
 .z-note { margin: 12px 0 0; font-size: 13px; max-width: 90ch; }
 .z-list .row.z-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(260px, 380px); gap: 8px 16px; align-items: center; cursor: default; }
-.z-form { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+.z-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
 .z-form .input { flex: 1 1 auto; min-width: 0; height: 32px; }
 .z-opts { display: grid; gap: 10px; margin: 12px 0 0 28px; }
 .z-opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; }
@@ -1590,3 +1590,23 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
   .pc-group .desc { overflow-wrap: anywhere; }
 }
 .pc-cats { display: block; font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+
+/* Zuordnen: Aufteilen */
+.z-split { margin: 4px 0 12px; padding: 12px; border: 1px solid var(--grid); border-radius: 10px; background: var(--surface-2); }
+.z-split-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 8px; }
+.z-split-line .input { height: 32px; min-width: 0; }
+.z-split-line [data-sf="value"] { flex: 1 1 160px; }
+.z-split-line [data-sf="category"] { flex: 1 1 160px; }
+.z-split-line select { flex: 0 0 auto; }
+.z-split-n { font-size: 12px; }
+.z-split-actions, .z-split-rest { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 8px 0; font-size: 13px; }
+.z-split-rest .input { flex: 1 1 180px; max-width: 320px; height: 32px; }
+.z-split-preview summary { cursor: pointer; font-size: 13px; margin-top: 4px; }
+.z-split-preview .table-wrap { max-height: 360px; overflow: auto; }
+.z-split-sum { grid-column: 1 / -1; font-size: 13px; color: var(--text-secondary); }
+@media (max-width: 640px) {
+  .z-split-preview tr { display: grid; grid-template-columns: auto auto 1fr; gap: 2px 10px; padding: 8px 0; border-bottom: 1px solid var(--grid); }
+  .z-split-preview td { border: 0; padding: 0; }
+  .z-split-preview td:nth-child(2) { grid-column: 1 / -1; order: 4; overflow-wrap: anywhere; }
+  .z-split-preview td:nth-child(4) { text-align: right; }
+}

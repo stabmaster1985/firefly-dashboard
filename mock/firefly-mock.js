@@ -207,6 +207,14 @@ for (const [ago, amount] of [[9, 58.4], [23, 61.2], [41, 49.9]]) {
 // ELV-Lastschrift über einen Zahlungsdienstleister ohne Händlernamen, ebenfalls bei der Werkstatt gelandet
 add(addDays(today, -15), 'withdrawal', 52.3, 'Basislastschrift', giro, ext('Autohaus Becker'), { category: 'Mobilität',
   notes: '150908221754367241200059090 ELV70142803 15.09 08:22 ME1 EREF: 15090822175436724120005909070142803 MREF: 7014280399502409300822 CRED: DE00ZZZ00000000000 IBAN: DE00123456780000000000 BIC: TESTDEFFXXX' });
+// Ein Versicherer, zwei Verträge (Kfz und Familie) – für „Aufteilen“ unter Zuordnen. Ältere Monate sind in Firefly
+// kategorisiert („Versicherung“), die neueren nicht → automatisch „gelernt“, aber für beide Verträge gleich
+for (let k = 1; k <= 8; k++) {
+  const d = new Date(today.getFullYear(), today.getMonth() - k, 2);
+  const cat = k > 4 ? { category: 'Versicherung' } : {};
+  add(d, 'withdrawal', 48.2, 'Beitrag', giro, ext('Musterversicherung AG'), { ...cat, notes: `EREF+B${k}KFZ MREF+MV-KFZ-0815 CRED+DE00ZZZ00000000001 SVWZ+Kfz-Versicherung Vertrag 0815` });
+  add(d, 'withdrawal', 12.9, 'Beitrag', giro, ext('Musterversicherung AG'), { ...cat, notes: `EREF+B${k}PHV MREF+MV-PHV-4711 CRED+DE00ZZZ00000000001 SVWZ+Privathaftpflicht Familie Vertrag 4711` });
+}
 // Eine aktuelle große Ausgabe (für die Warnungen)
 add(addDays(today, -4), 'withdrawal', 649, 'Neue Waschmaschine', kk, ext('MediaMarkt'), { category: 'Shopping' });
 // Eine doppelt importierte Buchung (für die Dubletten-Erkennung)

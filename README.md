@@ -188,7 +188,11 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   offen), die offenen Händler nach Betrag und die automatischen Zuordnungen zum Prüfen – standardmäßig
   nur, was du noch nicht bestätigt („✓ Passt“) oder geändert hast, so wird die Liste kürzer
   (Bestätigtes unter „Von dir bestätigt“, mit Status „nur Dashboard“ / „in Firefly“); eine
-  Zuordnung gilt für alle Buchungen des Händlers, auch künftige. „Buchungen ansehen“ klappt die
+  Zuordnung gilt für alle Buchungen des Händlers, auch künftige. **Aufteilen:** Stecken hinter einem Händler verschiedene
+  Verträge (Versicherer mit Kfz- und Familienversicherung), bekommt er je nach Buchungstext eine
+  andere Kategorie – „Notiz enthält Mandatsreferenz … → KFZ“, sonst eine Standard-Kategorie; mit
+  Vorschlägen (Mandatsreferenzen, Wörter, die nur einen Teil der Buchungen betreffen) und Vorschau.
+  In Firefly entstehen daraus eigene Regeln, die vor der allgemeinen laufen. „Buchungen ansehen“ klappt die
   einzelnen Buchungen eines Händlers auf (mit Herkunft der Kategorie und allen Details); einzelne
   lassen sich dort abweichend zuordnen („nur diese“). **PayPal & Co.:** Steht im Buchungstext, bei
   wem eingekauft wurde („PP.4711.PP . Spotify AB, Ihr Einkauf bei Spotify AB“, „PayPal \*Steam“),

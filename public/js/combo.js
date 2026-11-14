@@ -74,6 +74,7 @@ function close() {
 
 function place() {
   if (!pop) return;
+  if (!pop.input.isConnected) return close(); // Feld beim Neuzeichnen ersetzt
   const r = pop.input.getBoundingClientRect();
   const vv = window.visualViewport;
   const viewH = vv ? vv.height + vv.offsetTop : window.innerHeight;
@@ -194,3 +195,7 @@ document.addEventListener('scroll', (e) => {
   if (pop && !pop.el.contains(e.target)) place();
 }, true);
 window.addEventListener('hashchange', close);
+// Seite zeichnet neu und das Feld ist weg → Liste nicht verwaist stehen lassen
+new MutationObserver(() => {
+  if (pop && !pop.input.isConnected) close();
+}).observe(document.body, { childList: true, subtree: true });
