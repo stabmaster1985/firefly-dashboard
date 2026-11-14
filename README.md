@@ -192,6 +192,8 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   Verträge (Versicherer mit Kfz- und Familienversicherung), bekommt er je nach Buchungstext eine
   andere Kategorie – „Notiz enthält Mandatsreferenz … → KFZ“, sonst eine Standard-Kategorie; mit
   Vorschlägen (Mandatsreferenzen, Wörter, die nur einen Teil der Buchungen betreffen) und Vorschau.
+  Statt einer Standard-Kategorie geht auch „sonst: Kategorie beibehalten“ – dann ändern sich nur
+  die Buchungen, die eine Unterscheidung trifft.
   In Firefly entstehen daraus eigene Regeln, die vor der allgemeinen laufen. „Buchungen ansehen“ klappt die
   einzelnen Buchungen eines Händlers auf (mit Herkunft der Kategorie und allen Details); einzelne
   lassen sich dort abweichend zuordnen („nur diese“). **PayPal & Co.:** Steht im Buchungstext, bei

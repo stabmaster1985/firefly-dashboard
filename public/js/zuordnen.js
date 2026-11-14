@@ -89,8 +89,10 @@ export async function assignPage(view) {
   /** Kategorie für die Firefly-Regel: bei deiner Zuordnung deren Kategorie („sonst“ beim Aufteilen), sonst die erkannte. */
   const mainCat = (m) => (m.fest && m.festKategorie ? m.festKategorie : m.category);
   const sameSplit = (a, b) => JSON.stringify(a || []) === JSON.stringify(b || []);
-  const UP_TO_DATE = (m) => m.ff && m.ff.sentAt && m.ff.category === mainCat(m) && sameSplit(m.ff.split, m.split);
-  const ffCandidates = () => data.automatisch.filter((m) => m.cond && m.category && m.quelle !== 'buchung');
+  /** Kategorie der allgemeinen Firefly-Regel – leer, wenn die übrigen Buchungen ihre Kategorie behalten (keep). */
+  const ffCat = (m) => (m.festKeep ? '' : mainCat(m));
+  const UP_TO_DATE = (m) => m.ff && m.ff.sentAt && m.ff.category === ffCat(m) && Boolean(m.ff.keep) === Boolean(m.festKeep) && sameSplit(m.ff.split, m.split);
+  const ffCandidates = () => data.automatisch.filter((m) => m.cond && (m.category || m.split) && m.quelle !== 'buchung');
   /** Karte „In Firefly übernehmen“ – ein Fehler darin zeigt sich in der Karte, statt sie leer zu lassen. */
   function renderFirefly() {
     try {
@@ -147,7 +149,7 @@ export async function assignPage(view) {
         <tbody>${shown.map((m) => `<tr style="cursor:default">
           <td class="pick-cell"><input type="checkbox" data-ff="${esc(m.key)}" ${ffPick.has(m.key) ? 'checked' : ''} aria-label="${esc(m.name)}"></td>
           <td><div class="desc">${esc(m.name)} ${status(m)}</div><div class="flow">${quelle(m.quelle)} <button type="button" class="link-btn" data-edit="${esc(m.key)}">bearbeiten</button> · ${esc(m.cond.field === 'party' ? 'Empfänger' : m.cond.field === 'notes' ? 'Notizen' : 'Beschreibung')} ${m.cond.op === 'equals' ? 'ist' : 'enthält'} „${esc(m.cond.value)}“</div></td>
-          <td>${esc(mainCat(m))}${m.split ? `<div class="flow">+ ${m.split.length} Unterscheidung${m.split.length === 1 ? '' : 'en'} (${m.split.map((x) => `„${esc(x.value)}“ → ${esc(x.category)}`).join(', ')})</div>` : ''}</td>
+          <td>${m.festKeep ? '<span class="muted">übrige bleiben</span>' : esc(mainCat(m))}${m.split ? `<div class="flow">+ ${m.split.length} Unterscheidung${m.split.length === 1 ? '' : 'en'} (${m.split.map((x) => `„${esc(x.value)}“ → ${esc(x.category)}`).join(', ')})</div>` : ''}</td>
           <td class="num hide-sm">${money(m.auto, data.waehrung)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Keine Händler in dieser Auswahl.</div>'}
         <div class="z-ff-actions">
           <label>rückwirkend anwenden <select class="input select" data-ff-range>
@@ -176,7 +178,7 @@ export async function assignPage(view) {
     // Reihenfolge aus (hier: spätere im Feld zuerst) – die speziellen setzen die Kategorie, die allgemeine findet dann
     // keine Buchung ohne Kategorie mehr.
     const rules = list.flatMap((f) => [
-      { id: keyId(f.key), enabled: true, when: [f.cond], setCategory: f.category, addTags: [] },
+      ...(f.keep ? [] : [{ id: keyId(f.key), enabled: true, when: [f.cond], setCategory: f.category, addTags: [] }]), // keep: keine allgemeine Regel
       // umgekehrt: die erste Zeile läuft in Firefly zuerst (wie im Dashboard)
       ...[...(f.split || [])].reverse().map((x) => ({ split: true, id: keyId(`${f.key}|${x.field}|${x.value}`), enabled: true, when: [f.cond, { field: x.field, op: 'contains', value: x.value }], setCategory: x.category, addTags: [] })),
     ]);
@@ -266,12 +268,12 @@ export async function assignPage(view) {
     const preview = list ? list.map((t) => {
       const ff = t.ffd_quelle === 'firefly';
       const hit = matchLine(d.lines, t);
-      const target = ff ? t.category_name : hit ? hit.category : d.rest;
+      const target = ff ? t.category_name : hit ? hit.category : d.keep ? t.category_name : d.rest;
       // Firefly-Kategorie, die eine Unterscheidung ändert: geschieht über die Firefly-Regel (rückwirkend anwenden)
       const viaRule = ff && hit && hit.category.trim().toLowerCase() !== String(t.category_name || '').toLowerCase();
       return `<tr style="cursor:default"><td class="date">${fmtDate(t.date)}</td><td><div class="desc">${esc(String(t.description || '').slice(0, 90))}</div>${t.notes ? `<div class="flow">${esc(String(t.notes).slice(0, 110))}</div>` : ''}</td>
         <td class="num">${signedAmount(t)}</td><td>${viaRule ? `<s class="muted">${esc(target || '')}</s> → <b>${esc(hit.category)}</b> <span class="badge warn" title="Steht in Firefly mit Kategorie – wird über „In Firefly übernehmen“ (rückwirkend anwenden) umgestellt">per Firefly-Regel</span>`
-    : ff ? `${esc(target || '')} <span class="badge" title="Kategorie steht so in Firefly – bleibt">Firefly</span>` : `→ <b>${esc(target || '–')}</b>${hit ? '' : ' <span class="muted">(sonst)</span>'}`}</td></tr>`;
+    : ff ? `${esc(target || '')} <span class="badge" title="Kategorie steht so in Firefly – bleibt">Firefly</span>` : !hit && d.keep ? `${esc(target || '–')} <span class="muted">(bleibt)</span>` : `→ <b>${esc(target || '–')}</b>${hit ? '' : ' <span class="muted">(sonst)</span>'}`}</td></tr>`;
     }).join('') : '';
     return `<div class="z-split" data-split-box="${esc(m.key)}">
       <p class="muted" style="margin-top:0">Je nach Buchungstext eine andere Kategorie – z. B. beim Versicherer die Kfz-Versicherung (Mandatsreferenz oder „Kfz“ im Text) nach „KFZ“, die Familienversicherung nach „Familie“. Die erste passende Zeile gilt.
@@ -279,12 +281,14 @@ export async function assignPage(view) {
       ${d.lines.map(line).join('')}
       <div class="z-split-actions"><button type="button" class="btn small" data-split-add>+ Unterscheidung</button>
         ${hints.length ? `<span class="muted">Vorschläge:</span> ${hints.map((h, i) => `<button type="button" class="chip small" data-split-hint="${i}" title="${esc(h.kind)} in ${h.field === 'notes' ? 'der Notiz' : 'der Beschreibung'}">${esc(h.kind === 'Wort' ? h.value : `${h.kind} ${h.value}`)} · ${h.n}×</button>`).join(' ')}` : list ? '' : '<span class="muted">Lade Buchungen …</span>'}</div>
-      <div class="z-split-rest"><span class="muted">sonst →</span>${catInput(d.rest, 'data-split-rest')}
+      <div class="z-split-rest"><span class="muted">sonst</span>
+        <select class="input select" data-split-keep aria-label="Übrige Buchungen"><option value="set"${d.keep ? '' : ' selected'}>→ Kategorie festlegen</option><option value="keep"${d.keep ? ' selected' : ''}>Kategorie beibehalten</option></select>
+        ${d.keep ? '' : catInput(d.rest, 'data-split-rest')}
         <button type="button" class="btn small primary" data-split-save="${esc(m.key)}" data-name="${esc(m.name)}">Aufteilung speichern</button>
         ${m.split ? `<button type="button" class="link-btn" data-split-clear="${esc(m.key)}" data-name="${esc(m.name)}">Aufteilung entfernen</button>` : ''}</div>
       ${list ? (() => {
     // Firefly-Buchungen, die keine Zeile trifft, behalten ihre Kategorie – „sonst“ gilt nur ohne Kategorie
-    const stay = list.filter((t) => t.ffd_quelle === 'firefly' && !matchLine(d.lines, t) && d.rest.trim() && String(t.category_name || '').toLowerCase() !== d.rest.trim().toLowerCase()).length;
+    const stay = d.keep ? 0 : list.filter((t) => t.ffd_quelle === 'firefly' && !matchLine(d.lines, t) && d.rest.trim() && String(t.category_name || '').toLowerCase() !== d.rest.trim().toLowerCase()).length;
     return stay ? `<p class="z-split-note">${stay} Buchung${stay === 1 ? '' : 'en'} mit Kategorie in Firefly trifft keine Zeile und ${stay === 1 ? 'behält ihre' : 'behalten ihre'} Kategorie („sonst“ gilt nur für Buchungen ohne Kategorie). Sollen auch sie umgestellt werden, eine eigene Zeile anlegen – z. B. mit der Mandatsreferenz des zweiten Vertrags.</p>` : '';
   })() : ''}
       ${list ? `<details class="z-split-preview" open><summary>Vorschau: ${list.length} Buchung${list.length === 1 ? '' : 'en'}</summary><div class="table-wrap"><table><tbody>${preview}</tbody></table></div></details>` : ''}
@@ -303,7 +307,9 @@ export async function assignPage(view) {
       x.value = row.querySelector('[data-sf="value"]').value;
       x.category = row.querySelector('[data-sf="category"]').value;
     });
-    d.rest = box.querySelector('[data-split-rest]').value;
+    d.keep = box.querySelector('[data-split-keep]').value === 'keep';
+    const rest = box.querySelector('[data-split-rest]');
+    if (rest) d.rest = rest.value;
     return d;
   }
 
@@ -407,7 +413,7 @@ export async function assignPage(view) {
           ${!m.fest && m.category && m.quelle !== 'buchung' ? `<button class="btn small primary" type="button" data-ok="${esc(m.key)}" data-name="${esc(m.name)}" data-category="${esc(m.category)}" title="Kategorie bestätigen – gilt dann als deine Zuordnung">✓ Passt</button>` : ''}
           ${m.cond ? `<button class="link-btn" type="button" data-split="${esc(m.key)}" title="Unterschiedliche Kategorien je nach Buchungstext, z. B. Kfz- und Familienversicherung beim selben Versicherer">${splitOpen.has(m.key) ? 'Aufteilen schließen' : 'aufteilen'}</button>` : ''}
           ${m.fest ? `<button class="link-btn" type="button" data-reset="${esc(m.key)}" title="Deine Zuordnung entfernen – dann gelten wieder Regeln, Händlerliste und KI">zurücksetzen</button>` : ''}</form>` : '<div class="z-form"></div>'}
-        ${m.split ? `<div class="z-split-sum">Aufgeteilt: ${m.split.map((x) => `${x.field === 'notes' ? 'Notiz' : 'Text'} enthält „${esc(x.value)}“ → <b>${esc(x.category)}</b>`).join(' · ')} · sonst → <b>${esc(mainCat(m) || '–')}</b></div>` : ''}
+        ${m.split ? `<div class="z-split-sum">Aufgeteilt: ${m.split.map((x) => `${x.field === 'notes' ? 'Notiz' : 'Text'} enthält „${esc(x.value)}“ → <b>${esc(x.category)}</b>`).join(' · ')} · sonst ${m.festKeep ? '<b>bleibt die vorhandene Kategorie</b>' : `→ <b>${esc(mainCat(m) || '–')}</b>`}</div>` : ''}
       </div>${splitBlock(m)}${txBlock(m.key)}`).join('')}</div>
       ${autoList.length > shownAuto ? `<button class="btn" id="z-auto-more" style="margin-top:12px">Weitere ${Math.min(40, autoList.length - shownAuto)} zeigen</button>` : ''}`
     : `<div class="empty">${autoFilter === 'pruefen' ? 'Alles geprüft. 🎉' : 'Noch nichts bestätigt.'}</div>`}`
@@ -502,7 +508,7 @@ export async function assignPage(view) {
         return render();
       }
       const m = data.automatisch.find((x) => x.key === key);
-      drafts.set(key, { lines: (m.split || []).map((x) => ({ ...x })), rest: mainCat(m) || '' });
+      drafts.set(key, { lines: (m.split || []).map((x) => ({ ...x })), rest: m.festKeep ? '' : mainCat(m) || '', keep: Boolean(m.festKeep) });
       if (!drafts.get(key).lines.length) drafts.get(key).lines.push({ field: 'description', value: '', category: '' });
       splitOpen.add(key);
       render();
@@ -529,10 +535,10 @@ export async function assignPage(view) {
       }
       if (t.dataset.splitSave) {
         const lines = d.lines.filter((x) => x.value.trim().length >= 2 && x.category.trim());
-        if (!d.rest.trim()) return alert('Bitte eine Kategorie für „sonst“ eintragen.');
+        if (!d.keep && !d.rest.trim()) return alert('Bitte eine Kategorie für „sonst“ eintragen – oder „vorhandene Kategorie beibehalten“ wählen.');
         if (!lines.length) return alert('Bitte mindestens eine Unterscheidung mit Text und Kategorie eintragen.');
         splitOpen.delete(key);
-        return update(call('POST', { key, name: t.dataset.name, category: d.rest.trim(), split: lines }));
+        return update(call('POST', { key, name: t.dataset.name, category: d.keep ? '' : d.rest.trim(), split: lines, keep: d.keep }));
       }
       if (t.dataset.splitClear) {
         splitOpen.delete(key);
@@ -565,7 +571,7 @@ export async function assignPage(view) {
       if (mixed.length && !window.confirm(`Achtung: Hinter ${mixed.map((m) => m.name).join(', ')} stecken vermutlich verschiedene Händler (in Firefly verschiedene Kategorien). Die Regel gibt künftig allen Buchungen ohne Kategorie bei diesem Empfänger dieselbe Kategorie. Trotzdem übertragen?`)) return;
       if (!list.length || !window.confirm(`${list.length} Regel${list.length === 1 ? '' : 'n'} „Händler → Kategorie“ in Firefly anlegen${ffRange === 'none' ? '' : ' und auf vorhandene Ausgaben ohne Kategorie anwenden'}?`)) return;
       return ffDo('Übertrage nach Firefly … (rückwirkend anwenden kann ein paar Minuten dauern)', async () => {
-        const res = await call('POST', { ff: { add: list.map((m) => ({ key: m.key, name: m.name, category: mainCat(m), cond: m.cond, split: m.split || [] })) } });
+        const res = await call('POST', { ff: { add: list.map((m) => ({ key: m.key, name: m.name, category: ffCat(m), cond: m.cond, split: m.split || [], keep: Boolean(m.festKeep) })) } });
         await sendRules(res.firefly);
         await call('POST', { ff: { sent: true } });
         list.forEach((m) => ffPick.delete(m.key));
@@ -623,7 +629,10 @@ export async function assignPage(view) {
   });
   view.addEventListener('change', (e) => {
     // Aufteilen: Vorschau und Trefferzahlen nach jeder Eingabe neu
-    if (e.target.closest('[data-split-box]') && (e.target.matches('[data-sf], [data-split-rest]'))) return render();
+    if (e.target.closest('[data-split-box]') && (e.target.matches('[data-sf], [data-split-rest], [data-split-keep]'))) {
+      readDraft(e.target.closest('[data-split-box]').dataset.splitBox);
+      return render();
+    }
     if (e.target.dataset.ff) {
       if (e.target.checked) ffPick.add(e.target.dataset.ff);
       else ffPick.delete(e.target.dataset.ff);
