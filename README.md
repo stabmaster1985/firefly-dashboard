@@ -106,7 +106,8 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   `category_is:"Lebensmittel"`, `amount_more:100`, `description_contains:`, `notes_contains:`),
   Filter nach Art, Details per Klick. Treffer lassen sich anhaken (auch alle auf einmal und über
   mehrere Suchen hinweg) und gesammelt bearbeiten: **Kategorie setzen**, **Tag hinzufügen** (über
-  n8n) oder **Als Gruppe ins Labor** – das funktioniert auch für Buchungen, die älter als die
+  n8n), **Verschieben** (anderer Empfänger/Gegenkonto, als Auftrag auf dem Server, ohne IBAN) oder
+  **Als Gruppe ins Labor** – das funktioniert auch für Buchungen, die älter als die
   24 Monate des Labors sind (die Gruppe merkt sich, wo sie in Firefly liegen)
 - **Konten** – Kontostände und Verlauf als Liniendiagramm, **Vermögensverlauf** über 1–10 Jahre
   (Monatsendstände, Veränderung, Ø pro Monat, Höchststand), Verbindlichkeiten; Klick auf ein

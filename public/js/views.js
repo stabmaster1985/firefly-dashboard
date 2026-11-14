@@ -400,6 +400,9 @@ export async function transactions(view, { period, params }) {
   const lists = Promise.all([
     api.getAll('categories').then((l) => l.map((c) => c.attributes.name)).catch(() => []),
     api.getAll('tags').then((l) => l.map((x) => x.attributes.tag)).catch(() => []),
+    // Gegenkonten (Ausgaben- und Einnahmenkonten) für „Empfänger setzen“
+    Promise.all(['expense', 'revenue'].map((type) => api.getAll('accounts', { type }).catch(() => [])))
+      .then((ls) => [...new Set(ls.flat().map((a) => a.attributes?.name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'))),
   ]);
   function syncPickAll() {
     const shown = state.rows.length;
@@ -415,15 +418,17 @@ export async function transactions(view, { period, params }) {
     }
     const sel = [...picked.values()];
     const code = mainCurrency(sel);
-    const [cats, tagList] = await lists;
+    const [cats, tagList, parties] = await lists;
     bar.hidden = false;
     bar.innerHTML = `<span><b>${picked.size}</b> ausgewählt · ${money(sum(sel.filter((t) => t.currency_code === code), (t) => t.amount), code)}</span>
       <form class="bar-form" data-bulk="cat"><input name="v" list="tx-bulk-cats" placeholder="Kategorie …" aria-label="Kategorie setzen" autocomplete="off"><button class="btn small">Setzen</button></form>
       <form class="bar-form" data-bulk="tag"><input name="v" list="tx-bulk-tags" placeholder="Tag …" aria-label="Tag hinzufügen" autocomplete="off"><button class="btn small">Hinzufügen</button></form>
+      <form class="bar-form" data-bulk="party" title="Buchungen einem anderen Gegenkonto zuordnen (z. B. falsch zugeordnete Kartenzahlungen)"><input name="v" list="tx-bulk-parties" placeholder="Empfänger / Gegenkonto …" aria-label="Empfänger setzen" autocomplete="off"><button class="btn small">Verschieben</button></form>
       <button class="btn small primary" data-bulk-group>Als Gruppe ins Labor …</button>
       <button class="link-btn" data-bulk-clear>Auswahl aufheben</button>
       <datalist id="tx-bulk-cats">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
-      <datalist id="tx-bulk-tags">${tagList.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>`;
+      <datalist id="tx-bulk-tags">${tagList.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
+      <datalist id="tx-bulk-parties">${parties.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>`;
   }
   const clear = () => {
     picked.clear();
@@ -477,6 +482,38 @@ export async function transactions(view, { period, params }) {
     toast(`Erledigt: ${sel.length} Buchung${sel.length === 1 ? '' : 'en'} in Firefly geändert.`);
   }
 
+  /**
+   * Empfänger (Gegenkonto) setzen – als Auftrag auf dem Server (wie CSV-Abgleich und „Falsch zugeordnete
+   * Gegenkonten“): n8n arbeitet im Hintergrund, der Server prüft danach in Firefly. Ohne IBAN, damit Firefly
+   * das Konto über den Namen nimmt bzw. anlegt; Kategorie, Beschreibung und Tags bleiben.
+   */
+  async function bulkParty(name) {
+    const action = await actionFor('categorize');
+    if (!action) {
+      toast('Dafür fehlt die Automation „Kategorie übernehmen“ (n8n-Vorlage firefly-buchung-bearbeiten.json) – siehe Automationen.');
+      return;
+    }
+    const sel = [...picked.values()].filter((t) => t.type === 'withdrawal' || t.type === 'deposit');
+    const skipped = picked.size - sel.length;
+    if (!sel.length) return toast('Umbuchungen haben kein Gegenkonto – nichts zu verschieben.');
+    if (!window.confirm(`Bei ${sel.length} Buchung${sel.length === 1 ? '' : 'en'} den Empfänger auf „${name}“ setzen?${skipped ? `\n(${skipped} Umbuchung${skipped === 1 ? '' : 'en'} bleiben unverändert.)` : ''}\n\nDas ändert Daten in Firefly (über n8n) und läuft als Auftrag auf dem Server.`)) return;
+    const before = (t) => (t.type === 'deposit' ? t.source_name : t.destination_name) || '';
+    const items = sel.map((t) => ({
+      j: t.transaction_journal_id, g: t.groupId, fp: '', name,
+      payload: { transaction_group_id: t.groupId, transaction_journal_id: t.transaction_journal_id, art: t.type, datum: String(t.date).slice(0, 10), betrag: t.amount, name, name_alt: before(t) || null },
+      check: { party: name, before: before(t) },
+    }));
+    const res = await fetch('/local/syncjob', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' },
+      body: JSON.stringify({ actionId: action.id, portion: 10, parallel: 1, items }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) return toast(`Nicht gestartet: ${body.message || `HTTP ${res.status}`}`);
+    clear();
+    toast(`Läuft auf dem Server: ${sel.length} Buchung${sel.length === 1 ? '' : 'en'} → „${name}“. Stand unter CSV-Abgleich („Übertragung auf dem Server“).`);
+  }
+
   /** Auswahl als Gruppe ins Labor – mit Verweisen, damit auch ältere Buchungen übertragbar bleiben. */
   async function bulkGroup() {
     const sel = [...picked.values()];
@@ -506,7 +543,7 @@ export async function transactions(view, { period, params }) {
     e.preventDefault();
     const form = e.target.closest('[data-bulk]');
     const value = form?.v.value.trim();
-    if (value) bulkSet(form.dataset.bulk, value);
+    if (value) (form.dataset.bulk === 'party' ? bulkParty(value) : bulkSet(form.dataset.bulk, value));
   });
   bar.addEventListener('click', (e) => {
     if (e.target.closest('[data-bulk-clear]')) clear();
