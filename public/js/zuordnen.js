@@ -138,7 +138,7 @@ export async function assignPage(view) {
       </div>`;
     $('z-ff').innerHTML = `
       <p class="muted" style="margin-top:0">Macht aus den Zuordnungen Firefly-Regeln (Gruppe „${esc(FF_GROUP)}“): „Händler → Kategorie“ –
-        sie greifen bei künftigen Importen und auf Wunsch rückwirkend, <b>nur bei Ausgaben ohne Kategorie</b> (vorhandene Kategorien bleiben).
+        sie greifen bei künftigen Importen und auf Wunsch rückwirkend, <b>nur bei Ausgaben ohne Kategorie</b> (vorhandene Kategorien bleiben). Ausnahme: Unterscheidungen beim Aufteilen gelten immer, auch über eine vorhandene Kategorie.
         Danach stehen die Kategorien in Firefly selbst.</p>
       ${ffNote ? `<div class="cm-note">${ffNote}</div>` : ''}
       ${!rulesAction ? `<div class="cm-note"><b>Zum Übertragen fehlt die Automation „Firefly-Regeln anlegen“.</b> Unter <a href="#/automationen">Automationen</a> eine Automation mit diesem Auslöser einrichten (Vorlage n8n/firefly-buchung-bearbeiten.json, dieselbe wie für „Kategorie übernehmen“ – nur der Auslöser ist ein anderer).</div>
@@ -178,12 +178,15 @@ export async function assignPage(view) {
     const rules = list.flatMap((f) => [
       { id: keyId(f.key), enabled: true, when: [f.cond], setCategory: f.category, addTags: [] },
       // umgekehrt: die erste Zeile läuft in Firefly zuerst (wie im Dashboard)
-      ...[...(f.split || [])].reverse().map((x) => ({ id: keyId(`${f.key}|${x.field}|${x.value}`), enabled: true, when: [f.cond, { field: x.field, op: 'contains', value: x.value }], setCategory: x.category, addTags: [] })),
+      ...[...(f.split || [])].reverse().map((x) => ({ split: true, id: keyId(`${f.key}|${x.field}|${x.value}`), enabled: true, when: [f.cond, { field: x.field, op: 'contains', value: x.value }], setCategory: x.category, addTags: [] })),
     ]);
+    const splitIds = new Set(rules.filter((r) => r.split).map((r) => r.id));
     const regeln = toFireflyRules(rules).map((r, k, arr) => ({
       ...r,
       // nur Ausgaben ohne Kategorie – vorhandene Kategorien (auch vom Import) bleiben unangetastet
-      triggers: [...r.triggers, { type: 'has_no_category', value: 'true' }, { type: 'transaction_type', value: 'withdrawal' }],
+      // Unterscheidungen (Händler + Mandatsreferenz o. ä.) sind deine ausdrückliche Entscheidung: sie gelten auch, wenn die
+      // Buchung schon eine Kategorie hat (z. B. vom Import „Versicherung“); die allgemeine Regel nur ohne Kategorie
+      triggers: [...r.triggers, ...(splitIds.has(r.labor_id) ? [] : [{ type: 'has_no_category', value: 'true' }]), { type: 'transaction_type', value: 'withdrawal' }],
       order: arr.length - k,
       description: `Zuordnen (Dashboard) · id:${r.labor_id}`,
     }));
@@ -254,23 +257,36 @@ export async function assignPage(view) {
         <span class="muted">enthält</span><input class="input" data-sf="value" value="${esc(x.value)}" placeholder="z. B. Kfz oder Vertragsnummer" aria-label="Text">
         <span class="muted">→</span>${catInput(x.category, 'data-sf="category"')}
         <button type="button" class="link-btn" data-split-del="${i}" aria-label="Unterscheidung entfernen">✕</button>
-        ${list ? `<span class="muted z-split-n">${list.filter((t) => t.ffd_quelle !== 'firefly' && matchLine([x], t)).length}×</span>` : ''}</div>`;
+        ${list ? (() => {
+    const hits = list.filter((t) => matchLine([x], t));
+    const inFf = hits.filter((t) => t.ffd_quelle === 'firefly').length;
+    return `<span class="muted z-split-n" title="${inFf ? `davon ${inFf} mit Kategorie in Firefly` : 'alle ohne Kategorie in Firefly'}">${hits.length}×</span>`;
+  })() : ''}</div>`;
     const hints = list ? splitHints(list) : [];
     const preview = list ? list.map((t) => {
       const ff = t.ffd_quelle === 'firefly';
-      const hit = ff ? null : matchLine(d.lines, t);
+      const hit = matchLine(d.lines, t);
       const target = ff ? t.category_name : hit ? hit.category : d.rest;
+      // Firefly-Kategorie, die eine Unterscheidung ändert: geschieht über die Firefly-Regel (rückwirkend anwenden)
+      const viaRule = ff && hit && hit.category.trim().toLowerCase() !== String(t.category_name || '').toLowerCase();
       return `<tr style="cursor:default"><td class="date">${fmtDate(t.date)}</td><td><div class="desc">${esc(String(t.description || '').slice(0, 90))}</div>${t.notes ? `<div class="flow">${esc(String(t.notes).slice(0, 110))}</div>` : ''}</td>
-        <td class="num">${signedAmount(t)}</td><td>${ff ? `${esc(target || '')} <span class="badge" title="Kategorie steht so in Firefly">Firefly</span>` : `→ <b>${esc(target || '–')}</b>${hit ? '' : ' <span class="muted">(sonst)</span>'}`}</td></tr>`;
+        <td class="num">${signedAmount(t)}</td><td>${viaRule ? `<s class="muted">${esc(target || '')}</s> → <b>${esc(hit.category)}</b> <span class="badge warn" title="Steht in Firefly mit Kategorie – wird über „In Firefly übernehmen“ (rückwirkend anwenden) umgestellt">per Firefly-Regel</span>`
+    : ff ? `${esc(target || '')} <span class="badge" title="Kategorie steht so in Firefly – bleibt">Firefly</span>` : `→ <b>${esc(target || '–')}</b>${hit ? '' : ' <span class="muted">(sonst)</span>'}`}</td></tr>`;
     }).join('') : '';
     return `<div class="z-split" data-split-box="${esc(m.key)}">
-      <p class="muted" style="margin-top:0">Je nach Buchungstext eine andere Kategorie – z. B. beim Versicherer die Kfz-Versicherung (Mandatsreferenz oder „Kfz“ im Text) nach „KFZ“, die Familienversicherung nach „Familie“. Die erste passende Zeile gilt.</p>
+      <p class="muted" style="margin-top:0">Je nach Buchungstext eine andere Kategorie – z. B. beim Versicherer die Kfz-Versicherung (Mandatsreferenz oder „Kfz“ im Text) nach „KFZ“, die Familienversicherung nach „Familie“. Die erste passende Zeile gilt.
+        Buchungen, die in Firefly schon eine Kategorie haben, stellt die Aufteilung über „In Firefly übernehmen“ (rückwirkend anwenden) um – in der Vorschau „per Firefly-Regel“; künftige Importe auch dann, wenn der Import schon eine Kategorie setzt.</p>
       ${d.lines.map(line).join('')}
       <div class="z-split-actions"><button type="button" class="btn small" data-split-add>+ Unterscheidung</button>
         ${hints.length ? `<span class="muted">Vorschläge:</span> ${hints.map((h, i) => `<button type="button" class="chip small" data-split-hint="${i}" title="${esc(h.kind)} in ${h.field === 'notes' ? 'der Notiz' : 'der Beschreibung'}">${esc(h.kind === 'Wort' ? h.value : `${h.kind} ${h.value}`)} · ${h.n}×</button>`).join(' ')}` : list ? '' : '<span class="muted">Lade Buchungen …</span>'}</div>
       <div class="z-split-rest"><span class="muted">sonst →</span>${catInput(d.rest, 'data-split-rest')}
         <button type="button" class="btn small primary" data-split-save="${esc(m.key)}" data-name="${esc(m.name)}">Aufteilung speichern</button>
         ${m.split ? `<button type="button" class="link-btn" data-split-clear="${esc(m.key)}" data-name="${esc(m.name)}">Aufteilung entfernen</button>` : ''}</div>
+      ${list ? (() => {
+    // Firefly-Buchungen, die keine Zeile trifft, behalten ihre Kategorie – „sonst“ gilt nur ohne Kategorie
+    const stay = list.filter((t) => t.ffd_quelle === 'firefly' && !matchLine(d.lines, t) && d.rest.trim() && String(t.category_name || '').toLowerCase() !== d.rest.trim().toLowerCase()).length;
+    return stay ? `<p class="z-split-note">${stay} Buchung${stay === 1 ? '' : 'en'} mit Kategorie in Firefly trifft keine Zeile und ${stay === 1 ? 'behält ihre' : 'behalten ihre'} Kategorie („sonst“ gilt nur für Buchungen ohne Kategorie). Sollen auch sie umgestellt werden, eine eigene Zeile anlegen – z. B. mit der Mandatsreferenz des zweiten Vertrags.</p>` : '';
+  })() : ''}
       ${list ? `<details class="z-split-preview" open><summary>Vorschau: ${list.length} Buchung${list.length === 1 ? '' : 'en'}</summary><div class="table-wrap"><table><tbody>${preview}</tbody></table></div></details>` : ''}
       <script type="application/json" data-hints>${JSON.stringify(hints).replace(/</g, '\\u003c')}</script>
     </div>`;

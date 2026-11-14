@@ -1610,3 +1610,4 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
   .z-split-preview td:nth-child(2) { grid-column: 1 / -1; order: 4; overflow-wrap: anywhere; }
   .z-split-preview td:nth-child(4) { text-align: right; }
 }
+.z-split-note { font-size: 13px; margin: 6px 0; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--status-warning) 16%, transparent); }
