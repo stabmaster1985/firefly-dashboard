@@ -199,6 +199,24 @@ export async function assignPage(view) {
     if (!res.ok) throw new Error(`n8n antwortet mit ${res.status || 'Fehler'}: ${String(res.response || '').slice(0, 200)}`);
   }
 
+  /** Nach dem rückwirkenden Anwenden: Firefly braucht etwas – in 2 und 7 Minuten neu laden (der Server erneuert vorher). */
+  function refreshLater() {
+    for (const ms of [120_000, 420_000]) {
+      setTimeout(async () => {
+        if (!view.isConnected || ffBusy || splitOpen.size || view.contains(document.activeElement) && document.activeElement.matches('input, select')) return;
+        try {
+          api.forget();
+          bookings.clear();
+          data = await call('GET');
+          openKeys.forEach((key) => loadBookings(key, true));
+          render();
+        } catch {
+          // nächster Versuch bzw. beim nächsten Öffnen
+        }
+      }, ms);
+    }
+  }
+
   async function ffDo(label, fn) {
     ffBusy = label;
     ffNote = '';
@@ -387,10 +405,12 @@ export async function assignPage(view) {
       : '<div class="empty">Alle Ausgaben der letzten 24 Monate haben eine Kategorie. 🎉</div>';
 
     // ---- automatisch: standardmäßig nur, was du noch nicht bestätigt oder geändert hast ----
-    const todo = data.automatisch.filter((m) => !m.fest);
-    const fest = data.automatisch.filter((m) => m.fest);
+    // erledigt: deine Zuordnung für den Händler – oder alle seine Buchungen einzeln zugeordnet („nur diese“)
+    const done = (m) => m.fest || m.nurEinzeln;
+    const todo = data.automatisch.filter((m) => !done(m));
+    const fest = data.automatisch.filter(done);
     const autoList = autoFilter === 'fest' ? fest : autoFilter === 'alle' ? data.automatisch : todo;
-    const onlyHere = fest.filter((m) => m.cond && m.category && !UP_TO_DATE(m) && !m.gemischt);
+    const onlyHere = fest.filter((m) => m.fest && m.cond && m.category && !UP_TO_DATE(m) && !m.gemischt);
     const ffState = (m) => (!m.cond ? '' : UP_TO_DATE(m) ? '<span class="badge good" title="Als Regel in Firefly">in Firefly</span>'
       : m.ff?.sentAt ? '<span class="badge warn" title="In Firefly steht noch eine andere Kategorie">Firefly: geändert</span>'
       : m.fest ? '<span class="badge" title="Gilt bisher nur im Dashboard – vorgemerkt unter „In Firefly übernehmen“">nur Dashboard</span>' : '');
@@ -575,7 +595,8 @@ export async function assignPage(view) {
         await sendRules(res.firefly);
         await call('POST', { ff: { sent: true } });
         list.forEach((m) => ffPick.delete(m.key));
-        return `<span class="good">✓ ${res.firefly.length} Regel${res.firefly.length === 1 ? '' : 'n'} in Firefly (Gruppe „${esc(FF_GROUP)}“)${ffRange === 'none' ? '' : ', auf vorhandene Ausgaben ohne Kategorie angewendet'}.</span>`;
+        if (ffRange !== 'none') refreshLater();
+        return `<span class="good">✓ ${res.firefly.length} Regel${res.firefly.length === 1 ? '' : 'n'} in Firefly (Gruppe „${esc(FF_GROUP)}“)${ffRange === 'none' ? '' : '. Firefly wendet sie jetzt auf die vorhandenen Buchungen an – das kann ein paar Minuten dauern; die Listen aktualisieren sich von selbst'}.</span>`;
       });
     }
     if (t.dataset.ffRemove) {

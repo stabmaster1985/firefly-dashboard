@@ -111,6 +111,17 @@ const dataChanged = ({ trigger, context } = {}) => {
   else firefly.invalidate();
   mqtt.soon();
   setTimeout(() => warmNow?.(), 3000); // überholte Monate gleich im Hintergrund erneuern
+  // Regeln rückwirkend anwenden: Firefly arbeitet das nach der Antwort noch ab (bei vielen Buchungen Minuten) –
+  // später noch zweimal neu laden, sonst bliebe ein Zwischenstand bis zu 12 Stunden stehen
+  if (trigger === 'rules') {
+    for (const ms of [90_000, 6 * 60_000]) {
+      setTimeout(() => {
+        firefly.invalidate();
+        mqtt.soon();
+        warmNow?.();
+      }, ms).unref?.();
+    }
+  }
 };
 
 // Automationen (Webhooks) – eigene, lokal gespeicherte Konfiguration.
