@@ -136,6 +136,12 @@ const ignoredSugg = () => {
 export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
   monateNow = monate;
   let showSugg = 6;
+  let suggOpen = storage('ffd-cm-sugg-open', '1') !== '0'; // Vorschläge auf-/zugeklappt (je Gerät)
+  el.addEventListener('toggle', (e) => {
+    if (!e.target.matches?.('[data-sugg-box]')) return;
+    suggOpen = e.target.open;
+    store('ffd-cm-sugg-open', suggOpen ? '1' : '0');
+  }, true);
   const openRows = new Set(); // Kategorien mit sichtbaren Buchungen
   const txCache = new Map(); // Kategorie → { anzahl, buchungen } | 'laden' | Fehlertext
   async function loadTx(name) {
@@ -201,6 +207,9 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
     const active = list.filter((c) => !c.ziel);
     const merged = data.zusammengefuehrt;
     const sugg = suggestions(list, ignoredSugg());
+    // ausgeblendete Paare, deren Kategorien es noch gibt (Namen wie in der Liste)
+    const byLow = new Map(list.map((c) => [c.name.toLowerCase(), c.name]));
+    const hiddenPairs = [...ignoredSugg()].filter((k) => k.split('|').every((n) => byLow.has(n))).map((k) => k.split('|').map((n) => byLow.get(n)).join('|'));
     el.querySelector('#cm-names').innerHTML = [...new Set(active.map((c) => c.name))].sort((a, b) => a.localeCompare(b, 'de')).map((n) => `<option value="${esc(n)}">`).join('');
     const since = new Date(new Date().getFullYear(), new Date().getMonth() - monate, 1); // wie /local/kategorien
     meta.textContent = `${active.length} Kategorien${merged.length ? ` · ${merged.length} zusammengeführt` : ''} · Buchungen seit ${fmtDate(since, { month: 'short', year: 'numeric' })}`;
@@ -214,13 +223,16 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
     const why = !to ? 'Erst oben das Ziel wählen.' : !from.length ? 'Kategorien ankreuzen, die in „' + esc(to) + '“ aufgehen sollen.' : '';
     body.innerHTML = `
       ${note ? `<div class="cm-note">${note}</div>` : ''}
-      ${sugg.length ? `<div class="cm-sugg"><div><b>Vorschläge: Was gehört vermutlich zusammen?</b> <span class="muted">– nach Name, gemeinsamem Wort, Bedeutung und gleichen Händlern gruppiert. „übernehmen“ setzt Ziel und Häkchen; danach in der Tabelle anpassen.</span></div>
+      ${sugg.length || hiddenPairs.length ? `<details class="cm-sugg" data-sugg-box${suggOpen ? ' open' : ''}><summary><b>Vorschläge: Was gehört vermutlich zusammen?</b> <span class="muted">${sugg.length} Vorschl${sugg.length === 1 ? 'ag' : 'äge'}${hiddenPairs.length ? ` · ${hiddenPairs.length} ausgeblendet` : ''}</span></summary>
+        <div class="muted small-text">Nach Name, gemeinsamem Wort, Bedeutung und gleichen Händlern gruppiert. „übernehmen“ setzt Ziel und Häkchen; danach in der Tabelle anpassen.</div>
         ${sugg.slice(0, showSugg).map((x, i) => `<div class="cm-cluster">
           <div class="cm-cluster-head"><span>→ <b>„${esc(x.to)}“</b> <span class="muted">(${x.n} Buchungen)</span></span>
             <span><button class="btn small" type="button" data-sugg="${i}">übernehmen</button> <button class="link-btn" type="button" data-sugg-ignore="${i}" title="Diesen Vorschlag nicht mehr zeigen (dieses Gerät)">passt nicht</button></span></div>
           <ul>${x.members.map((m) => `<li>„${esc(m.name)}“ <span class="muted">· ${m.n} Buchungen · ${m.why.map(esc).join(' · ')}</span></li>`).join('')}</ul>
         </div>`).join('')}
-        ${sugg.length > showSugg ? `<button class="link-btn" type="button" data-sugg-more>weitere ${sugg.length - showSugg} Vorschläge zeigen</button>` : ''}</div>` : ''}
+        ${sugg.length > showSugg ? `<button class="link-btn" type="button" data-sugg-more>weitere ${sugg.length - showSugg} Vorschläge zeigen</button>` : ''}
+        ${hiddenPairs.length ? `<div class="cm-hidden"><span class="muted">Ausgeblendet („passt nicht“):</span> ${hiddenPairs.map((k) => `<span class="chip small">${k.split('|').map(esc).join(' ↔ ')} <button type="button" class="chip-x" data-sugg-restore="${esc(k)}" title="wieder vorschlagen" aria-label="wieder vorschlagen">↺</button></span>`).join(' ')}
+          <button type="button" class="link-btn" data-sugg-restore-all>alle wieder einblenden</button></div>` : ''}</details>` : ''}
       <div class="table-wrap cm-wrap"><table class="cm-table">
         <thead><tr><th class="pick-cell"></th><th>Kategorie</th><th class="num">Buchungen</th><th class="num hide-sm">Ausgaben</th><th class="num hide-sm">Einnahmen</th></tr></thead>
         <tbody>${rows.map((c) => {
@@ -337,6 +349,11 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
     if (b.dataset.suggIgnore !== undefined) {
       const x = suggestions(data.kategorien, ignoredSugg())[Number(b.dataset.suggIgnore)];
       store(IGNORE_KEY, JSON.stringify([...ignoredSugg(), ...x.pairs].slice(-500)));
+      return render();
+    }
+    if (b.dataset.suggRestore !== undefined || b.dataset.suggRestoreAll !== undefined) {
+      const drop = b.dataset.suggRestore?.toLowerCase();
+      store(IGNORE_KEY, JSON.stringify(drop ? [...ignoredSugg()].filter((k) => k !== drop) : []));
       return render();
     }
     if (b.dataset.suggMore !== undefined) {

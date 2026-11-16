@@ -1668,3 +1668,6 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
 .cm-cluster { padding: 8px 10px; border-radius: 8px; background: var(--surface-1); border: 1px solid var(--grid); }
 .cm-cluster-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 10px; }
 .cm-cluster ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; display: grid; gap: 2px; }
+details.cm-sugg > summary { cursor: pointer; list-style: revert; }
+details.cm-sugg:not([open]) { padding-bottom: 10px; }
+.cm-hidden { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; padding-top: 6px; border-top: 1px solid var(--grid); }
