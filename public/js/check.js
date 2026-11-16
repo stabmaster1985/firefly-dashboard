@@ -13,9 +13,9 @@ const DAY = 86400000;
  * Ausgaben und Einnahmen der letzten 24 Monate (gleicher, vorgewärmter Cache wie „Wiederkehrend“).
  * alle: auch ausgeblendete Buchungen (markiert) – für Prüfen und Aufräumen.
  */
-export function loadHistory({ alle = false } = {}) {
+export function loadHistory({ alle = false, monate = 24 } = {}) {
   const t0 = today();
-  const from = startOfMonth(t0, -24);
+  const from = startOfMonth(t0, -monate);
   return Promise.all(['withdrawal', 'deposit'].map((type) =>
     api.getAll('transactions', { start: from, end: t0, type, _alle: alle || undefined })
       .then((groups) => api.flattenTransactions(groups).filter((t) => t.type === type))))

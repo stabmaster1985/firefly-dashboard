@@ -18,7 +18,7 @@ const loadNames = () => {
   }
 };
 
-export function partyCheckCard(el, metaEl, { txs, editAction }) {
+export function partyCheckCard(el, metaEl, { txs, editAction, monate = 24 }) {
   let dismissed = new Set();
   let results = [];
   const done = new Set(); // korrigierte Journal-IDs
@@ -69,7 +69,7 @@ export function partyCheckCard(el, metaEl, { txs, editAction }) {
   // Gerüst: Erklärung, Schritte und Suche bleiben stehen; nur die Liste wird neu gezeichnet (Suche behält den Fokus)
   el.innerHTML = `
     <p class="muted" style="margin-top:0">Buchungen, bei denen der Händler im Buchungstext (Beschreibung oder Notiz) nicht zum Gegenkonto passt – z. B. Tanken bei der Werkstatt.
-      Meist liefert die Bank bei Kartenzahlungen die IBAN eines Zahlungsdienstleisters, und Firefly ordnet darüber alles demselben Konto zu. Geprüft: Ausgaben der letzten 24 Monate.</p>
+      Meist liefert die Bank bei Kartenzahlungen die IBAN eines Zahlungsdienstleisters, und Firefly ordnet darüber alles demselben Konto zu. Geprüft: Ausgaben im oben gewählten Zeitraum.</p>
     <ol class="pc-steps">
       <li><b>Prüfen:</b> Konto aufklappen, „Buchungen ansehen“ zeigt jede einzelne.</li>
       <li><b>Richtigen Empfänger</b> eintragen – für die ganze Gruppe oder je Buchung („anderer Empfänger“).</li>
@@ -88,7 +88,7 @@ export function partyCheckCard(el, metaEl, { txs, editAction }) {
   function render() {
     openAcc ||= new Set(results.length <= 5 ? results.map((r) => r.party) : []);
     const wrong = results.reduce((a, r) => a + r.wrongCount, 0);
-    const since = fmtDate(new Date(new Date().getFullYear(), new Date().getMonth() - 24, 1), { month: 'short', year: 'numeric' }); // wie loadHistory
+    const since = fmtDate(new Date(new Date().getFullYear(), new Date().getMonth() - monate, 1), { month: 'short', year: 'numeric' }); // wie loadHistory
     metaEl.textContent = `${results.length ? `${results.length} ${results.length === 1 ? 'Konto' : 'Konten'} · ${wrong} Buchung${wrong === 1 ? '' : 'en'}` : 'nichts gefunden'} · seit ${since}`;
     const nSel = selected().length;
     const searching = words().length > 0;

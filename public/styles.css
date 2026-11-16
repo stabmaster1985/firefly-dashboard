@@ -1655,3 +1655,9 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
 .cm-table tr.cm-target td { background: color-mix(in srgb, var(--positive) 10%, transparent); }
 .cm-summary { font-size: 13px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1 1 100%; }
 .cm-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cleanup-range { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: -4px 0 14px; font-size: 14px; }
+.cleanup-range label { display: flex; align-items: center; gap: 8px; }
+.cleanup-range select { height: 34px; }
+.cm-table tr.cm-tx-row > td { background: var(--surface-2); padding-top: 4px; }
+.cm-tx { width: 100%; font-size: 13px; }
+.cm-tx td { padding: 6px 8px; border-bottom: 1px solid var(--grid); }

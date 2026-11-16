@@ -7,7 +7,7 @@
 //     Firefly verschiebt alle Buchungen eines Kontos in einem Schritt)
 
 import * as api from './api.js';
-import { esc, fmtDate, debounce, money } from './util.js';
+import { esc, fmtDate, debounce, money, storage, store } from './util.js';
 import { card, skeleton } from './common.js';
 import { actionFor, runAction } from './txedit.js';
 import { loadHistory } from './check.js';
@@ -25,10 +25,18 @@ const post = (url, body, method = 'POST') => fetch(url, { method, headers, body:
   return d;
 });
 
+// Zeitraum der Analysen (Monate zurück) – je Gerät gemerkt; größere Zeiträume laden beim ersten Mal länger
+const RANGES = [[12, '12 Monate'], [24, '24 Monate'], [36, '3 Jahre'], [60, '5 Jahre'], [120, '10 Jahre']];
+
 export async function cleanup(view) {
+  const monate = RANGES.some(([n]) => n === Number(storage('ffd-cleanup-monate', '24'))) ? Number(storage('ffd-cleanup-monate', '24')) : 24;
+  const sinceLabel = fmtDate(new Date(new Date().getFullYear(), new Date().getMonth() - monate, 1), { month: 'short', year: 'numeric' });
+  const span = RANGES.find(([n]) => n === monate)[1];
   view.innerHTML = `
     <p class="sync-intro">Hier wird nur vorbereitet: Das Dashboard analysiert und schlägt vor, du passt an – gespeichert auf dem Server, also auf allen Geräten
       und nach Updates. Nach Firefly geht erst etwas, wenn du den jeweiligen Knopf drückst.</p>
+    <div class="cleanup-range"><label>Buchungen auswerten: <select class="input select" id="a-range" aria-label="Zeitraum der Auswertung">${RANGES.map(([n, l]) => `<option value="${n}"${n === monate ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+      <span class="muted">seit ${sinceLabel} · gilt für alle Karten dieser Seite${monate > 24 ? ' – beim ersten Mal kann das Laden etwas dauern' : ''}</span></div>
     <div class="grid">
       ${card('a-import', 'Regeln aus der Import-Konfiguration', { meta: '<span id="a-import-meta"></span>' })}
       ${card('a-merge', 'Ähnliche Gegenkonten zusammenführen', { meta: '<span id="a-merge-meta"></span>' })}
@@ -49,7 +57,7 @@ export async function cleanup(view) {
   let editAction;
   try {
     [txs, categories, importPlan, mergePlan, rulesAction, editAction] = await Promise.all([
-      loadHistory({ alle: true }),
+      loadHistory({ alle: true, monate }),
       api.getAll('categories', { _alle: true }).then((list) => list.map((c) => ({ id: String(c.id), name: c.attributes?.name || '' }))),
       fetch('/local/cleanup/import').then((r) => r.json()),
       fetch('/local/cleanup/merge').then((r) => r.json()),
@@ -60,9 +68,13 @@ export async function cleanup(view) {
     view.querySelector('.grid').innerHTML = `<section class="card span-12"><div class="empty">Konnte nicht geladen werden: ${esc(err.message)}</div></section>`;
     return;
   }
+  view.querySelector('#a-range').addEventListener('change', (e) => {
+    store('ffd-cleanup-monate', e.target.value);
+    cleanup(view); // Seite mit neuem Zeitraum neu aufbauen
+  });
   if (!view.isConnected) return;
-  catMergeCard($('a-catmerge'), $('a-catmerge-meta'), { rulesAction });
-  partyCheckCard($('a-wrong'), $('a-wrong-meta'), { txs, editAction }).catch((err) => ($('a-wrong').innerHTML = `<div class="empty">Konnte nicht geprüft werden: ${esc(err.message)}</div>`));
+  catMergeCard($('a-catmerge'), $('a-catmerge-meta'), { rulesAction, monate });
+  partyCheckCard($('a-wrong'), $('a-wrong-meta'), { txs, editAction, monate }).catch((err) => ($('a-wrong').innerHTML = `<div class="empty">Konnte nicht geprüft werden: ${esc(err.message)}</div>`));
   const catNames = categories.map((c) => c.name).sort((a, b) => a.localeCompare(b, 'de'));
 
   // ======================================================================
@@ -72,7 +84,7 @@ export async function cleanup(view) {
   let impSearch = '';
   let applyRange = 'none';
 
-  /** Treffer einer Regel in den Buchungen der letzten 24 Monate. */
+  /** Treffer einer Regel in den Buchungen des gewählten Zeitraums. */
   const hitsOf = (it) => {
     const v = lower(it.value);
     if (!v) return { n: 0, ok: 0, change: 0 };
@@ -155,7 +167,7 @@ export async function cleanup(view) {
         <div class="table-wrap"><table><thead><tr><th>#</th><th>Spalte (VR-Bank)</th><th>zugeordnet als</th><th class="num">Übersetzungen</th></tr></thead><tbody>
         ${columns.map((c) => `<tr style="cursor:default"><td>${c.index + 1}</td><td>${esc(c.header || '–')}</td><td>${esc(c.label || c.role)}</td><td class="num">${c.mapped || ''}</td></tr>`).join('')}
         </tbody></table></div></details>` : ''}
-      <div class="sync-total-num"><b>${items.length}</b> Regelvorschläge · <b>${active.length}</b> aktiv · in den letzten 24 Monaten treffen sie
+      <div class="sync-total-num"><b>${items.length}</b> Regelvorschläge · <b>${active.length}</b> aktiv · in den letzten ${esc(span)} treffen sie
         <b>${sum(active, 'n')}</b> Buchungen, davon würden <b>${sum(active, 'change')}</b> eine andere Kategorie bekommen
         ${sum(items, 'n') === 0 ? '<br><span class="muted">Noch keine Treffer? Die Regeln prüfen den Empfänger – erst nach dem CSV-Abgleich (Empfänger nachgetragen) gibt es welche.</span>' : ''}</div>
       <div class="imp-tools">
@@ -164,7 +176,7 @@ export async function cleanup(view) {
         <input class="input" type="search" data-imp-search value="${esc(impSearch)}" placeholder="Händler oder Kategorie suchen …">
       </div>
       <datalist id="a-cats">${catNames.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
-      ${groups.length ? `<div class="table-wrap scroll imp-table"><table><thead><tr><th></th><th>Wenn der Empfänger …</th><th>→ Kategorie</th><th class="num">Treffer (24 Monate)</th><th></th></tr></thead>
+      ${groups.length ? `<div class="table-wrap scroll imp-table"><table><thead><tr><th></th><th>Wenn der Empfänger …</th><th>→ Kategorie</th><th class="num">Treffer (${esc(span)})</th><th></th></tr></thead>
       ${groups.map(([cat, list]) => `<tbody class="imp-group">
         <tr class="imp-cat" style="cursor:default"><td><input type="checkbox" data-imp-cat="${esc(cat)}" ${list.every((i) => i.enabled) ? 'checked' : ''} aria-label="alle dieser Kategorie"></td>
           <td colspan="4"><b>${esc(cat)}</b> <span class="muted">${list.length} Regel${list.length === 1 ? '' : 'n'} · ${list.reduce((s, i) => s + i.hits.n, 0)} Buchungen${catNames.some((c) => lower(c) === lower(cat)) ? '' : ' · <span class="badge new">neue Kategorie</span>'}</span></td></tr>
@@ -421,7 +433,7 @@ export async function cleanup(view) {
           <div class="merge-head">
             <input type="checkbox" data-m-select ${p.selected ? 'checked' : ''} ${st === 'ignoriert' || st === 'erledigt' ? 'disabled' : ''} aria-label="Gruppe auswählen">
             <div class="mg-title"><b>${esc(p.rename || target?.name || '')}</b>
-              <span class="mg-sub">${g.type === 'revenue' ? 'Einnahmen' : 'Ausgaben'} · ${moving > 0 ? `${moving} ${moving === 1 ? 'Konto' : 'Konten'} ${moving === 1 ? 'wird' : 'werden'} übernommen` : 'nichts zu übernehmen'} · ${total} Buchungen${sum ? ` · ${money(sum)}` : ''} (24 Monate)</span></div>
+              <span class="mg-sub">${g.type === 'revenue' ? 'Einnahmen' : 'Ausgaben'} · ${moving > 0 ? `${moving} ${moving === 1 ? 'Konto' : 'Konten'} ${moving === 1 ? 'wird' : 'werden'} übernommen` : 'nichts zu übernehmen'} · ${total} Buchungen${sum ? ` · ${money(sum)}` : ''} (${esc(span)})</span></div>
             <span class="merge-btns">${st === 'erledigt' ? '<span class="badge good">zusammengeführt</span>'
               : `${editAction && !p.ignored ? `<button class="btn small" data-m-run${moving > 0 ? '' : ' disabled'}>Zusammenführen</button>` : ''}<button class="link-btn" data-m-ignore>${p.ignored ? 'doch vorschlagen' : 'ignorieren'}</button>`}</span>
           </div>
@@ -487,7 +499,7 @@ export async function cleanup(view) {
       patchGroup(g.key, { done: new Date().toISOString(), selected: false, members: [p.target], target: p.target, rename: p.rename, emptied: empty });
     }
     api.forget();
-    txs = await loadHistory({ alle: true }); // Buchungen zählen jetzt beim Zielkonto
+    txs = await loadHistory({ alle: true, monate }); // Buchungen zählen jetzt beim Zielkonto
     await loadAccounts(true);
     renderMerge();
     $('a-merge-out').innerHTML = `<span class="badge good">${moved} von ${paare.length} Konten zusammengeführt ✓</span>${moved < paare.length ? ' <span class="muted">Bei den übrigen sind noch Buchungen da – in n8n unter „Executions“ nachsehen.</span>' : ' <span class="muted">Die leeren Konten kannst du jetzt löschen.</span>'}`;

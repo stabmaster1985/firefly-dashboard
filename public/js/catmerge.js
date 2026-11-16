@@ -12,7 +12,8 @@ import { similar } from './combo.js';
 
 const RULE_GROUP = 'Dashboard: Kategorien zusammengeführt';
 const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
-const call = (body) => fetch('/local/kategorien', body ? { method: 'POST', headers, body: JSON.stringify(body) } : {}).then(async (r) => {
+let monateNow = 24; // Zeitraum der Seite (Aufräumen → „Buchungen auswerten“)
+const call = (body) => fetch(`/local/kategorien?monate=${monateNow}`, body ? { method: 'POST', headers, body: JSON.stringify(body) } : {}).then(async (r) => {
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.message || `HTTP ${r.status}`);
   return data;
@@ -39,7 +40,35 @@ function suggestions(list) {
   });
 }
 
-export function catMergeCard(el, meta, { rulesAction }) {
+export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
+  monateNow = monate;
+  const openRows = new Set(); // Kategorien mit sichtbaren Buchungen
+  const txCache = new Map(); // Kategorie → { anzahl, buchungen } | 'laden' | Fehlertext
+  async function loadTx(name) {
+    if (txCache.has(name)) return;
+    txCache.set(name, 'laden');
+    try {
+      const r = await fetch(`/local/kategorien?monate=${monate}&buchungen=${encodeURIComponent(name)}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || `HTTP ${r.status}`);
+      txCache.set(name, d);
+    } catch (err) {
+      txCache.set(name, err.message);
+    }
+    if (el.isConnected) render();
+  }
+  const txRow = (c) => {
+    if (!openRows.has(c.name)) return '';
+    const d = txCache.get(c.name);
+    const inner = d === 'laden' || d === undefined ? '<p class="muted">Lade Buchungen …</p>'
+      : typeof d === 'string' ? `<p class="bad">Konnte nicht geladen werden: ${esc(d)}</p>`
+      : !d.buchungen.length ? '<p class="muted">Keine Buchungen im Zeitraum.</p>'
+      : `${d.anzahl > d.buchungen.length ? `<p class="muted">Die neuesten ${d.buchungen.length} von ${d.anzahl}.</p>` : ''}<table class="cm-tx"><tbody>${d.buchungen.map((t) => `<tr>
+          <td class="date">${fmtDate(t.date)}</td>
+          <td><div class="desc">${esc(String(t.description || '').slice(0, 100))}</div><div class="flow">${esc((t.type === 'deposit' ? t.source_name : t.destination_name) || '')}${t.category_name.toLowerCase() !== c.name.toLowerCase() ? ` · als „${esc(t.category_name)}“ (zusammengeführt)` : ''}${t.ffd_quelle !== 'firefly' ? ' · automatisch' : ''}</div></td>
+          <td class="num">${t.type === 'deposit' ? '' : '−'}${money(t.amount, t.currency_code)}</td></tr>`).join('')}</tbody></table>`;
+    return `<tr class="cm-tx-row"><td colspan="5">${inner}</td></tr>`;
+  };
   let data;
   const picked = new Set();
   let target = ''; // Ziel – eingetippt oder per Vorschlag
@@ -79,7 +108,7 @@ export function catMergeCard(el, meta, { rulesAction }) {
     const merged = data.zusammengefuehrt;
     const sugg = suggestions(list);
     el.querySelector('#cm-names').innerHTML = [...new Set(active.map((c) => c.name))].sort((a, b) => a.localeCompare(b, 'de')).map((n) => `<option value="${esc(n)}">`).join('');
-    const since = new Date(new Date().getFullYear(), new Date().getMonth() - 24, 1); // wie /local/kategorien
+    const since = new Date(new Date().getFullYear(), new Date().getMonth() - monate, 1); // wie /local/kategorien
     meta.textContent = `${active.length} Kategorien${merged.length ? ` · ${merged.length} zusammengeführt` : ''} · Buchungen seit ${fmtDate(since, { month: 'short', year: 'numeric' })}`;
     const to = target.trim();
     const from = [...picked].filter((f) => f.toLowerCase() !== to.toLowerCase());
@@ -102,10 +131,10 @@ export function catMergeCard(el, meta, { rulesAction }) {
           return `<tr data-name="${esc(c.name)}" class="${picked.has(c.name) ? 'cm-picked' : ''}${isTarget ? ' cm-target' : ''}">
           <td class="pick-cell">${isTarget ? '<span title="Ziel">★</span>' : `<input type="checkbox" data-pick="${esc(c.name)}" ${picked.has(c.name) ? 'checked' : ''} aria-label="${esc(c.name)} auswählen">`}</td>
           <td><div class="desc">${esc(c.name)} ${isTarget ? '<span class="badge good">Ziel</span>' : like(c) ? '<span class="badge warn" title="Ähnlicher Name wie das Ziel">ähnlich</span>' : ''}</div>
-            <div class="flow">${!c.inFirefly ? 'nur im Dashboard (automatisch/zusammengeführt)' : c.n === 0 ? 'in Firefly, ohne Buchungen' : c.auto && c.firefly ? 'Firefly + automatisch' : c.auto ? 'automatisch zugeordnet' : 'Firefly'}${parts.length ? ` · enthält ${parts.map((m) => `„${esc(m.from)}“`).join(', ')}` : ''}${!isTarget ? ` · <button type="button" class="link-btn" data-as-target="${esc(c.name)}">als Ziel</button>` : ''}</div></td>
+            <div class="flow">${!c.inFirefly ? 'nur im Dashboard (automatisch/zusammengeführt)' : c.n === 0 ? 'in Firefly, ohne Buchungen' : c.auto && c.firefly ? 'Firefly + automatisch' : c.auto ? 'automatisch zugeordnet' : 'Firefly'}${parts.length ? ` · enthält ${parts.map((m) => `„${esc(m.from)}“`).join(', ')}` : ''}${c.n ? ` · <button type="button" class="link-btn" data-cm-tx="${esc(c.name)}">${openRows.has(c.name) ? 'Buchungen ausblenden' : 'Buchungen ansehen'}</button>` : ''}${!isTarget ? ` · <button type="button" class="link-btn" data-as-target="${esc(c.name)}">als Ziel</button>` : ''}</div></td>
           <td class="num">${c.n}</td>
           <td class="num hide-sm">${c.ausgaben ? money(c.ausgaben) : '–'}</td>
-          <td class="num hide-sm">${c.einnahmen ? money(c.einnahmen) : '–'}</td></tr>`;
+          <td class="num hide-sm">${c.einnahmen ? money(c.einnahmen) : '–'}</td></tr>${txRow(c)}`;
         }).join('') || `<tr><td colspan="5" class="muted">Nichts gefunden für „${esc(query)}“.</td></tr>`}</tbody></table></div>
       <div class="cm-form">
         <div class="cm-summary">${from.length && to ? `<span><b>${from.length}</b> → „<b>${esc(to)}</b>“:</span> ${from.map((f) => `<span class="chip small">${esc(f)} <button type="button" class="chip-x" data-unpick="${esc(f)}" aria-label="${esc(f)} abwählen">✕</button></span>`).join(' ')}` : `<span class="muted">${why}</span>`}</div>
@@ -142,6 +171,8 @@ export function catMergeCard(el, meta, { rulesAction }) {
   async function act(fn) {
     try {
       await fn();
+      txCache.clear();
+      openRows.forEach((n) => loadTx(n));
       api.forget(); // Summen und Listen aller Seiten ändern sich
     } catch (err) {
       note = `<span class="bad">${esc(err.message)}</span>`;
@@ -205,6 +236,15 @@ export function catMergeCard(el, meta, { rulesAction }) {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.merge) return merge(b.dataset.merge, b);
+    if (b.dataset.cmTx) {
+      const name = b.dataset.cmTx;
+      if (openRows.has(name)) openRows.delete(name);
+      else {
+        openRows.add(name);
+        loadTx(name);
+      }
+      return render();
+    }
     if (b.dataset.asTarget) {
       target = b.dataset.asTarget;
       targetInput.value = target;

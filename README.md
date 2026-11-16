@@ -661,6 +661,8 @@ Datei erst ab dem Tag nach dem letzten Import beginnen lassen.
 Alles wird erst im Dashboard vorbereitet und angepasst; gespeichert auf dem Server
 (`DATA_DIR/cleanup-import.json`, `cleanup-merge.json`, mit Sicherung) – gilt also auf allen
 Geräten und nach Updates. Nach Firefly geht erst etwas per Knopf.
+Ausgewertet werden die Buchungen der letzten 24 Monate; oben lässt sich der Zeitraum für alle Karten
+auf 12 Monate bis 10 Jahre ändern („Buchungen auswerten“, je Gerät gemerkt).
 
 - **Regeln aus der Import-Konfiguration:** Die JSON-Datei des Firefly Data Importers hochladen.
   Das Dashboard zeigt die Spaltenzuordnung (bei VR-Bank-Exporten mit Spaltennamen) samt Hinweisen
