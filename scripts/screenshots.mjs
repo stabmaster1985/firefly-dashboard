@@ -174,6 +174,10 @@ await shot('csv-abgleich');
 await open('zuordnen');
 await shot('zuordnen');
 
+await open('aufgaben');
+await desk.waitForFunction(() => !/geprüft/.test(document.querySelector('#t-meta')?.textContent || 'geprüft'), null, { timeout: 60000 });
+await shot('aufgaben');
+
 await open('aufraeumen');
 await desk.click('[data-fold="a-import"] .card-fold').catch(() => {});
 await desk.waitForTimeout(300);

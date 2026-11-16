@@ -67,6 +67,14 @@ export const PAGES = {
     firefly: READ_ONLY,
     cards: ['p-months', 'p-years', 'p-cats', 'p-tx'],
   },
+  tasks: {
+    title: 'Aufgaben',
+    what: 'Alles, was beim Pflegen der Daten gerade zu tun ist – auf einen Blick, mit Anzahl und Sprung zur passenden Karte. Darunter alle Pflege-Werkzeuge an einer Stelle.',
+    app: 'Geprüft werden: Händler ohne Kategorie und ungeprüfte automatische Zuordnungen, Zuordnungen, die erst im Dashboard gelten, doppelte Buchungen und überfällige Importe, falsch zugeordnete und ähnliche Gegenkonten, Kündigungsfristen der nächsten 30 Tage und eine laufende Übertragung auf dem Server. Wichtiges (Fristen, angehaltene Übertragung, Importe) steht oben.',
+    firefly: READ_ONLY,
+    tips: ['Was hier fehlt, findet die Suche oben – sie kennt auch alle Funktionen (z. B. „zusammenführen“).'],
+    cards: [],
+  },
   assign: {
     title: 'Kategorien zuordnen',
     what: 'Buchungen ohne Kategorie in Firefly bekommen im Dashboard automatisch eine – aus dem Händler abgeleitet. So laufen z. B. Netto, Aldi und Lidl unter „Lebensmittel“ zusammen.',

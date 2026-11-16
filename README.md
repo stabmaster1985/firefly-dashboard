@@ -28,10 +28,16 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
 
 <p align="center"><img src="docs/screenshots/zuordnen.png" width="720" alt="Zuordnen: automatische Kategorien aus Händlern – Abdeckung, offene Händler, Zuordnungen"><br><b>Zuordnen</b> – Kategorien automatisch aus den Händlern (Netto, Aldi, Lidl → Lebensmittel)</p>
 
+<p align="center"><img src="docs/screenshots/aufgaben.png" width="720" alt="Aufgaben: offene Pflege-Punkte mit Anzahl und alle Werkzeuge"><br><b>Aufgaben</b> – was gerade zu tun ist, mit Sprung zur passenden Stelle</p>
+
 <p align="center"><img src="docs/screenshots/handy.png" width="600" alt="Am Handy: Übersicht hell und Labor dunkel"><br><b>Am Handy</b> – hell und dunkel, installierbar als App</p>
 
 <sub>Alle Bilder zeigen die Demo-Daten (<code>npm run demo</code>), keine echten Finanzen.</sub>
 
+- **Aufgaben** (Pflegen) – alles, was gerade zu tun ist, auf einen Blick: Händler ohne Kategorie,
+  ungeprüfte automatische Zuordnungen, Zuordnungen nur im Dashboard, doppelte Buchungen, überfällige
+  Importe, falsch zugeordnete und ähnliche Gegenkonten, Kündigungsfristen, laufende Übertragung – mit
+  Anzahl und Sprung zur Karte; darunter alle Pflege-Werkzeuge an einer Stelle
 - **Suche oben** (Taste `/` oder Strg+K) – findet auch **Funktionen**: „zusammenführen“, „verschieben“,
   „Kündigungsfrist“, „aufteilen“ … springt direkt zur passenden Karte (aufgeklappt und hervorgehoben);
   dazu Kategorien, Tags, Empfänger, Konten und Volltext in den Buchungen

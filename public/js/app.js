@@ -17,6 +17,7 @@ import { merchants } from './merchants.js';
 import { askPage } from './ask.js';
 import { partyDetail } from './party.js';
 import { assignPage } from './zuordnen.js';
+import { tasksPage } from './tasks.js';
 import { initNav, navRendered, resetSheet } from './nav.js';
 import { openHelp, helpPage } from './helpui.js';
 import { PAGES, CARDS, pageOfCard } from './help.js';
@@ -34,6 +35,7 @@ const ROUTES = {
   automationen: { view: actions, title: 'Automationen', nav: 'actions', help: 'actions' },
   jahr: { view: yearReview, title: 'Jahresrückblick', nav: 'year', noPeriod: true, help: 'year' },
   labor: { view: lab, title: 'Kategorien-Labor', nav: 'lab', noPeriod: true, help: 'lab' },
+  aufgaben: { view: tasksPage, title: 'Aufgaben', nav: 'tasks', noPeriod: true, help: 'tasks' },
   zuordnen: { view: assignPage, title: 'Kategorien zuordnen', nav: 'assign', noPeriod: true, help: 'assign' },
   pruefen: { view: check, title: 'Prüfen', nav: 'check', noPeriod: true, help: 'check' },
   abgleich: { view: csvSync, title: 'CSV-Abgleich', nav: 'csvsync', noPeriod: true, help: 'csvsync' },
@@ -54,7 +56,7 @@ const titleEl = document.getElementById('page-title');
 // Bereiche mit eigener Farbe: Auswerten (blau), Daten pflegen (türkis), Labor (violett), Einstellungen (grau)
 const AREA = {
   overview: 'auswerten', categories: 'auswerten', tags: 'auswerten', merchants: 'auswerten', recurring: 'auswerten', transactions: 'auswerten',
-  accounts: 'auswerten', year: 'auswerten', ask: 'auswerten', assign: 'pflegen', check: 'pflegen', csvsync: 'pflegen', cleanup: 'pflegen', lab: 'labor', actions: 'system', help: 'system',
+  accounts: 'auswerten', year: 'auswerten', ask: 'auswerten', assign: 'pflegen', tasks: 'pflegen', check: 'pflegen', csvsync: 'pflegen', cleanup: 'pflegen', lab: 'labor', actions: 'system', help: 'system',
 };
 document.querySelectorAll('.nav a[data-route]').forEach((a) => (a.dataset.area = AREA[a.dataset.route] || 'auswerten'));
 const periodSelect = document.getElementById('period-select');

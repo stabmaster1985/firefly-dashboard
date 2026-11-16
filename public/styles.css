@@ -1617,3 +1617,19 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
   .search-results { position: fixed; top: 64px; left: 16px; right: 16px; width: auto; max-height: 65vh; }
   .sr-item { flex-wrap: wrap; gap: 2px 12px; }
 }
+
+/* Aufgaben */
+.task-list .row.task { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; text-decoration: none; color: inherit; }
+.task-list a.row.task:hover { background: var(--accent-soft); }
+.task-n { min-width: 40px; height: 40px; padding: 0 8px; border-radius: 12px; display: grid; place-items: center; font-weight: 700; background: var(--accent-soft); color: var(--accent); }
+.task-n.warn { background: color-mix(in srgb, var(--status-warning) 22%, transparent); color: var(--text-primary); }
+.task-go { font-size: 22px; color: var(--text-muted); }
+.task-ok { margin: 10px 0 0; font-size: 13px; }
+.tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px 20px; }
+.tool-col h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; }
+.tool-col h3 a { color: var(--text-muted); text-decoration: none; }
+.tool { display: block; padding: 8px 10px; margin: 0 -10px; border-radius: 8px; text-decoration: none; color: inherit; }
+.tool:hover { background: var(--accent-soft); }
+.tool b { display: block; font-size: 14px; }
+.tool span { display: block; font-size: 12px; color: var(--text-secondary); line-height: 1.35; }
+.task-list .row.task .title, .task-list .row.task .subtitle { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }

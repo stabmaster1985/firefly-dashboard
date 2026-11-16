@@ -60,6 +60,7 @@
         <div class="nav-sec" data-sec="pflegen">
           <button type="button" class="nav-group" aria-expanded="true"><span>Pflegen</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></button>
           <div class="nav-items">
+            <a href="#/aufgaben" data-route="tasks"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2"/></svg><span>Aufgaben</span><b class="nav-badge" data-badge="tasks" hidden></b></a>
             <a href="#/zuordnen" data-route="assign"><svg viewBox="0 0 24 24"><path d="M4 6h7M4 12h5M4 18h7M14 6l2 2 4-4M14 18l2 2 4-4M13 12h7"/></svg><span>Zuordnen</span><b class="nav-badge" data-badge="assign" hidden></b></a>
             <a href="#/abgleich" data-route="csvsync"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg><span>CSV-Abgleich</span></a>
             <a href="#/pruefen" data-route="check"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z"/></svg><span>Prüfen</span><b class="nav-badge" data-badge="check" hidden></b></a>
@@ -85,7 +86,7 @@
         <div class="topbar-actions">
           <div class="search" role="search">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-            <input id="global-search" type="search" placeholder="Suchen … (auch Funktionen)" autocomplete="off" aria-label="Funktionen, Kategorien, Konten und Buchungen suchen" aria-controls="search-results" aria-expanded="false">
+            <input id="global-search" type="search" placeholder="Suchen …" title="Sucht auch Funktionen, z. B. „zusammenführen“" autocomplete="off" aria-label="Funktionen, Kategorien, Konten und Buchungen suchen" aria-controls="search-results" aria-expanded="false">
             <kbd>/</kbd>
             <div class="search-results" id="search-results" role="listbox" hidden></div>
           </div>

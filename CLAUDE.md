@@ -28,6 +28,7 @@ committet wird.
 | `labor-ki.png` | Labor, Reiter „KI“ (Vorschläge prüfen) |
 | `csv-abgleich.png` | CSV-Abgleich (Archiv) |
 | `zuordnen.png` | Zuordnen (automatische Kategorien) |
+| `aufgaben.png` | Aufgaben (offene Pflege-Punkte, alle Werkzeuge) |
 | `aufraeumen.png` | Daten aufräumen (Gegenkonten zusammenführen) |
 | `handy.png` | Handy: Übersicht hell, Labor dunkel |
 
