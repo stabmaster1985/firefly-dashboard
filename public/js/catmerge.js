@@ -5,7 +5,7 @@
 // Server: /local/kategorien (lib/ledger.js, gespeichert in DATA_DIR/autocat.json).
 
 import * as api from './api.js';
-import { esc, money, fmtDate, today, isoDate } from './util.js';
+import { esc, money, fmtDate, today, isoDate, storage, store } from './util.js';
 import { runAction } from './txedit.js';
 import { toFireflyRules } from './rules.js';
 import { similar } from './combo.js';
@@ -24,24 +24,118 @@ const fold = (s) => String(s || '').toLowerCase().replace(/ä/g, 'ae').replace(/
   .replace(/&/g, ' und ').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
   .split(' ').map((w) => w.replace(/(en|n|e|s)$/, '')).join(' ');
 
-/** Vorschläge: Kategorien mit (fast) gleichem Namen, das Ziel ist die größte. */
-function suggestions(list) {
-  const groups = new Map();
-  for (const c of list) {
-    if (c.ziel) continue;
-    const k = fold(c.name);
-    if (!k) continue;
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(c);
-  }
-  return [...groups.values()].filter((g) => g.length > 1).map((g) => {
-    const sorted = [...g].sort((a, b) => Number(b.inFirefly) - Number(a.inFirefly) || b.n - a.n);
-    return { to: sorted[0].name, from: sorted.slice(1).map((c) => c.name) };
-  });
+// Begriffe, die dasselbe meinen – je Zeile eine Bedeutung (Vergleich über fold, also ohne Endungen)
+const SYNONYMS = [
+  ['lebensmittel', 'supermarkt', 'einkauf', 'einkaeufe', 'lebensmitteleinkauf', 'grocerie', 'discounter', 'nahrungsmittel'],
+  ['tanken', 'tankstelle', 'kraftstoff', 'benzin', 'diesel', 'sprit', 'treibstoff'],
+  ['kfz', 'auto', 'fahrzeug', 'pkw', 'werkstatt', 'autokosten', 'kfz kosten'],
+  ['restaurant', 'gastronomie', 'essen gehen', 'auswaerts essen', 'essen trinken', 'lieferdienst', 'imbis'],
+  ['drogerie', 'koerperpflege', 'hygiene', 'kosmetik'],
+  ['versicherung', 'versicherungen', 'assekuranz'],
+  ['mobilitaet', 'oepnv', 'bahn', 'nahverkehr', 'fahrkarte', 'ticket'],
+  ['kleidung', 'bekleidung', 'mode', 'schuhe', 'textil'],
+  ['freizeit', 'hobby', 'unterhaltung', 'ausflug'],
+  ['abo', 'abos', 'abonnement', 'streaming', 'mitgliedschaft'],
+  ['gesundheit', 'arzt', 'apotheke', 'medizin', 'medikament'],
+  ['wohnen', 'miete', 'wohnung', 'kaltmiete', 'warmmiete'],
+  ['haushalt', 'haushaltsware', 'haus garten', 'baumarkt', 'garten'],
+  ['kinder', 'kind', 'kita', 'schule', 'nachwuch'],
+  ['geschenk', 'geschenke', 'praesent'],
+  ['urlaub', 'reise', 'reisen', 'ferien', 'hotel'],
+  ['bargeld', 'geldautomat', 'abhebung'],
+  ['spende', 'spenden', 'charity'],
+  ['haustier', 'tier', 'tierbedarf', 'hund', 'katze'],
+].map((g) => g.map(fold));
+const synonymGroup = (name) => {
+  const f = fold(name);
+  return SYNONYMS.findIndex((g) => g.some((w) => f === w || f.split(' ').includes(w)));
+};
+const STOP = new Set(['und', 'kosten', 'sonstig', 'sonstige', 'allgemein', 'diverse', 'neu', 'alt', 'privat', 'monatlich']);
+const keyWords = (name) => fold(name).split(' ').filter((w) => w.length >= 5 && !STOP.has(w));
+
+/** Gemeinsame Händler: Anteil der Buchungen der kleineren Kategorie bei Händlern, die auch die andere hat. */
+function merchantOverlap(a, b) {
+  const ha = a.haendler || {};
+  const hb = b.haendler || {};
+  const [small, big] = Object.values(ha).reduce((x, n) => x + n, 0) <= Object.values(hb).reduce((x, n) => x + n, 0) ? [ha, hb] : [hb, ha];
+  const total = Object.values(small).reduce((x, n) => x + n, 0);
+  const shared = Object.keys(small).filter((m) => big[m]);
+  const n = shared.reduce((x, m) => x + small[m], 0);
+  return total >= 2 && shared.length && n / total >= 0.5 && n >= 2 ? shared.sort((x, y) => small[y] - small[x]).slice(0, 3) : null;
 }
+
+/** Warum gehören zwei Kategorien vermutlich zusammen? Gründe als Text, sonst leere Liste. */
+function reasons(a, b) {
+  const out = [];
+  if (fold(a.name) === fold(b.name)) out.push('gleicher Name');
+  else if (similar(a.name, b.name) || similar(b.name, a.name)) out.push('fast gleicher Name');
+  else {
+    const shared = keyWords(a.name).filter((w) => keyWords(b.name).some((v) => v === w || (w.length >= 6 && v.length >= 6 && (v.includes(w) || w.includes(v)))));
+    if (shared.length) out.push(`gemeinsames Wort „${shared[0]}“`);
+  }
+  const sa = synonymGroup(a.name);
+  if (sa >= 0 && sa === synonymGroup(b.name) && !out.length) out.push('gleiche Bedeutung');
+  const m = merchantOverlap(a, b);
+  if (m) out.push(`gleiche Händler (${m.join(', ')})`);
+  return out;
+}
+
+/**
+ * Vorschläge als Gruppen („Cluster“): alle Paare mit Grund, stärkste zuerst (Name > gleiche Händler > Bedeutung,
+ * mehrere Gründe zählen mehr). Ein Paar eröffnet eine Gruppe (Ziel = größere Kategorie) oder ergänzt eine Gruppe,
+ * deren Ziel es enthält – kein Verketten über Dritte, sonst landet am Ende alles in einer Gruppe.
+ */
+const pairKey = (a, b) => [a, b].map((x) => x.toLowerCase()).sort().join('|');
+function suggestions(list, ignored = new Set()) {
+  const pool = list.filter((c) => !c.ziel && (c.n > 0 || c.inFirefly));
+  const weight = (why) => why.reduce((x, w) => x + (w.includes('Name') ? 3 : w.startsWith('gemeinsames Wort') ? 2.5 : w.startsWith('gleiche Händler') ? 2 : 1), 0);
+  const bigger = (a, b) => (Number(b.inFirefly) - Number(a.inFirefly) || b.n - a.n) < 0 ? a : b;
+  const edges = [];
+  for (let i = 0; i < pool.length; i++) {
+    for (let j = i + 1; j < pool.length; j++) {
+      if (ignored.has(pairKey(pool[i].name, pool[j].name))) continue; // „passt nicht“
+      const why = reasons(pool[i], pool[j]);
+      if (why.length) edges.push({ a: pool[i], b: pool[j], why, w: weight(why) });
+    }
+  }
+  edges.sort((x, y) => y.w - x.w || (y.a.n + y.b.n) - (x.a.n + x.b.n));
+  const clusterOf = new Map(); // Name → Gruppe
+  const clusters = [];
+  for (const e of edges) {
+    const ca = clusterOf.get(e.a.name);
+    const cb = clusterOf.get(e.b.name);
+    if (!ca && !cb) {
+      const center = bigger(e.a, e.b);
+      const other = center === e.a ? e.b : e.a;
+      const c = { to: center.name, n: center.n, members: [{ name: other.name, n: other.n, why: e.why }], w: e.w };
+      clusters.push(c);
+      clusterOf.set(center.name, c);
+      clusterOf.set(other.name, c);
+    } else if (ca && !cb && ca.to === e.a.name) {
+      ca.members.push({ name: e.b.name, n: e.b.n, why: e.why });
+      clusterOf.set(e.b.name, ca);
+    } else if (cb && !ca && cb.to === e.b.name) {
+      cb.members.push({ name: e.a.name, n: e.a.n, why: e.why });
+      clusterOf.set(e.a.name, cb);
+    }
+  }
+  return clusters
+    .map((c) => ({ ...c, from: c.members.map((m) => m.name), pairs: c.members.map((m) => pairKey(c.to, m.name)) }))
+    .sort((a, b) => b.w - a.w || b.members.length - a.members.length);
+}
+
+const IGNORE_KEY = 'ffd-cm-ignore'; // „passt nicht“ bei Vorschlägen (je Gerät)
+const ignoredSugg = () => {
+  try {
+    return new Set(JSON.parse(storage(IGNORE_KEY, '[]')));
+  } catch {
+    return new Set();
+  }
+};
 
 export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
   monateNow = monate;
+  let showSugg = 6;
   const openRows = new Set(); // Kategorien mit sichtbaren Buchungen
   const txCache = new Map(); // Kategorie → { anzahl, buchungen } | 'laden' | Fehlertext
   async function loadTx(name) {
@@ -106,7 +200,7 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
     const list = data.kategorien;
     const active = list.filter((c) => !c.ziel);
     const merged = data.zusammengefuehrt;
-    const sugg = suggestions(list);
+    const sugg = suggestions(list, ignoredSugg());
     el.querySelector('#cm-names').innerHTML = [...new Set(active.map((c) => c.name))].sort((a, b) => a.localeCompare(b, 'de')).map((n) => `<option value="${esc(n)}">`).join('');
     const since = new Date(new Date().getFullYear(), new Date().getMonth() - monate, 1); // wie /local/kategorien
     meta.textContent = `${active.length} Kategorien${merged.length ? ` · ${merged.length} zusammengeführt` : ''} · Buchungen seit ${fmtDate(since, { month: 'short', year: 'numeric' })}`;
@@ -120,9 +214,13 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
     const why = !to ? 'Erst oben das Ziel wählen.' : !from.length ? 'Kategorien ankreuzen, die in „' + esc(to) + '“ aufgehen sollen.' : '';
     body.innerHTML = `
       ${note ? `<div class="cm-note">${note}</div>` : ''}
-      ${sugg.length ? `<div class="cm-sugg"><b>Vorschläge</b> (fast gleiche Namen):
-        ${sugg.map((x, i) => `<div class="cm-sugg-row"><span>${x.from.map((f) => `„${esc(f)}“`).join(', ')} → <b>„${esc(x.to)}“</b></span>
-          <button class="btn small" type="button" data-sugg="${i}">übernehmen</button></div>`).join('')}</div>` : ''}
+      ${sugg.length ? `<div class="cm-sugg"><div><b>Vorschläge: Was gehört vermutlich zusammen?</b> <span class="muted">– nach Name, gemeinsamem Wort, Bedeutung und gleichen Händlern gruppiert. „übernehmen“ setzt Ziel und Häkchen; danach in der Tabelle anpassen.</span></div>
+        ${sugg.slice(0, showSugg).map((x, i) => `<div class="cm-cluster">
+          <div class="cm-cluster-head"><span>→ <b>„${esc(x.to)}“</b> <span class="muted">(${x.n} Buchungen)</span></span>
+            <span><button class="btn small" type="button" data-sugg="${i}">übernehmen</button> <button class="link-btn" type="button" data-sugg-ignore="${i}" title="Diesen Vorschlag nicht mehr zeigen (dieses Gerät)">passt nicht</button></span></div>
+          <ul>${x.members.map((m) => `<li>„${esc(m.name)}“ <span class="muted">· ${m.n} Buchungen · ${m.why.map(esc).join(' · ')}</span></li>`).join('')}</ul>
+        </div>`).join('')}
+        ${sugg.length > showSugg ? `<button class="link-btn" type="button" data-sugg-more>weitere ${sugg.length - showSugg} Vorschläge zeigen</button>` : ''}</div>` : ''}
       <div class="table-wrap cm-wrap"><table class="cm-table">
         <thead><tr><th class="pick-cell"></th><th>Kategorie</th><th class="num">Buchungen</th><th class="num hide-sm">Ausgaben</th><th class="num hide-sm">Einnahmen</th></tr></thead>
         <tbody>${rows.map((c) => {
@@ -236,6 +334,15 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.merge) return merge(b.dataset.merge, b);
+    if (b.dataset.suggIgnore !== undefined) {
+      const x = suggestions(data.kategorien, ignoredSugg())[Number(b.dataset.suggIgnore)];
+      store(IGNORE_KEY, JSON.stringify([...ignoredSugg(), ...x.pairs].slice(-500)));
+      return render();
+    }
+    if (b.dataset.suggMore !== undefined) {
+      showSugg += 10;
+      return render();
+    }
     if (b.dataset.cmTx) {
       const name = b.dataset.cmTx;
       if (openRows.has(name)) openRows.delete(name);
@@ -260,7 +367,7 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
       return render();
     }
     if (b.dataset.sugg !== undefined) {
-      const x = suggestions(data.kategorien)[Number(b.dataset.sugg)];
+      const x = suggestions(data.kategorien, ignoredSugg())[Number(b.dataset.sugg)];
       picked.clear();
       x.from.forEach((n) => picked.add(n));
       target = x.to;
