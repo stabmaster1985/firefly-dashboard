@@ -8,6 +8,7 @@ import * as api from './api.js';
 import { esc, money, fmtDate, today, isoDate } from './util.js';
 import { runAction } from './txedit.js';
 import { toFireflyRules } from './rules.js';
+import { similar } from './combo.js';
 
 const RULE_GROUP = 'Dashboard: Kategorien zusammengeführt';
 const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
@@ -41,40 +42,78 @@ function suggestions(list) {
 export function catMergeCard(el, meta, { rulesAction }) {
   let data;
   const picked = new Set();
+  let target = ''; // Ziel – eingetippt oder per Vorschlag
+  let query = ''; // Suche in der Tabelle
   let note = '';
 
   const sum = (c) => c.ausgaben + c.einnahmen;
+  /** Passt der Name zur Suche bzw. ist er dem Ziel ähnlich (Schreibweise, Einzahl/Mehrzahl, Teilwort)? */
+  const related = (name, term) => {
+    const a = fold(name);
+    const b = fold(term);
+    if (!b) return false;
+    return a.includes(b) || b.includes(a) || similar(term, name) || b.split(' ').some((w) => w.length >= 4 && a.includes(w));
+  };
+
+  // Gerüst: Erklärung, Schritt 1 (Ziel) und Suche bleiben stehen – nur Liste und Knöpfe werden neu gezeichnet
+  el.innerHTML = `
+    <p class="muted" style="margin-top:0">Mehrere Kategorien zu einer machen, z. B. „Supermarkt“ und „Einkauf“ → „Lebensmittel“.
+      <b>Nur im Dashboard</b> wirkt sofort und lässt sich aufheben; <b>in Firefly</b> stellt per Regel alle Buchungen um – auch künftige Importe.</p>
+    <ol class="cm-steps">
+      <li><b>Ziel</b> wählen – die Kategorie, die bleiben soll (vorhanden oder neu):
+        <input class="input" data-cm-target list="cm-names" placeholder="z. B. Lebensmittel" aria-label="Zielkategorie"></li>
+      <li><b>Ankreuzen</b>, was darin aufgehen soll – so viele du willst. Die Suche findet auch ähnliche Namen; dem Ziel ähnliche sind markiert.
+        Vorschläge sind nur eine Abkürzung: „übernehmen“ setzt Ziel und Häkchen, du kannst danach weitere ankreuzen oder abwählen.</li>
+      <li><b>Zusammenführen</b> – nur im Dashboard oder in Firefly (Knöpfe unten).</li>
+    </ol>
+    <div class="cm-tools"><input class="input" type="search" data-cm-search placeholder="Kategorien suchen, z. B. lebensm, auto, versich …" aria-label="Kategorien suchen"></div>
+    <div data-cm-body><p class="muted">Lade Kategorien …</p></div>
+    <datalist id="cm-names"></datalist>`;
+  const body = el.querySelector('[data-cm-body]');
+  const targetInput = el.querySelector('[data-cm-target]');
+  const searchInput = el.querySelector('[data-cm-search]');
+
   function render() {
     const list = data.kategorien;
     const active = list.filter((c) => !c.ziel);
     const merged = data.zusammengefuehrt;
     const sugg = suggestions(list);
-    const names = [...new Set(active.map((c) => c.name))].sort((a, b) => a.localeCompare(b, 'de'));
+    el.querySelector('#cm-names').innerHTML = [...new Set(active.map((c) => c.name))].sort((a, b) => a.localeCompare(b, 'de')).map((n) => `<option value="${esc(n)}">`).join('');
     meta.textContent = `${active.length} Kategorien${merged.length ? ` · ${merged.length} zusammengeführt` : ''}`;
-    el.innerHTML = `
-      <p class="muted" style="margin-top:0">Mehrere Kategorien zu einer machen, z. B. „Lebensmittel“, „Supermarkt“ und „Einkauf“ → „Lebensmittel“.
-        <b>Nur im Dashboard</b> wirkt sofort in allen Auswertungen und lässt sich jederzeit aufheben – Firefly bleibt unverändert.
-        <b>In Firefly</b> legt per n8n je Kategorie eine Regel „Kategorie ist A → Kategorie B“ an und wendet sie auf alle Buchungen an;
-        so landen auch künftige Importe mit der alten Kategorie im Ziel.</p>
+    const to = target.trim();
+    const from = [...picked].filter((f) => f.toLowerCase() !== to.toLowerCase());
+    const like = (c) => to && c.name.toLowerCase() !== to.toLowerCase() && related(c.name, to);
+    // Reihenfolge: ausgewählte, dem Ziel ähnliche, dann nach Buchungen; die Suche filtert
+    const rows = active
+      .filter((c) => !query.trim() || related(c.name, query) || picked.has(c.name))
+      .sort((a, b) => Number(picked.has(b.name)) - Number(picked.has(a.name)) || Number(like(b)) - Number(like(a)) || b.n - a.n);
+    const why = !to ? 'Erst oben das Ziel wählen.' : !from.length ? 'Kategorien ankreuzen, die in „' + esc(to) + '“ aufgehen sollen.' : '';
+    body.innerHTML = `
       ${note ? `<div class="cm-note">${note}</div>` : ''}
       ${sugg.length ? `<div class="cm-sugg"><b>Vorschläge</b> (fast gleiche Namen):
-        ${sugg.map((s, i) => `<div class="cm-sugg-row"><span>${s.from.map((f) => `„${esc(f)}“`).join(', ')} → <b>„${esc(s.to)}“</b></span>
+        ${sugg.map((x, i) => `<div class="cm-sugg-row"><span>${x.from.map((f) => `„${esc(f)}“`).join(', ')} → <b>„${esc(x.to)}“</b></span>
           <button class="btn small" type="button" data-sugg="${i}">übernehmen</button></div>`).join('')}</div>` : ''}
-      <div class="table-wrap"><table class="cm-table">
+      <div class="table-wrap cm-wrap"><table class="cm-table">
         <thead><tr><th class="pick-cell"></th><th>Kategorie</th><th class="num">Buchungen</th><th class="num hide-sm">Ausgaben</th><th class="num hide-sm">Einnahmen</th></tr></thead>
-        <tbody>${active.map((c) => `<tr data-name="${esc(c.name)}">
-          <td class="pick-cell"><input type="checkbox" data-pick="${esc(c.name)}" ${picked.has(c.name) ? 'checked' : ''} aria-label="${esc(c.name)} auswählen"></td>
-          <td><div class="desc">${esc(c.name)}</div><div class="flow">${!c.inFirefly ? 'nur im Dashboard (automatisch/zusammengeführt)' : c.n === 0 ? 'in Firefly, ohne Buchungen' : c.auto && c.firefly ? 'Firefly + automatisch' : c.auto ? 'automatisch zugeordnet' : 'Firefly'}${(merged.filter((m) => m.to.toLowerCase() === c.name.toLowerCase()).length) ? ` · enthält ${merged.filter((m) => m.to.toLowerCase() === c.name.toLowerCase()).map((m) => `„${esc(m.from)}“`).join(', ')}` : ''}</div></td>
+        <tbody>${rows.map((c) => {
+          const isTarget = to && c.name.toLowerCase() === to.toLowerCase();
+          const parts = merged.filter((m) => m.to.toLowerCase() === c.name.toLowerCase());
+          return `<tr data-name="${esc(c.name)}" class="${picked.has(c.name) ? 'cm-picked' : ''}${isTarget ? ' cm-target' : ''}">
+          <td class="pick-cell">${isTarget ? '<span title="Ziel">★</span>' : `<input type="checkbox" data-pick="${esc(c.name)}" ${picked.has(c.name) ? 'checked' : ''} aria-label="${esc(c.name)} auswählen">`}</td>
+          <td><div class="desc">${esc(c.name)} ${isTarget ? '<span class="badge good">Ziel</span>' : like(c) ? '<span class="badge warn" title="Ähnlicher Name wie das Ziel">ähnlich</span>' : ''}</div>
+            <div class="flow">${!c.inFirefly ? 'nur im Dashboard (automatisch/zusammengeführt)' : c.n === 0 ? 'in Firefly, ohne Buchungen' : c.auto && c.firefly ? 'Firefly + automatisch' : c.auto ? 'automatisch zugeordnet' : 'Firefly'}${parts.length ? ` · enthält ${parts.map((m) => `„${esc(m.from)}“`).join(', ')}` : ''}${!isTarget ? ` · <button type="button" class="link-btn" data-as-target="${esc(c.name)}">als Ziel</button>` : ''}</div></td>
           <td class="num">${c.n}</td>
           <td class="num hide-sm">${c.ausgaben ? money(c.ausgaben) : '–'}</td>
-          <td class="num hide-sm">${c.einnahmen ? money(c.einnahmen) : '–'}</td></tr>`).join('')}</tbody></table></div>
-      <form class="cm-form" id="cm-form">
-        <span class="muted">${picked.size ? `${picked.size} ausgewählt` : 'Kategorien oben ankreuzen'}</span>
-        <label>zusammenführen in <input class="input" name="to" list="cm-names" required placeholder="Ziel (vorhanden oder neu)" value="${esc(picked.size ? [...picked].sort((a, b) => sum(list.find((c) => c.name === b) || { ausgaben: 0, einnahmen: 0 }) - sum(list.find((c) => c.name === a) || { ausgaben: 0, einnahmen: 0 }))[0] : '')}"></label>
-        <datalist id="cm-names">${names.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
-        <button class="btn" type="submit" name="mode" value="dashboard"${picked.size ? '' : ' disabled'}>Nur im Dashboard</button>
-        <button class="btn primary" type="submit" name="mode" value="firefly"${picked.size && rulesAction ? '' : ' disabled'} title="${rulesAction ? 'Per n8n-Workflow „Regeln anlegen“' : 'Dafür eine Automation mit Auslöser „Firefly-Regeln anlegen“ einrichten (n8n/firefly-buchung-bearbeiten.json)'}">In Firefly zusammenführen</button>
-      </form>
+          <td class="num hide-sm">${c.einnahmen ? money(c.einnahmen) : '–'}</td></tr>`;
+        }).join('') || `<tr><td colspan="5" class="muted">Nichts gefunden für „${esc(query)}“.</td></tr>`}</tbody></table></div>
+      <div class="cm-form">
+        <div class="cm-summary">${from.length && to ? `<span><b>${from.length}</b> → „<b>${esc(to)}</b>“:</span> ${from.map((f) => `<span class="chip small">${esc(f)} <button type="button" class="chip-x" data-unpick="${esc(f)}" aria-label="${esc(f)} abwählen">✕</button></span>`).join(' ')}` : `<span class="muted">${why}</span>`}</div>
+        <div class="cm-btns">
+          <button class="btn" type="button" data-merge="dashboard"${from.length && to ? '' : ' disabled'}>Nur im Dashboard</button>
+          <button class="btn primary" type="button" data-merge="firefly"${from.length && to && rulesAction ? '' : ' disabled'} title="${rulesAction ? 'Per n8n-Workflow „Regeln anlegen“' : 'Dafür eine Automation mit Auslöser „Firefly-Regeln anlegen“ einrichten (n8n/firefly-buchung-bearbeiten.json)'}">In Firefly zusammenführen</button>
+          ${picked.size ? '<button class="link-btn" type="button" data-unpick-all>Auswahl leeren</button>' : ''}
+        </div>
+      </div>
       ${!rulesAction ? '<p class="muted small-text">„In Firefly“ braucht unter <a href="#/automationen">Automationen</a> eine Automation mit Auslöser „Firefly-Regeln anlegen“ (Vorlage n8n/firefly-buchung-bearbeiten.json).</p>' : ''}
       ${merged.length ? `<h3 class="sub-h" style="margin-top:18px">Zusammengeführt</h3>
         <div class="list cm-merged">${merged.map((m) => `<div class="row" style="cursor:default">
@@ -109,42 +148,84 @@ export function catMergeCard(el, meta, { rulesAction }) {
     render();
   }
 
+  let searchTimer;
+  el.addEventListener('input', (e) => {
+    if (e.target === searchInput) {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        query = searchInput.value;
+        render();
+      }, 150);
+    } else if (e.target === targetInput) {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        target = targetInput.value;
+        render();
+      }, 250);
+    }
+  });
   el.addEventListener('change', (e) => {
+    if (e.target === targetInput) {
+      target = targetInput.value;
+      return render();
+    }
     const box = e.target.closest('[data-pick]');
     if (!box) return;
     if (box.checked) picked.add(box.dataset.pick);
     else picked.delete(box.dataset.pick);
+    // noch kein Ziel: die größte ausgewählte Kategorie vorschlagen
+    if (!target.trim() && picked.size >= 2) {
+      const list = data.kategorien;
+      target = [...picked].sort((a, b) => sum(list.find((c) => c.name === b) || { ausgaben: 0, einnahmen: 0 }) - sum(list.find((c) => c.name === a) || { ausgaben: 0, einnahmen: 0 }))[0];
+      targetInput.value = target;
+    }
     render();
   });
-  el.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const mode = e.submitter?.value || 'dashboard';
-    const to = new FormData(e.target).get('to').trim();
+  function merge(mode, btn) {
+    const to = target.trim();
     const from = [...picked].filter((f) => f.toLowerCase() !== to.toLowerCase());
     if (!to || !from.length) return;
     if (mode === 'firefly' && !window.confirm(`In Firefly ${from.map((f) => `„${f}“`).join(', ')} → „${to}“ zusammenführen?\n\nDas Dashboard legt per n8n je Kategorie eine Regel an und wendet sie auf alle Buchungen an – die Kategorie der Buchungen ändert sich in Firefly.`)) return;
-    e.submitter.disabled = true;
+    btn.disabled = true;
     act(async () => {
       data = await call({ from, to, firefly: mode === 'firefly' });
       picked.clear();
+      target = '';
+      targetInput.value = '';
       note = mode === 'firefly' ? '' : `✓ ${from.map((f) => `„${esc(f)}“`).join(', ')} zählt jetzt als „${esc(to)}“ – im ganzen Dashboard.`;
       if (mode === 'firefly') {
-        el.querySelector('.cm-form').insertAdjacentHTML('afterend', '<p class="muted cm-busy">Übertrage nach Firefly … (kann bei vielen Buchungen ein paar Minuten dauern)</p>');
+        body.querySelector('.cm-form').insertAdjacentHTML('afterend', '<p class="muted cm-busy">Übertrage nach Firefly … (kann bei vielen Buchungen ein paar Minuten dauern)</p>');
         const n = await sendToFirefly();
         note = `<span class="good">✓ In Firefly: ${n} Regel${n === 1 ? '' : 'n'} in der Gruppe „${esc(RULE_GROUP)}“, auf alle Buchungen angewendet.</span>`;
       }
     });
-  });
+  }
   el.addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
-    if (b.dataset.sugg !== undefined) {
-      const s = suggestions(data.kategorien)[Number(b.dataset.sugg)];
+    if (b.dataset.merge) return merge(b.dataset.merge, b);
+    if (b.dataset.asTarget) {
+      target = b.dataset.asTarget;
+      targetInput.value = target;
+      picked.delete(target);
+      return render();
+    }
+    if (b.dataset.unpick) {
+      picked.delete(b.dataset.unpick);
+      return render();
+    }
+    if (b.dataset.unpickAll !== undefined) {
       picked.clear();
-      [...s.from, s.to].forEach((n) => picked.add(n));
+      return render();
+    }
+    if (b.dataset.sugg !== undefined) {
+      const x = suggestions(data.kategorien)[Number(b.dataset.sugg)];
+      picked.clear();
+      x.from.forEach((n) => picked.add(n));
+      target = x.to;
+      targetInput.value = x.to;
       render();
-      el.querySelector('#cm-form input[name=to]').value = s.to;
-      el.querySelector('#cm-form').scrollIntoView({ block: 'center', behavior: 'smooth' });
+      body.querySelector('.cm-form').scrollIntoView({ block: 'center', behavior: 'smooth' });
       return;
     }
     if (b.dataset.unmerge) {

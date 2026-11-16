@@ -1633,3 +1633,25 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
 .tool b { display: block; font-size: 14px; }
 .tool span { display: block; font-size: 12px; color: var(--text-secondary); line-height: 1.35; }
 .task-list .row.task .title, .task-list .row.task .subtitle { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.pc-steps { margin: 0 0 12px; padding-left: 20px; font-size: 13px; color: var(--text-secondary); display: grid; gap: 2px; }
+.pc-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 12px; font-size: 13px; }
+.pc-tools [data-pc-search] { flex: 1 1 240px; max-width: 420px; height: 34px; }
+.pc-txs tr.pc-miss { opacity: 0.45; }
+.pc-tx-acts { font-size: 12px; margin-top: 3px; color: var(--text-secondary); }
+@media (max-width: 640px) {
+  .pc-txs tr { display: grid; grid-template-columns: auto auto 1fr auto; gap: 2px 8px; padding: 8px 0; border-bottom: 1px solid var(--grid); }
+  .pc-txs td { border: 0; padding: 0; }
+  .pc-txs td:nth-child(3) { grid-column: 1 / -1; order: 5; }
+  .pc-txs td:nth-child(4) { font-size: 12px; color: var(--text-secondary); }
+}
+
+/* Kategorien zusammenführen: Schritte, Suche, Auswahl */
+.cm-steps { margin: 0 0 12px; padding-left: 20px; font-size: 13px; color: var(--text-secondary); display: grid; gap: 6px; }
+.cm-steps [data-cm-target] { display: block; margin-top: 6px; max-width: 320px; height: 34px; font-size: 14px; }
+.cm-tools { margin-bottom: 10px; }
+.cm-tools [data-cm-search] { width: 100%; max-width: 420px; height: 34px; }
+.cm-wrap { max-height: 480px; overflow-y: auto; }
+.cm-table tr.cm-picked td { background: var(--accent-soft); }
+.cm-table tr.cm-target td { background: color-mix(in srgb, var(--positive) 10%, transparent); }
+.cm-summary { font-size: 13px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1 1 100%; }
+.cm-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
