@@ -88,7 +88,8 @@ export function partyCheckCard(el, metaEl, { txs, editAction }) {
   function render() {
     openAcc ||= new Set(results.length <= 5 ? results.map((r) => r.party) : []);
     const wrong = results.reduce((a, r) => a + r.wrongCount, 0);
-    metaEl.textContent = results.length ? `${results.length} ${results.length === 1 ? 'Konto' : 'Konten'} · ${wrong} Buchung${wrong === 1 ? '' : 'en'}` : 'nichts gefunden';
+    const since = fmtDate(new Date(new Date().getFullYear(), new Date().getMonth() - 24, 1), { month: 'short', year: 'numeric' }); // wie loadHistory
+    metaEl.textContent = `${results.length ? `${results.length} ${results.length === 1 ? 'Konto' : 'Konten'} · ${wrong} Buchung${wrong === 1 ? '' : 'en'}` : 'nichts gefunden'} · seit ${since}`;
     const nSel = selected().length;
     const searching = words().length > 0;
     const shown = results.map((r) => ({ r, groups: r.groups.filter((g) => groupHits(r, g)) })).filter((x) => x.groups.length);

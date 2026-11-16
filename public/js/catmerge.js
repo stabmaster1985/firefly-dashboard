@@ -79,7 +79,8 @@ export function catMergeCard(el, meta, { rulesAction }) {
     const merged = data.zusammengefuehrt;
     const sugg = suggestions(list);
     el.querySelector('#cm-names').innerHTML = [...new Set(active.map((c) => c.name))].sort((a, b) => a.localeCompare(b, 'de')).map((n) => `<option value="${esc(n)}">`).join('');
-    meta.textContent = `${active.length} Kategorien${merged.length ? ` · ${merged.length} zusammengeführt` : ''}`;
+    const since = new Date(new Date().getFullYear(), new Date().getMonth() - 24, 1); // wie /local/kategorien
+    meta.textContent = `${active.length} Kategorien${merged.length ? ` · ${merged.length} zusammengeführt` : ''} · Buchungen seit ${fmtDate(since, { month: 'short', year: 'numeric' })}`;
     const to = target.trim();
     const from = [...picked].filter((f) => f.toLowerCase() !== to.toLowerCase());
     const like = (c) => to && c.name.toLowerCase() !== to.toLowerCase() && related(c.name, to);
