@@ -327,6 +327,7 @@ export async function cleanup(view) {
   let groups = [];
   let mergeFilter = 'offen';
   let mergeSearch = '';
+  const mgOpen = new Set(); // Konten (ID), deren Buchungen aufgeklappt sind
   let stats = new Map(); // Kontoname (klein) → { n, sum, first, last } aus den Buchungen
 
   async function loadAccounts(fresh = false) {
@@ -352,6 +353,17 @@ export async function cleanup(view) {
       stats.set(k, st);
     }
     groups = mergeGroups(accounts, counts);
+  }
+
+  /** Buchungen eines Gegenkontos im gewählten Zeitraum (neueste zuerst) – zum Prüfen vor dem Zusammenführen. */
+  function accountTx(a) {
+    const list = txs.filter((t) => lower(counterpartyOf(t)) === lower(a.name)).sort((x, y) => String(y.date).localeCompare(String(x.date)));
+    const shownTx = list.slice(0, 100);
+    return `<div class="mg-tx">${list.length > shownTx.length ? `<p class="muted">Die neuesten ${shownTx.length} von ${list.length}.</p>` : ''}
+      <table><tbody>${shownTx.map((t) => `<tr><td class="date">${fmtDate(t.date)}</td>
+        <td><div class="desc">${esc(String(t.description || '').slice(0, 110))}</div>${t.notes ? `<div class="flow">${esc(String(t.notes).slice(0, 120))}</div>` : ''}</td>
+        <td class="hide-sm">${t.category_name ? esc(t.category_name) : '<span class="muted">ohne</span>'}</td>
+        <td class="num">${t.type === 'deposit' ? '+' : '−'}${money(t.amount, t.currency_code)}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
   /** Gruppe + gespeicherte Entscheidung (Ziel, Mitglieder, Name, ignoriert …). */
@@ -425,8 +437,9 @@ export async function cleanup(view) {
             ${isTarget ? '<span class="mg-pin" aria-hidden="true">★</span>' : `<input type="checkbox" data-m-member="${esc(a.id)}" ${on ? 'checked' : ''} aria-label="${esc(a.name)} übernehmen"${st === 'erledigt' ? ' disabled' : ''}>`}
             <div class="mg-name"><span>${esc(a.name)}</span>
               <span class="mg-sub">${s2.n} Buchung${s2.n === 1 ? '' : 'en'}${s2.sum ? ` · ${money(s2.sum)}` : ''}${s2.first ? ` · ${fmtDate(s2.first, { month: 'short', year: '2-digit' })}${s2.last !== s2.first ? `–${fmtDate(s2.last, { month: 'short', year: '2-digit' })}` : ''}` : ''}${a.iban ? ` · ${esc(a.iban)}` : ''}</span></div>
+            ${s2.n ? `<button class="link-btn" data-m-tx="${esc(a.id)}">${mgOpen.has(a.id) ? 'Buchungen ▴' : 'Buchungen ▾'}</button>` : ''}
             ${isTarget ? '<span class="badge good">Ziel</span>' : st === 'erledigt' ? '' : `<button class="link-btn" data-m-target="${esc(a.id)}">als Ziel</button>`}
-          </div>`;
+          </div>${mgOpen.has(a.id) ? accountTx(a) : ''}`;
         };
         const moving = inGroup.length - 1;
         return `<div class="merge-group ${st}" data-key="${esc(g.key)}">
@@ -547,6 +560,13 @@ export async function cleanup(view) {
         pendingGroups[x.key] = { ...(pendingGroups[x.key] || {}), selected: on };
       }
       flushGroups();
+      return renderMerge();
+    }
+    const txb = e.target.closest('[data-m-tx]');
+    if (txb) {
+      const id = txb.dataset.mTx;
+      if (mgOpen.has(id)) mgOpen.delete(id);
+      else mgOpen.add(id);
       return renderMerge();
     }
     const tb = e.target.closest('[data-m-target]');

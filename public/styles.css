@@ -1661,3 +1661,7 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
 .cm-table tr.cm-tx-row > td { background: var(--surface-2); padding-top: 4px; }
 .cm-tx { width: 100%; font-size: 13px; }
 .cm-tx td { padding: 6px 8px; border-bottom: 1px solid var(--grid); }
+.mg-tx { margin: 0 0 8px 28px; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); max-height: 320px; overflow-y: auto; font-size: 13px; }
+.mg-tx table { width: 100%; }
+.mg-tx td { padding: 5px 6px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+@media (max-width: 640px) { .mg-tx { margin-left: 0; } }
