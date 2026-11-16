@@ -53,28 +53,39 @@ const synonymGroup = (name) => {
 const STOP = new Set(['und', 'kosten', 'sonstig', 'sonstige', 'allgemein', 'diverse', 'neu', 'alt', 'privat', 'monatlich']);
 const keyWords = (name) => fold(name).split(' ').filter((w) => w.length >= 5 && !STOP.has(w));
 
-/** Gemeinsame Händler: Anteil der Buchungen der kleineren Kategorie bei Händlern, die auch die andere hat. */
-function merchantOverlap(a, b) {
-  const ha = a.haendler || {};
-  const hb = b.haendler || {};
-  const [small, big] = Object.values(ha).reduce((x, n) => x + n, 0) <= Object.values(hb).reduce((x, n) => x + n, 0) ? [ha, hb] : [hb, ha];
-  const total = Object.values(small).reduce((x, n) => x + n, 0);
-  const shared = Object.keys(small).filter((m) => big[m]);
-  const n = shared.reduce((x, m) => x + small[m], 0);
-  return total >= 2 && shared.length && n / total >= 0.5 && n >= 2 ? shared.sort((x, y) => small[y] - small[x]).slice(0, 3) : null;
+/** Vergleichsdaten einer Kategorie einmal vorbereiten (die Paarvergleiche laufen n² Mal). */
+function prep(c) {
+  const h = c.haendler || {};
+  return { c, name: c.name, n: c.n, f: fold(c.name), kw: keyWords(c.name), syn: synonymGroup(c.name), h, total: Object.values(h).reduce((x, v) => x + v, 0) };
 }
 
-/** Warum gehören zwei Kategorien vermutlich zusammen? Gründe als Text, sonst leere Liste. */
+/** Gemeinsame Händler: Anteil der Buchungen der kleineren Kategorie bei Händlern, die auch die andere hat. */
+function merchantOverlap(a, b) {
+  if (a.total < 2 && b.total < 2) return null;
+  const [small, big, total] = a.total <= b.total ? [a.h, b.h, a.total] : [b.h, a.h, b.total];
+  if (total < 2) return null;
+  let n = 0;
+  const shared = [];
+  for (const m in small) {
+    if (big[m]) {
+      n += small[m];
+      shared.push(m);
+    }
+  }
+  return shared.length && n >= 2 && n / total >= 0.5 ? shared.sort((x, y) => small[y] - small[x]).slice(0, 3) : null;
+}
+
+/** Warum gehören zwei Kategorien vermutlich zusammen? (vorbereitete Daten, siehe prep) Gründe als Text, sonst leere Liste. */
 function reasons(a, b) {
   const out = [];
-  if (fold(a.name) === fold(b.name)) out.push('gleicher Name');
-  else if (similar(a.name, b.name) || similar(b.name, a.name)) out.push('fast gleicher Name');
-  else {
-    const shared = keyWords(a.name).filter((w) => keyWords(b.name).some((v) => v === w || (w.length >= 6 && v.length >= 6 && (v.includes(w) || w.includes(v)))));
+  if (a.f === b.f) out.push('gleicher Name');
+  // Tippfehler-Vergleich nur, wenn die Längen passen oder einer der Anfang des anderen ist – sonst unnötig teuer
+  else if ((Math.abs(a.f.length - b.f.length) <= 2 || a.f.startsWith(b.f) || b.f.startsWith(a.f)) && (similar(a.name, b.name) || similar(b.name, a.name))) out.push('fast gleicher Name');
+  else if (a.kw.length && b.kw.length) {
+    const shared = a.kw.filter((w) => b.kw.some((v) => v === w || (w.length >= 6 && v.length >= 6 && (v.includes(w) || w.includes(v)))));
     if (shared.length) out.push(`gemeinsames Wort „${shared[0]}“`);
   }
-  const sa = synonymGroup(a.name);
-  if (sa >= 0 && sa === synonymGroup(b.name) && !out.length) out.push('gleiche Bedeutung');
+  if (a.syn >= 0 && a.syn === b.syn && !out.length) out.push('gleiche Bedeutung');
   const m = merchantOverlap(a, b);
   if (m) out.push(`gleiche Händler (${m.join(', ')})`);
   return out;
@@ -86,10 +97,20 @@ function reasons(a, b) {
  * deren Ziel es enthält – kein Verketten über Dritte, sonst landet am Ende alles in einer Gruppe.
  */
 const pairKey = (a, b) => [a, b].map((x) => x.toLowerCase()).sort().join('|');
+// Ergebnis merken: neu gerechnet wird nur, wenn sich die Kategorien oder die ausgeblendeten Paare ändern –
+// nicht bei jedem Häkchen (bei vielen Kategorien dauert die Berechnung spürbar)
+let memo = { list: null, ignored: '', out: [] };
 function suggestions(list, ignored = new Set()) {
-  const pool = list.filter((c) => !c.ziel && (c.n > 0 || c.inFirefly));
+  const ig = [...ignored].sort().join('\n');
+  if (memo.list === list && memo.ignored === ig) return memo.out;
+  const out = computeSuggestions(list, ignored);
+  memo = { list, ignored: ig, out };
+  return out;
+}
+function computeSuggestions(list, ignored) {
+  const pool = list.filter((c) => !c.ziel && (c.n > 0 || c.inFirefly)).map(prep);
   const weight = (why) => why.reduce((x, w) => x + (w.includes('Name') ? 3 : w.startsWith('gemeinsames Wort') ? 2.5 : w.startsWith('gleiche Händler') ? 2 : 1), 0);
-  const bigger = (a, b) => (Number(b.inFirefly) - Number(a.inFirefly) || b.n - a.n) < 0 ? a : b;
+  const bigger = (a, b) => (Number(b.c.inFirefly) - Number(a.c.inFirefly) || b.n - a.n) < 0 ? a : b;
   const edges = [];
   for (let i = 0; i < pool.length; i++) {
     for (let j = i + 1; j < pool.length; j++) {
@@ -215,7 +236,9 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
     meta.textContent = `${active.length} Kategorien${merged.length ? ` · ${merged.length} zusammengeführt` : ''} · Buchungen seit ${fmtDate(since, { month: 'short', year: 'numeric' })}`;
     const to = target.trim();
     const from = [...picked].filter((f) => f.toLowerCase() !== to.toLowerCase());
-    const like = (c) => to && c.name.toLowerCase() !== to.toLowerCase() && related(c.name, to);
+    // „ähnlich zum Ziel“ einmal je Zeichnen berechnen (nicht in jedem Sortiervergleich)
+    const likeMap = new Map(to ? active.map((c) => [c.name, c.name.toLowerCase() !== to.toLowerCase() && related(c.name, to)]) : []);
+    const like = (c) => Boolean(likeMap.get(c.name));
     // Reihenfolge: ausgewählte, dem Ziel ähnliche, dann nach Buchungen; die Suche filtert
     const rows = active
       .filter((c) => !query.trim() || related(c.name, query) || picked.has(c.name))
@@ -279,6 +302,8 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
   }
 
   async function act(fn) {
+    note = '<span class="muted">⏳ Speichere …</span>'; // sofort sichtbar – der Server rechnet die Summen neu
+    render();
     try {
       await fn();
       txCache.clear();
