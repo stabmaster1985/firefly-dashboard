@@ -19,6 +19,7 @@ import { partyDetail } from './party.js';
 import { assignPage } from './zuordnen.js';
 import { initNav, navRendered, resetSheet } from './nav.js';
 import { openHelp, helpPage } from './helpui.js';
+import { PAGES, CARDS, pageOfCard } from './help.js';
 import { applyCardFilter, setFolded } from './common.js';
 import { destroyCharts } from './charts.js';
 import { PERIODS, SALARY_PERIODS, periodById, customPeriodId, parseDate, isoDate, debounce, storage, store, esc, payday } from './util.js';
@@ -120,7 +121,27 @@ async function render() {
   const page = document.createElement('div');
   page.className = 'page';
   viewEl.replaceChildren(page);
-  await route.view(page, { period, params, id: id && decodeURIComponent(id) });
+  const shown = route.view(page, { period, params, id: id && decodeURIComponent(id) });
+  if (params.get('karte')) jumpToCard(page, params.get('karte'));
+  await shown;
+}
+
+/** Aus der Suche: Karte aufklappen, hinscrollen und kurz hervorheben (sobald sie da ist). */
+function jumpToCard(page, id) {
+  let tries = 0;
+  const go = () => {
+    if (!page.isConnected) return;
+    const sec = page.querySelector(`[data-fold="${CSS.escape(id)}"]`);
+    if (!sec) {
+      if (tries++ < 40) setTimeout(go, 150);
+      return;
+    }
+    if (sec.classList.contains('folded')) setFolded(sec, false);
+    setTimeout(() => sec.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300); // Inhalt kurz laden lassen
+    sec.classList.add('card-flash');
+    setTimeout(() => sec.classList.remove('card-flash'), 2600);
+  };
+  go();
 }
 
 function showConnectionError(err) {
@@ -366,6 +387,57 @@ function loadSearchIndex() {
   return searchIndex;
 }
 
+// ---- Funktionen finden: Seiten und Karten (aus der Hilfe) samt Stichwörtern ------------------------------
+// Zusätzliche Suchwörter für Aufgaben, die man anders nennt als die Karte heißt
+const EXTRA_WORDS = {
+  'a-catmerge': 'kategorien zusammenlegen vereinen doppelte kategorie umbenennen',
+  'a-merge': 'gegenkonten konten zusammenlegen doppelte händler empfänger vereinen',
+  'a-wrong': 'falsches konto verschieben empfänger gegenkonto korrigieren iban payone elv',
+  'a-import': 'import konfiguration data importer json regeln',
+  'z-open': 'kategorie zuordnen ohne kategorie händler',
+  'z-auto': 'aufteilen versicherung mandatsreferenz passt bestätigen ändern',
+  'z-ff': 'regeln firefly übertragen übernehmen künftig import',
+  'r-contracts': 'kündigen kündigungsfrist vertrag',
+  'r-forecast': 'kontostand vorschau gehalt monatsende minus',
+  'c-dup': 'doppelt duplikat dubletten',
+  'c-excl': 'ausblenden durchgangskonto ignorieren',
+  'c-backup': 'sicherung backup',
+  's-archive': 'bank csv kontostand saldo abgleich',
+  'd-suggest': 'vorschläge ohne kategorie kategorisieren',
+};
+const TASKS = [ // Aktionen ohne eigene Karte
+  ['Buchungen in ein anderes Gegenkonto verschieben', 'buchungen', 'transactions', 'verschieben empfänger gegenkonto ändern sammelaktion'],
+  ['Kategorie für mehrere Buchungen setzen', 'buchungen', 'transactions', 'sammelaktion mehrere kategorie setzen tag hinzufügen'],
+  ['Automation einrichten (n8n)', 'automationen', 'actions', 'webhook n8n automation regeln anlegen kategorie übernehmen'],
+];
+const fold = (x) => String(x || '').toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
+let functionIndex = null;
+function functions() {
+  if (functionIndex) return functionIndex;
+  const pathOf = Object.fromEntries(Object.entries(ROUTES).filter(([, r]) => r.help).map(([path, r]) => [r.help, path]));
+  const out = [];
+  for (const [key, page] of Object.entries(PAGES)) {
+    if (!(key in pathOf)) continue; // Detailseiten brauchen eine Kategorie/ein Konto
+    out.push({ name: page.title, where: 'Seite', href: `#/${pathOf[key]}`, hay: fold(`${page.title} ${page.what}`) });
+  }
+  for (const [id, c] of Object.entries(CARDS)) {
+    const page = pageOfCard(id);
+    if (!page || !(page in pathOf)) continue;
+    out.push({ name: c.title, where: PAGES[page].title, href: `#/${pathOf[page]}?karte=${id}`, hay: fold(`${c.title} ${c.what} ${PAGES[page].title} ${EXTRA_WORDS[id] || ''}`) });
+  }
+  for (const [name, path, help, words] of TASKS) out.push({ name, where: PAGES[help]?.title || '', href: `#/${path}`, hay: fold(`${name} ${words}`) });
+  functionIndex = out;
+  return out;
+}
+function findFunctions(term) {
+  const words = fold(term).split(/\s+/).filter((w) => w.length >= 2);
+  if (!words.length || fold(term).length < 3) return [];
+  return functions()
+    .filter((f) => words.every((w) => f.hay.includes(w)))
+    .sort((a, b) => Number(words.every((w) => fold(b.name).includes(w))) - Number(words.every((w) => fold(a.name).includes(w))))
+    .slice(0, 6);
+}
+
 function highlight(name, term) {
   const i = name.toLowerCase().indexOf(term.toLowerCase());
   if (i < 0) return esc(name);
@@ -382,6 +454,7 @@ async function updateSearch() {
       .sort((a, b) => key(a).toLowerCase().indexOf(term.toLowerCase()) - key(b).toLowerCase().indexOf(term.toLowerCase()) || key(a).localeCompare(key(b), 'de'));
   const q = (op, name) => `#/buchungen?q=${encodeURIComponent(`${op}:"${name}"`)}`;
   const groups = [
+    ['Funktionen', findFunctions(term).map((f) => [f.name, f.href, f.where])],
     ['Kategorien', find(idx.categories, (c) => c.name).slice(0, 6).map((c) => [c.name, `#/kategorien/${encodeURIComponent(c.id)}`, 'Analyse'])],
     ['Tags', find(idx.tags, (t) => t.name).slice(0, 4).map((t) => [t.name, `#/tags/${encodeURIComponent(t.id)}`, 'Analyse'])],
     ['Empfänger', find(idx.payees).slice(0, 5).map((n) => [n, `#/empfaenger/${encodeURIComponent(n)}`, 'Analyse'])],

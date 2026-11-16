@@ -32,6 +32,9 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
 
 <sub>Alle Bilder zeigen die Demo-Daten (<code>npm run demo</code>), keine echten Finanzen.</sub>
 
+- **Suche oben** (Taste `/` oder Strg+K) – findet auch **Funktionen**: „zusammenführen“, „verschieben“,
+  „Kündigungsfrist“, „aufteilen“ … springt direkt zur passenden Karte (aufgeklappt und hervorgehoben);
+  dazu Kategorien, Tags, Empfänger, Konten und Volltext in den Buchungen
 - **Menü** – nach Aufgaben gruppiert (Überblick, Ausgaben verstehen, Buchungen & Fragen, Pflegen,
   Werkzeuge); Gruppen lassen sich auf- und zuklappen (merkt sich das Gerät, „Werkzeuge“ ist anfangs
   zu). Kleine Zahlen zeigen, wo etwas zu tun ist: offene Händler bei „Zuordnen“, Hinweise bei
