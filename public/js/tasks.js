@@ -61,7 +61,7 @@ export async function tasksPage(view) {
   const rows = new Map(); // Schlüssel → { n, title, sub, href, prio, state }
   const SLOTS = [
     ['autocat', 'Zuordnen wird geprüft …'], ['check', 'Doppelte Buchungen und Importe werden geprüft …'],
-    ['cleanup', 'Gegenkonten werden geprüft …'], ['recurring', 'Kündigungsfristen werden geprüft …'], ['job', ''],
+    ['cleanup', 'Gegenkonten werden geprüft …'], ['ibans', 'IBANs werden geprüft …'], ['recurring', 'Kündigungsfristen werden geprüft …'], ['job', ''],
   ];
   let pending = SLOTS.length;
   const set = (key, items) => {
@@ -127,6 +127,12 @@ export async function tasksPage(view) {
     ]);
   }).catch(() => set('cleanup', []));
 
+  // 3b) Gegenkonten mit der IBAN eines Zahlungsdienstleisters (Ursache falscher Zuordnungen)
+  json('/local/importbericht?ibans=1').then((d) => set('ibans', (d?.konten || []).length ? [{
+    n: d.konten.length, prio: 1, warn: true, title: `${plural(d.konten.length, 'Gegenkonto trägt', 'Gegenkonten tragen')} die IBAN eines Zahlungsdienstleisters`,
+    sub: `${d.konten.slice(0, 2).map((k) => `${k.name}${k.dienstleister ? ` (${k.dienstleister})` : ''}`).join(', ')} – dort landen fremde Zahlungen; IBAN in Firefly entfernen`, href: '#/aufraeumen?karte=a-wrong',
+  }] : []));
+
   // 4) Kündigungsfristen
   json('/local/alerts').then((d) => {
     const fr = (d?.alerts || []).filter((a) => a.art === 'kuendigungsfrist');
@@ -171,6 +177,7 @@ function importReportCard(view) {
             ${b.duplikate?.length ? `<a href="#/pruefen?karte=c-dup">${b.duplikate.length} mögliche doppelte Buchung${b.duplikate.length === 1 ? '' : 'en'} →</a>` : ''}
             ${b.falscheKonten?.length ? `<a href="#/aufraeumen?karte=a-wrong">${b.falscheKonten.reduce((a, x) => a + x.anzahl, 0)} Buchungen bei falschem Gegenkonto →</a>` : ''}
             ${b.neueHaendler?.length ? `<a href="#/zuordnen?karte=z-open">${b.neueHaendler.length} neue Händler ohne Kategorie →</a>` : ''}
+            ${b.ibanKonten?.length ? `<a href="#/aufraeumen?karte=a-wrong">${b.ibanKonten.length === 1 ? '1 Gegenkonto' : `${b.ibanKonten.length} Gegenkonten`} mit IBAN eines Zahlungsdienstleisters →</a>` : ''}
           </div>`}
       <div class="report-actions">${busy ? '<span class="arch-busy" role="status"><span class="spinner" aria-hidden="true"></span> Prüfung läuft …</span>'
         : '<button class="btn small" type="button" data-report-run>Jetzt prüfen</button> <span class="muted">prüft Kontostand je Konto mit CSV im Archiv, Duplikate, Gegenkonten und neue Händler</span>'}</div>`;

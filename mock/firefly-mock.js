@@ -101,6 +101,9 @@ const tagesgeld = ACCOUNTS[1];
 const kk = ACCOUNTS[2];
 const cash = ACCOUNTS[3];
 const ext = (name) => ({ id: null, name });
+// Gegenkonten mit IBAN in Firefly – „Autohaus Becker“ trägt (fälschlich) die IBAN eines Zahlungsdienstleisters,
+// über den auch die Tankstelle abbucht (für „Falsch zugeordnete Gegenkonten“ und den Import-Bericht)
+const EXT_IBANS = { 'Autohaus Becker': 'DE00 1234 5678 0000 0000 00' };
 
 for (let m = new Date(firstDay); m <= today; m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) {
   const y = m.getFullYear();
@@ -415,7 +418,7 @@ const routes = {
       // wie Firefly: leere Konten bleiben bestehen, bis sie gelöscht werden
       const names = [...new Set([...journals.filter((j) => j.type === want).map((j) => (want === 'withdrawal' ? j.destination.name : j.source.name)),
         ...[...extById.values()].filter((e) => e.type === type && !e.deleted).map((e) => e.name)])].sort();
-      return paginate(names, q, (name) => ({ type: 'accounts', id: extId(type, name), attributes: { name, type, active: true, iban: null } }));
+      return paginate(names, q, (name) => ({ type: 'accounts', id: extId(type, name), attributes: { name, type, active: true, iban: EXT_IBANS[name] || null } }));
     }
     const list = ['asset', 'all'].includes(type) ? ACCOUNTS : [];
     return paginate(list, q, (a) => ({

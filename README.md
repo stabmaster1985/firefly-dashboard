@@ -725,6 +725,10 @@ auf 12 Monate bis 10 Jahre ändern („Buchungen auswerten“, je Gerät gemerkt
   Kontos passt („Kein Händler im Text“, nicht vorab angehakt). **Empfänger in Firefly korrigieren** übergibt einen Auftrag an den Server
   (wie der CSV-Abgleich: `typ: gegenkonto_setzen` im Hintergrund, ohne IBAN, danach Prüfung in
   Firefly) – nur der Empfänger ändert sich.
+  **Ursache beheben:** Aus dem CSV-Archiv erkennt das Dashboard IBANs von Zahlungsdienstleistern (dieselbe IBAN
+  bei mehreren Händlern oder „im Namen und auf Rechnung der …“, z. B. PAYONE bei ELV-Lastschriften) und nennt
+  die Gegenkonten, die so eine IBAN in Firefly tragen – mit Link zum Bearbeiten. IBAN dort entfernen, sonst
+  landen neue Importe wieder beim falschen Konto. Auch unter **Aufgaben** und im Import-Bericht.
 - **Kategorien zusammenführen:** Kategorien ankreuzen (mit Buchungen und Summen der letzten 24
   Monate, Vorschläge bei fast gleichen Namen) und ein Ziel wählen – vorhanden oder neu. **Nur im
   Dashboard** wirkt sofort in allen Auswertungen und lässt sich aufheben (gespeichert in

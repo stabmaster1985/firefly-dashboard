@@ -1695,3 +1695,6 @@ details.cm-sugg:not([open]) { padding-bottom: 10px; }
 .report-links { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; margin-bottom: 8px; }
 .report-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; }
 .report-actions .arch-busy { margin: 0; }
+.pc-cause { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: color-mix(in srgb, var(--status-warning) 18%, transparent); font-size: 14px; }
+.pc-cause ul { margin: 6px 0; padding-left: 18px; display: grid; gap: 4px; }
+.pc-cause code { overflow-wrap: anywhere; }

@@ -81,9 +81,23 @@ export function partyCheckCard(el, metaEl, { txs, editAction, monate = 24 }) {
       <button type="button" class="link-btn" data-pc-openall>alle aufklappen</button>
       <button type="button" class="link-btn" data-pc-closeall>alle zuklappen</button>
     </div>
+    <div data-pc-iban></div>
     <div data-pc-body></div>
     <datalist id="pc-parties">${allParties.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>`;
   const body = el.querySelector('[data-pc-body]');
+  // Ursache: Gegenkonten mit der IBAN eines Zahlungsdienstleisters (aus dem CSV-Archiv erkannt, Server)
+  const ibanBox = el.querySelector('[data-pc-iban]');
+  const loadIbans = (frisch = false) => fetch(`/local/importbericht?ibans=1${frisch ? '&frisch=1' : ''}`, { headers: { 'X-No-Cache': '1' } }).then((r) => r.json()).then((d) => {
+    const ff = window.FFD_CONFIG?.fireflyUrl;
+    ibanBox.innerHTML = d.konten?.length ? `<div class="pc-cause"><b>Ursache beheben:</b> ${d.konten.length === 1 ? 'Dieses Gegenkonto trägt' : 'Diese Gegenkonten tragen'} in Firefly die IBAN eines Zahlungsdienstleisters.
+      Firefly ordnet beim Import jede Zahlung mit dieser IBAN dem Konto zu – auch die anderer Geschäfte. IBAN am Konto entfernen, dann landen neue Importe beim richtigen Händler:
+      <ul>${d.konten.map((k) => `<li><b>${esc(k.name)}</b> – IBAN <code>${esc(k.iban.replace(/(.{4})/g, '$1 ').trim())}</code>${k.dienstleister ? ` von <b>${esc(k.dienstleister)}</b>` : ''}, in den Bank-CSVs bei ${k.anzahlHaendler} Händlern: ${k.haendler.slice(0, 5).map(esc).join(', ')}${ff ? ` · <a href="${esc(ff)}/accounts/edit/${encodeURIComponent(k.id)}" target="_blank" rel="noopener">in Firefly bearbeiten ↗</a>` : ''}</li>`).join('')}</ul>
+      <button type="button" class="link-btn" data-pc-iban-check>erneut prüfen</button> <span class="muted">(nach dem Entfernen der IBAN)</span></div>` : '';
+  }).catch(() => {});
+  ibanBox.addEventListener('click', (e) => {
+    if (e.target.closest('[data-pc-iban-check]')) loadIbans(true);
+  });
+  loadIbans();
 
   function render() {
     openAcc ||= new Set(results.length <= 5 ? results.map((r) => r.party) : []);

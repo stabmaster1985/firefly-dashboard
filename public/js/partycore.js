@@ -77,8 +77,12 @@ export const anonymousDebit = (t) => /\b[EO]LV\s*\d{5,}/i.test(`${t.notes ?? ''}
 
 /** Zahlungsdienstleister laut Text, z. B. „Der Einzug erfolgt im Namen und auf Rechnung der PAYONE GmbH“ → „PAYONE GmbH“. */
 export function processorOf(t) {
-  const m = /im Namen und (?:auf|für) Rechnung (?:der|des|von)\s+([^.,;:]{2,40}?)(?=\s+(?:EREF|MREF|CRED|IBAN|BIC)\b|[.,;:]|$)/i.exec(`${t.notes ?? ''} ${t.description ?? ''}`);
-  return m ? m[1].trim() : '';
+  // Notizen und Beschreibung getrennt – sonst hinge der Anfang der Beschreibung am Namen („PAYONE GmbH Lastschrift“)
+  for (const text of [t.notes, t.description]) {
+    const m = /im Namen und (?:auf|für) Rechnung (?:der|des|von)\s+([^.,;:]{2,40}?)(?=\s+(?:EREF|MREF|CRED|IBAN|BIC)\b|[.,;:]|$)/i.exec(String(text ?? '').trim());
+    if (m) return m[1].trim();
+  }
+  return '';
 }
 
 /** Passt der Händler aus dem Text zum Kontonamen? (gleiches erstes Wort, abgeschnittene Wörter erlaubt) */
@@ -218,4 +222,31 @@ export function wrongParties(txs, { dismissed = new Set() } = {}) {
     }))
     .map((r) => ({ ...r, wrongCount: r.groups.reduce((a, g) => a + g.txs.length, 0) }))
     .sort((a, b) => b.wrongCount - a.wrongCount);
+}
+
+/**
+ * IBANs von Zahlungsdienstleistern (PAYONE, Adyen …) in Bank-CSV-Zeilen: dieselbe IBAN bei verschiedenen Händlern
+ * oder „im Namen und auf Rechnung der …“ im Verwendungszweck. Trägt ein Firefly-Konto so eine IBAN, ordnet Firefly
+ * beim Import alle Zahlungen über diesen Dienstleister diesem Konto zu (Tanken bei der Werkstatt).
+ * rows: { iban, name, purpose, text } (readRows) → [{ iban, dienstleister, haendler: [Name], n }]
+ */
+export function processorIbans(rows, { minMerchants = 3 } = {}) {
+  const by = new Map();
+  for (const r of rows) {
+    const iban = String(r.iban || '').replace(/\s+/g, '').toUpperCase();
+    if (iban.length < 15) continue;
+    const e = by.get(iban) || { iban, merchants: new Map(), via: '', n: 0 };
+    e.n += 1;
+    const t = { description: r.text || '', notes: r.purpose || '' };
+    e.via ||= processorOf(t);
+    // Händler: aus dem Verwendungszweck (Kartenzahlung, ELV …), sonst der Name des Zahlungsbeteiligten
+    const name = textMerchants(t)[0] || r.name || '';
+    const key = significant(name)[0];
+    if (key) e.merchants.set(key, e.merchants.get(key) || name);
+    by.set(iban, e);
+  }
+  return [...by.values()]
+    .filter((e) => e.merchants.size >= minMerchants || (e.via && e.merchants.size >= 2))
+    .map((e) => ({ iban: e.iban, dienstleister: e.via, haendler: [...e.merchants.values()].slice(0, 8), anzahlHaendler: e.merchants.size, n: e.n }))
+    .sort((a, b) => b.anzahlHaendler - a.anzahlHaendler);
 }
