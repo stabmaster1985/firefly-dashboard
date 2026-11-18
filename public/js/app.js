@@ -588,8 +588,36 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
 
 // ---- App-Installation & Offline-Hinweis -----------------------------------------
 
+// App-Oberfläche: startet sofort aus dem Speicher und holt Neues im Hintergrund. Übernimmt danach eine neue
+// Version (neuer Service Worker), läuft die offene Seite noch mit der alten – dann Hinweis bzw. selbst neu laden.
 if ('serviceWorker' in navigator && window.isSecureContext) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  let hadController = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    const check = () => reg.update().catch(() => {});
+    // nach einem Update schnell merken: beim Zurückkehren zur App und alle 30 Minuten nachsehen
+    document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && check());
+    setInterval(check, 30 * 60_000);
+  }).catch(() => {});
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) {
+      hadController = true; // allererste Installation – die Seite ist schon aktuell
+      return;
+    }
+    // im Hintergrund (Tab/App nicht sichtbar): gleich neu laden; sonst fragen, damit keine Eingabe verloren geht
+    if (document.visibilityState === 'hidden') return location.reload();
+    showUpdateBanner();
+  });
+}
+function showUpdateBanner() {
+  if (document.getElementById('update-banner')) return;
+  const el = document.createElement('div');
+  el.id = 'update-banner';
+  el.className = 'update-banner';
+  el.setAttribute('role', 'status');
+  el.innerHTML = '<span>Eine neue Version des Dashboards ist da.</span> <button class="btn small primary" type="button">Jetzt neu laden</button> <button class="link-btn" type="button" aria-label="Später">später</button>';
+  el.querySelector('.btn').addEventListener('click', () => location.reload());
+  el.querySelector('.link-btn').addEventListener('click', () => el.remove());
+  document.body.append(el);
 }
 const offlineBanner = document.getElementById('offline-banner');
 window.addEventListener('ffd-offline', () => (offlineBanner.hidden = false));

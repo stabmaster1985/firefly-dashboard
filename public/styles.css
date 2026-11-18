@@ -1682,3 +1682,6 @@ details.cm-sugg:not([open]) { padding-bottom: 10px; }
 .arch-drop .drop { min-width: 0; max-width: 100%; box-sizing: border-box; }
 @media (max-width: 640px) { .arch-drop .drop { flex-basis: 100%; } }
 .arch-gap { margin: 6px 0; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--status-warning) 18%, transparent); color: var(--text-primary); }
+.update-banner { position: fixed; left: 50%; transform: translateX(-50%); bottom: 20px; z-index: 80; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  padding: 10px 14px; border-radius: 12px; background: var(--surface-1); border: 1px solid var(--accent); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2); font-size: 14px; max-width: calc(100vw - 32px); }
+@media (max-width: 760px) { .update-banner { bottom: calc(76px + env(safe-area-inset-bottom)); left: 16px; right: 16px; transform: none; max-width: none; justify-content: space-between; } }

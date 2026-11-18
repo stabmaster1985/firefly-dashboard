@@ -1,7 +1,7 @@
 // Service Worker: App sofort starten (auch offline) und zuletzt geladene
 // Daten zeigen, wenn der Server nicht erreichbar ist.
 
-const VERSION = 'ffd-99';
+const VERSION = 'ffd-100';
 const SHELL = `${VERSION}-shell`;
 const DATA = `${VERSION}-data`;
 const MAX_DATA_ENTRIES = 400;
@@ -49,7 +49,8 @@ async function networkFirst(request) {
 async function staleWhileRevalidate(request) {
   const cache = await caches.open(SHELL);
   const cached = await cache.match(request);
-  const update = fetch(request).then((response) => {
+  // beim Server nachfragen (ETag) statt dem HTTP-Cache des Browsers zu vertrauen
+  const update = fetch(request, { cache: 'no-cache' }).then((response) => {
     if (response.ok) cache.put(request, response.clone());
     return response;
   });
