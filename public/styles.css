@@ -1671,3 +1671,13 @@ button.nav-group svg { width: 14px; height: 14px; fill: none; stroke: currentCol
 details.cm-sugg > summary { cursor: pointer; list-style: revert; }
 details.cm-sugg:not([open]) { padding-bottom: 10px; }
 .cm-hidden { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; padding-top: 6px; border-top: 1px solid var(--grid); }
+
+/* Fortschritt im CSV-Archiv */
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; }
+.arch-busy { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+.arch-progress { display: flex; align-items: center; gap: 8px; margin: 8px 0 0 26px; padding: 6px 10px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); font-size: 13px; }
+.arch-flash { animation: arch-flash 2.5s ease-out; border-radius: 6px; }
+@keyframes arch-flash { from { background: color-mix(in srgb, var(--positive) 22%, transparent); } to { background: transparent; } }
+@media (max-width: 640px) { .arch-progress { margin-left: 0; } }
+.arch-drop .drop { min-width: 0; max-width: 100%; box-sizing: border-box; }
+@media (max-width: 640px) { .arch-drop .drop { flex-basis: 100%; } }

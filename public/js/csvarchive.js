@@ -36,6 +36,9 @@ export function csvArchive(el, { load, memory }) {
   const selected = new Set(); // Datei-IDs
   const open = new Set(); // aufgeklappte Konten
   let busy = '';
+  let checking = null; // Konto, das gerade mit Firefly abgeglichen wird
+  const queued = new Set(); // Konten, die danach drankommen
+  let justDone = null; // zuletzt fertig geprüftes Konto (kurz hervorgehoben)
   let note = '';
 
   const call = (path, opts = {}) => fetch(`/local/csvarchive${path}`, opts).then(async (r) => {
@@ -119,6 +122,8 @@ export function csvArchive(el, { load, memory }) {
 
   /** Konto mit Firefly abgleichen: wie viele Zeilen sind dort, wie viele ohne Empfänger, welche fehlen. */
   async function checkGroup(g) {
+    checking = g.key;
+    queued.delete(g.key);
     busy = `${g.label}: lese ${g.files.length} Datei${g.files.length === 1 ? '' : 'en'} …`;
     render();
     const rows = [];
@@ -314,7 +319,7 @@ export function csvArchive(el, { load, memory }) {
         <label class="drop" id="a-drop"><input type="file" id="a-input" accept=".csv,text/csv" multiple><b>Dateien ins Archiv</b> wählen oder hierher ziehen</label>
         <label class="btn small"><input type="file" id="a-dir" webkitdirectory multiple hidden>Ordner wählen</label>
       </div>
-      ${busy ? `<div class="muted arch-busy">${esc(busy)}</div>` : note ? `<div class="arch-note">${note}</div>` : ''}
+      ${busy ? `<div class="arch-busy" role="status"><span class="spinner" aria-hidden="true"></span> ${esc(busy)}</div>` : note ? `<div class="arch-note">${note}</div>` : ''}
       ${total ? `
       <div class="arch-list">${gs.map((g) => {
         const ids = g.files.map((f) => f.id);
@@ -326,13 +331,16 @@ export function csvArchive(el, { load, memory }) {
               <b>${esc(g.label)}</b> ${g.key !== UNKNOWN ? `<span class="muted">${esc(fmtIban(g.key))}</span>` : ''}
             </button>
             <span class="arch-meta">${g.files.length} Datei${g.files.length === 1 ? '' : 'en'} · ${g.from ? `${fmtDate(g.from)} – ${fmtDate(g.to)}` : '–'} · ${g.rows} Zeilen</span>
-            <button class="btn small" data-check="${esc(g.key)}"${busy ? ' disabled' : ''}>${g.status ? 'Neu prüfen' : 'Mit Firefly abgleichen'}</button>
+            ${checking === g.key ? '<button class="btn small" disabled><span class="spinner" aria-hidden="true"></span> Prüfe …</button>'
+    : queued.has(g.key) ? '<button class="btn small" disabled>wartet …</button>'
+    : `<button class="btn small" data-check="${esc(g.key)}"${busy ? ' disabled' : ''}>${g.status ? 'Neu prüfen' : 'Mit Firefly abgleichen'}</button>`}
           </div>
           ${g.key !== UNKNOWN && accounts.length && !(g.acc?.iban === g.key) ? `<div class="arch-link"><label>Firefly-Konto <select class="input select" data-link="${esc(g.key)}">
             <option value="">– nicht zugeordnet –</option>
             ${accounts.map((a) => `<option value="${esc(a.id)}"${g.acc?.id === a.id ? ' selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label>
             ${g.acc ? '' : '<span class="muted">In Firefly hat kein Konto diese IBAN – bitte zuordnen.</span>'}</div>` : ''}
-          <div class="arch-status">${statusLine(g)}</div>
+          ${checking === g.key ? `<div class="arch-progress" role="status"><span class="spinner" aria-hidden="true"></span> ${esc(busy.replace(`${g.label}: `, ''))}</div>` : ''}
+          <div class="arch-status${justDone === g.key ? ' arch-flash' : ''}">${statusLine(g)}</div>
           ${saldoLine(g)}
           ${(() => {
             const miss = g.files.filter((f) => fileState(g, f).missing);
@@ -393,17 +401,29 @@ export function csvArchive(el, { load, memory }) {
       return render();
     }
     const runChecks = async (keys) => {
+      keys.forEach((k) => queued.add(k));
+      const t0 = Date.now();
+      const doneLabels = [];
       try {
         for (const key of keys) {
           const g = groups().find((x) => x.key === key);
-          if (g) await checkGroup(g);
+          if (!g) continue;
+          await checkGroup(g);
+          doneLabels.push(g.label);
+          justDone = key;
         }
-        note = '';
+        note = doneLabels.length ? `<span class="good">✓ ${doneLabels.map(esc).join(', ')} mit Firefly abgeglichen (${Math.max(1, Math.round((Date.now() - t0) / 1000))} s).</span>` : '';
       } catch (err) {
         note = `<span class="bad">Abgleich fehlgeschlagen: ${esc(err.message)}</span>`;
       }
       busy = '';
+      checking = null;
+      queued.clear();
       render();
+      setTimeout(() => {
+        justDone = null;
+        el.querySelectorAll('.arch-flash').forEach((x) => x.classList.remove('arch-flash'));
+      }, 3000);
     };
     if (t.dataset.pickMissing !== undefined) {
       const g = groups().find((x) => x.key === t.dataset.pickMissing);
