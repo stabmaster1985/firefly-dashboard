@@ -4,7 +4,7 @@
 import * as api from './api.js';
 import { money, esc, fmtDate, today, addDays, startOfMonth } from './util.js';
 import { skeleton, fill, card, txAttrs, bindTxDetails, signedAmount, counterparty } from './common.js';
-import { actionFor, runAction } from './txedit.js';
+import { actionFor, runAction, deleteBookings } from './txedit.js';
 import { loadExcluded, addExcluded, removeExcluded, ruleLabel, partnerOf, RICHTUNG } from './excluded.js';
 
 const DAY = 86400000;
@@ -25,7 +25,7 @@ export function loadHistory({ alle = false, monate = 24, umbuchungen = false } =
 // ---------------------------------------------------------------------------
 // Doppelte Buchungen
 
-import { findDuplicates } from './dupcore.js';
+import { findDuplicates, dayOf } from './dupcore.js';
 export { findDuplicates };
 
 const LEVEL = { 3: ['sicher', 'bad'], 2: ['wahrscheinlich', 'warn'], 1: ['möglich', ''] };
@@ -185,17 +185,18 @@ export async function check(view) {
     });
   }, skeleton(4));
 
-  fill($('c-dup'), () => Promise.all([history, api.loadDismissed()]), (el, [txs, dismissed]) => {
+  fill($('c-dup'), () => Promise.all([history, api.loadDismissed(), actionFor('categorize')]), (el, [txs, dismissed, editAction]) => {
+    let note = '';
     const render = () => {
       const pairs = findDuplicates(txs, dismissed.duplicates);
       $('c-dup-meta').textContent = `${pairs.length} Treffer · letzte 24 Monate`;
-      if (!pairs.length) return (el.innerHTML = '<div class="empty">Keine doppelten Buchungen gefunden. 🎉</div>');
+      if (!pairs.length) return (el.innerHTML = `${note ? `<div class="cm-note">${note}</div>` : ''}<div class="empty">Keine doppelten Buchungen gefunden. 🎉</div>`);
       const flat = pairs.flatMap((p) => [p.a, p.b]);
-      el.innerHTML = `<div class="table-wrap"><table><tbody>${pairs.map((p, i) => {
+      el.innerHTML = `${note ? `<div class="cm-note">${note}</div>` : ''}<div class="table-wrap"><table><tbody>${pairs.map((p, i) => {
         const [label, cls] = LEVEL[p.level];
         const row = (t, k) => `<tr ${txAttrs(k)} class="dup-row">
           <td class="date">${fmtDate(t.date)}</td>
-          <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(counterparty(t))} · Buchung ${esc(t.groupId)}</div></td>
+          <td><div class="desc">${esc(t.description)}</div><div class="flow">${esc(counterparty(t))} · Buchung ${esc(t.groupId)}${editAction ? ` · <button class="link-btn danger" type="button" data-del="${k}" title="Diese Buchung in Firefly löschen (über n8n)">diese löschen</button>` : ''}</div></td>
           <td class="num">${signedAmount(t)}</td></tr>`;
         return `<tr class="dup-head"><td colspan="3"><span class="badge ${cls}">${label}</span>
             <span class="muted">${esc(money(Math.abs(p.a.amount), p.a.currency_code))} · ${esc(counterparty(p.a))}</span>
@@ -203,11 +204,33 @@ export async function check(view) {
             <button class="link-btn" data-ok="${esc(p.key)}">Kein Duplikat</button></td></tr>
           ${row(p.a, i * 2)}${row(p.b, i * 2 + 1)}`;
       }).join('')}</tbody></table></div>
-      <div class="legend" style="margin-top:12px"><span>Zeile anklicken → Details mit „In Firefly öffnen“, dort die überzählige Buchung löschen.
+      <div class="legend" style="margin-top:12px"><span>${editAction ? '„diese löschen“ löscht die überzählige Buchung in Firefly (über n8n, mit Rückfrage). Bei „Umbuchung aus beiden Konten“ ist es egal, welche – beide sind dieselbe Umbuchung.' : 'Zeile anklicken → Details mit „In Firefly öffnen“, dort die überzählige Buchung löschen. (Mit der Automation „Kategorie übernehmen“ geht es hier per Klick.)'}
         „Kein Duplikat“ blendet ein Paar dauerhaft aus (auf allen Geräten).</span></div>`;
       bindTxDetails(el, (k) => flat[Number(k)]);
+      el.dataset.flat = '1';
+      el._flat = flat;
     };
     render();
+    // Löschen: vor den Buchungsdetails abfangen (die Zeile öffnet sonst die Details)
+    el.addEventListener('click', async (e) => {
+      const del = e.target.closest('[data-del]');
+      if (!del) return;
+      e.stopPropagation();
+      const t = el._flat?.[Number(del.dataset.del)];
+      if (!t) return;
+      if (!window.confirm(`Diese Buchung in Firefly löschen?\n\n${fmtDate(t.date)} · ${t.description} · ${money(Math.abs(t.amount), t.currency_code)} (${counterparty(t)})\n\nDas lässt sich nicht rückgängig machen. Die andere Buchung des Paars bleibt.`)) return;
+      del.disabled = true;
+      del.textContent = 'lösche …';
+      try {
+        await deleteBookings(editAction, [t.groupId], { datum: String(t.date).slice(0, 10) });
+        txs.splice(txs.indexOf(t), 1);
+        api.forget();
+        note = `<span class="good">✓ Buchung vom ${esc(fmtDate(t.date))} (${esc(t.description)}) in Firefly gelöscht.</span>`;
+      } catch (err) {
+        note = `<span class="bad">${esc(err.message)}</span>`;
+      }
+      render();
+    }, true);
     el.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-ok]');
       if (!btn) return;

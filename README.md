@@ -680,6 +680,12 @@ Einrichtung im eigenen n8n-Import-Workflow – nach dem Import je Bank-CSV ein K
 Die Datei landet im **CSV-Archiv** (gleiche Dateien nur einmal) – so hat das Archiv keine Lücken mehr. Gut eine
 Minute nach der letzten Datei prüft der Server (`&warten=Sekunden` ändert die Wartezeit, `&pruefen=0`
 verschiebt sie auf eine spätere Datei). Ohne CSV: `POST /local/importbericht` mit `{"pruefen": true}`.
+**Duplikate löschen:** Unter **Prüfen → Mögliche doppelte Buchungen** und im Kontostand-Vergleich („vermutlich
+doppelt“) löscht **„diese löschen“** die überzählige Buchung in Firefly – über die Automation „Kategorie
+übernehmen“ (`typ: buchungen_loeschen`, Zweig „Konten?“). Dafür die aktuelle Vorlage
+`n8n/firefly-buchung-bearbeiten.json` in n8n importieren; ältere Workflows melden einen Fehler, den das
+Dashboard als „Workflow aktualisieren“ anzeigt.
+
 Das Ergebnis steht unter **Aufgaben → Letzter Import-Bericht** (dort auch „Jetzt prüfen“), geht an
 Automationen mit dem Auslöser **„Import-Bericht“** (Felder `status` = ok/warnung, `titel`, `text`, `konten` …)
 und – gibt es keine solche Automation – bei Problemen an die Automation **„Warnungen“**.

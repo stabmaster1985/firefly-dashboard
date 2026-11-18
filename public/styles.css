@@ -1698,3 +1698,4 @@ details.cm-sugg:not([open]) { padding-bottom: 10px; }
 .pc-cause { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: color-mix(in srgb, var(--status-warning) 18%, transparent); font-size: 14px; }
 .pc-cause ul { margin: 6px 0; padding-left: 18px; display: grid; gap: 4px; }
 .pc-cause code { overflow-wrap: anywhere; }
+.link-btn.danger { color: var(--negative); }

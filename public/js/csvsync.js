@@ -173,6 +173,7 @@ export async function csvSync(view) {
   // Archiv: ausgewählte Dateien landen hier im Abgleich
   csvArchive($('s-archive'), {
     memory: () => memory,
+    editAction: () => action,
     load: async (files) => {
       await load(files);
       $('s-files').scrollIntoView({ behavior: 'smooth', block: 'start' });

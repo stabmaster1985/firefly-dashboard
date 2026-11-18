@@ -41,6 +41,22 @@ export async function runAction(action, context) {
 export const setCategory = (action, t, name, id) =>
   runAction(action, { typ: 'kategorie_setzen', ...baseContext(t), kategorie: name, kategorie_id: id ?? null });
 
+/**
+ * Buchungen in Firefly löschen (ganze Buchung samt Aufteilungen) – über den Workflow „Kategorie übernehmen“
+ * (typ „buchungen_loeschen“, Zweig „Konten?“ in n8n/firefly-buchung-bearbeiten.json). Ältere Workflows kennen
+ * den Typ nicht – dann sagt die Meldung, dass der Workflow aktualisiert werden muss.
+ */
+export async function deleteBookings(action, groupIds, info = {}) {
+  const gruppen = [...new Set(groupIds.map(String))].filter((x) => /^\d+$/.test(x));
+  const res = await runAction(action, { typ: 'buchungen_loeschen', gruppen, ...info }).catch((err) => ({ ok: false, response: err.message }));
+  if (res.ok) return res;
+  const msg = String(res.response || '');
+  const old = /Unbekannter typ|Nichts zu tun|buchungen_loeschen/i.test(msg) || res.status === 500;
+  throw new Error(old
+    ? `Der n8n-Workflow kann noch keine Buchungen löschen – bitte die aktuelle Vorlage n8n/firefly-buchung-bearbeiten.json in n8n importieren (bzw. den Knoten „Konten-Anfragen bauen“ übernehmen). (${res.status || 'Fehler'})`
+    : `n8n antwortet mit ${res.status || 'Fehler'}: ${msg.slice(0, 160)}`);
+}
+
 export const setTags = (action, t, tags, change = {}) =>
   runAction(action, { typ: 'tags_setzen', ...baseContext(t), tags, tag_hinzugefuegt: change.added ?? null, tag_entfernt: change.removed ?? null });
 

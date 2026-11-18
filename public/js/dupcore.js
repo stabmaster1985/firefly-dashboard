@@ -1,7 +1,7 @@
 // Doppelte Buchungen finden – rein rechnerisch (Browser: Prüfen · Server: Import-Bericht).
 
 const DAY = 86400000;
-const dayOf = (t) => Math.floor(new Date(String(t.date).slice(0, 10)).getTime() / DAY);
+export const dayOf = (t) => Math.floor(new Date(String(t.date).slice(0, 10)).getTime() / DAY);
 const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
 const pairKey = (a, b) => [a.transaction_journal_id, b.transaction_journal_id].sort().join('-');
 

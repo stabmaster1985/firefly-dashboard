@@ -774,6 +774,19 @@ http
           res.writeHead(200, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ ok: true, anzahl: (data.paare || data.ids || []).length }));
         }
+        if (data.typ === 'buchungen_loeschen') {
+          // wie der Zweig „Konten?“: DELETE /transactions/<Gruppe> – in der Demo ist Gruppe = Buchung
+          let n = 0;
+          for (const id of data.gruppen || []) {
+            const k = journals.findIndex((x) => x.id === String(id));
+            if (k >= 0) {
+              journals.splice(k, 1);
+              n += 1;
+            }
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ ok: true, anzahl: n }));
+        }
         if (data.typ === 'gegenkonto_setzen') {
           const list = data.aenderungen || [];
           const apply = (a) => {

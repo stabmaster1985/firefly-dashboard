@@ -6,6 +6,7 @@
 import * as api from './api.js';
 import { esc, fmtDate, money, isoDate, today } from './util.js';
 import { fireflyTxUrl } from './common.js';
+import { deleteBookings } from './txedit.js';
 import { decodeCsv, readRows, uniqueRows, matchRows, fingerprints, saldoCheck, summarizeSaldo, fileInfo } from './csvmatch.js';
 
 const headers = { 'X-Requested-With': 'firefly-dashboard' };
@@ -29,7 +30,7 @@ function gapsOf(files) {
   return gaps;
 }
 
-export function csvArchive(el, { load, memory }) {
+export function csvArchive(el, { load, memory, editAction = () => null }) {
   let data = { files: [], status: {} };
   let accounts = []; // Firefly-Bestandskonten { id, name, iban } (iban auch leer)
   const fileCache = new Map(); // id → ArrayBuffer
@@ -205,8 +206,8 @@ export function csvArchive(el, { load, memory }) {
         <b>Lösung:</b> im Online-Banking die Umsätze ab ${fmtDate(s.luecke.von)} bis ${fmtDate(s.luecke.bis)} (gern etwas mehr) als CSV exportieren, oben ins Archiv legen und „Neu prüfen“ – dann zeigt der Vergleich die genaue Ursache.</div>` : ''}
       ${s.wrong.length ? `<div>In Firefly mit falscher Richtung bzw. falschem Vorzeichen (z. B. Umbuchung vertauscht – zählt doppelt):<ul>${s.wrong.map((x) => item(x, ` <span class="muted">· Firefly: ${money(x.firefly, 'EUR', { signed: true })}</span>${hint({ amount: x.amount })}`)).join('')}</ul></div>` : ''}
       ${s.missing.length ? `<div>Bei der Bank, aber nicht auf diesem Konto in Firefly${s.missingCount > s.missing.length ? ` (${s.missingCount}, die ersten ${s.missing.length})` : ''} – fehlt oder liegt auf einem anderen Konto:<ul>${s.missing.map((x) => item(x, hint(x))).join('')}</ul></div>` : ''}
-      ${s.extra.length ? `<div>In Firefly auf diesem Konto, aber nicht in den CSV-Dateien${s.extraCount > s.extra.length ? ` (${s.extraCount}, die ersten ${s.extra.length})` : ''} – ${s.luecke ? 'die meisten liegen in den Tagen ohne CSV (markiert); verdächtig sind nur die übrigen:' : 'doppelt, falsches Konto oder noch nicht gebucht:'}<ul>${s.extra.map((x) => item(x, `${s.luecke && x.date >= s.luecke.von && x.date <= s.luecke.bis ? ' <span class="badge">keine CSV für diesen Tag</span>' : ''}${hint(x)}${x.twin ? `<br><span class="badge warn">vermutlich doppelt</span> <span class="muted">gleiche Buchung schon vorhanden – ${esc(x.twin)}</span>${link({ group: x.twinGroup })}` : ''}`)).join('')}</ul>
-        ${s.extra.some((x) => x.twin) ? '<div class="muted">„Vermutlich doppelt“: Dieselbe Bewegung steht zweimal in Firefly – oft einmal aus der CSV dieses Kontos (Ausgabe/Einnahme) und einmal aus der des anderen eigenen Kontos (Umbuchung). Eine davon in Firefly löschen; bei Geld zwischen eigenen Konten die Umbuchung behalten.</div>' : ''}</div>` : ''}
+      ${s.extra.length ? `<div>In Firefly auf diesem Konto, aber nicht in den CSV-Dateien${s.extraCount > s.extra.length ? ` (${s.extraCount}, die ersten ${s.extra.length})` : ''} – ${s.luecke ? 'die meisten liegen in den Tagen ohne CSV (markiert); verdächtig sind nur die übrigen:' : 'doppelt, falsches Konto oder noch nicht gebucht:'}<ul>${s.extra.map((x) => item(x, `${s.luecke && x.date >= s.luecke.von && x.date <= s.luecke.bis ? ' <span class="badge">keine CSV für diesen Tag</span>' : ''}${hint(x)}${x.twin ? `<br><span class="badge warn">vermutlich doppelt</span> <span class="muted">gleiche Buchung schon vorhanden – ${esc(x.twin)}</span>${link({ group: x.twinGroup })}${x.group && editAction() ? ` <button class="link-btn danger" type="button" data-saldo-del="${esc(x.group)}" data-key="${esc(g.key)}" data-info="${esc(`${fmtDate(x.date)} · ${x.text} · ${money(x.amount, 'EUR', { signed: true })}`)}" title="Die überzählige Buchung in Firefly löschen (über n8n)">diese löschen</button>` : ''}` : ''}`)).join('')}</ul>
+        ${s.extra.some((x) => x.twin) ? '<div class="muted">„Vermutlich doppelt“: Dieselbe Bewegung steht zweimal in Firefly – oft einmal aus der CSV dieses Kontos (Ausgabe/Einnahme) und einmal aus der des anderen eigenen Kontos (Umbuchung). Eine davon löschen – „diese löschen“ erledigt das über n8n und prüft danach neu; bei Geld zwischen eigenen Konten die Umbuchung behalten.</div>' : ''}</div>` : ''}
       ${s.pending?.length ? `<div>In den CSV-Dateien als <b>vorgemerkt</b> (ohne Saldo), aber schon in Firefly – die Bank bucht sie später, oft mit anderem Text oder Datum; steht die gebuchte Fassung auch in Firefly, zählt der Betrag doppelt:<ul>${s.pending.map((x) => item(x, `${hint(x)}${x.twin ? `<br><span class="badge warn">vermutlich doppelt</span> <span class="muted">gebuchte Fassung – ${esc(x.twin)}</span>${link({ group: x.twinGroup })}` : ''}`)).join('')}</ul>
         ${s.pending.some((x) => x.twin) ? '<div class="muted">Die vorgemerkte Buchung in Firefly löschen, die gebuchte behalten.</div>' : ''}</div>` : ''}
       ${s.gaps?.length ? `<div>Saldo der Bank ändert sich anders, als die CSV-Zeilen ergeben – im Export fehlt vermutlich eine Zeile:<ul>${s.gaps.map((x) => `<li><span class="date">${fmtDate(x.date)}</span> Saldo ${money(x.change, 'EUR', { signed: true })} ggü. ${fmtDate(x.prev)}, Zeilen ${money(x.rows, 'EUR', { signed: true })} → <b>${money(x.amount, 'EUR', { signed: true })}</b> ohne Zeile${hint(x)}</li>`).join('')}</ul>
@@ -395,6 +396,20 @@ export function csvArchive(el, { load, memory }) {
         el.querySelectorAll('.arch-flash').forEach((x) => x.classList.remove('arch-flash'));
       }, 3000);
     };
+    if (t.dataset.saldoDel) {
+      if (!window.confirm(`Diese Buchung in Firefly löschen?\n\n${t.dataset.info}\n\nSie steht doppelt in Firefly (die andere Fassung bleibt). Das lässt sich nicht rückgängig machen.`)) return;
+      t.disabled = true;
+      t.textContent = 'lösche …';
+      try {
+        await deleteBookings(editAction(), [t.dataset.saldoDel]);
+        note = '<span class="good">✓ Doppelte Buchung in Firefly gelöscht – der Kontostand wird neu geprüft.</span>';
+        render();
+        return runChecks([t.dataset.key]);
+      } catch (err) {
+        note = `<span class="bad">${esc(err.message)}</span>`;
+        return render();
+      }
+    }
     if (t.dataset.pickMissing !== undefined) {
       const g = groups().find((x) => x.key === t.dataset.pickMissing);
       if (!g) return;
