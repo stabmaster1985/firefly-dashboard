@@ -13,10 +13,10 @@ const DAY = 86400000;
  * Ausgaben und Einnahmen der letzten 24 Monate (gleicher, vorgewärmter Cache wie „Wiederkehrend“).
  * alle: auch ausgeblendete Buchungen (markiert) – für Prüfen und Aufräumen.
  */
-export function loadHistory({ alle = false, monate = 24 } = {}) {
+export function loadHistory({ alle = false, monate = 24, umbuchungen = false } = {}) {
   const t0 = today();
   const from = startOfMonth(t0, -monate);
-  return Promise.all(['withdrawal', 'deposit'].map((type) =>
+  return Promise.all(['withdrawal', 'deposit', ...(umbuchungen ? ['transfer'] : [])].map((type) =>
     api.getAll('transactions', { start: from, end: t0, type, _alle: alle || undefined })
       .then((groups) => api.flattenTransactions(groups).filter((t) => t.type === type))))
     .then((lists) => lists.flat());
@@ -51,10 +51,14 @@ export function findDuplicates(txs, ok = new Set()) {
         const [a, b] = [list[i], list[j]];
         if (a.groupId === b.groupId || ok.has(pairKey(a, b))) continue;
         const ref = (t) => t.external_id || t.internal_reference || t.sepa_ct_id || '';
-        // unterschiedliche Bank-Referenzen → zwei echte Buchungen
-        if (ref(a) && ref(b) && ref(a) !== ref(b)) continue;
-        const level = ref(a) && ref(a) === ref(b) ? 3 : norm(a.description) === norm(b.description) && dayOf(a) === dayOf(b) ? 2 : 1;
-        pairs.push({ a, b, level, key: pairKey(a, b) });
+        // Umbuchung zwischen eigenen Konten, aus BEIDEN Konto-CSVs importiert: gleiche Konten, gleicher Betrag,
+        // gleicher Tag – die Referenzen und Texte der beiden Seiten unterscheiden sich naturgemäß
+        // („Dauerauftragsbelast“ / „Dauerauftragsgutschr“)
+        const bothSides = a.type === 'transfer' && dayOf(a) === dayOf(b) && norm(a.description) !== norm(b.description);
+        // unterschiedliche Bank-Referenzen → zwei echte Buchungen (außer bei beiden Seiten einer Umbuchung)
+        if (!bothSides && ref(a) && ref(b) && ref(a) !== ref(b)) continue;
+        const level = ref(a) && ref(a) === ref(b) ? 3 : bothSides || (norm(a.description) === norm(b.description) && dayOf(a) === dayOf(b)) ? 2 : 1;
+        pairs.push({ a, b, level, key: pairKey(a, b), bothSides });
       }
     }
   }
@@ -101,7 +105,7 @@ export async function importStatus(history) {
 // Hinweise für die Übersicht
 
 export async function checkHints() {
-  const [history, dismissed] = await Promise.all([loadHistory({ alle: true }), api.loadDismissed()]);
+  const [history, dismissed] = await Promise.all([loadHistory({ alle: true, umbuchungen: true }), api.loadDismissed()]);
   const [dups, status] = await Promise.all([findDuplicates(history, dismissed.duplicates), importStatus(history)]);
   const rows = [];
   const serious = dups.filter((d) => d.level >= 2).length;
@@ -180,8 +184,8 @@ export async function check(view) {
       ${card('c-excl', 'Ausgeblendete Buchungen', { meta: '<span id="c-excl-meta"></span>' })}
     </div>`;
   const $ = (id) => view.querySelector(`#${id}`);
-  const history = loadHistory({ alle: true });
-  excludedCard($('c-excl'), $('c-excl-meta'), history);
+  const history = loadHistory({ alle: true, umbuchungen: true }); // Umbuchungen gehören zur Duplikatsuche (aus beiden Konten importiert)
+  excludedCard($('c-excl'), $('c-excl-meta'), history.then((l) => l.filter((t) => t.type !== 'transfer')));
   backupCard($('c-backup'), $('c-backup-meta'));
 
   fill($('c-import'), () => Promise.all([history.then(importStatus), actionFor('import')]), (el, [status, action]) => {
@@ -232,6 +236,7 @@ export async function check(view) {
           <td class="num">${signedAmount(t)}</td></tr>`;
         return `<tr class="dup-head"><td colspan="3"><span class="badge ${cls}">${label}</span>
             <span class="muted">${esc(money(Math.abs(p.a.amount), p.a.currency_code))} · ${esc(counterparty(p.a))}</span>
+            ${p.bothSides ? '<span class="badge warn" title="Dieselbe Umbuchung aus der CSV beider Konten importiert – eine löschen">Umbuchung aus beiden Konten</span>' : ''}
             <button class="link-btn" data-ok="${esc(p.key)}">Kein Duplikat</button></td></tr>
           ${row(p.a, i * 2)}${row(p.b, i * 2 + 1)}`;
       }).join('')}</tbody></table></div>

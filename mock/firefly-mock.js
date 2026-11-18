@@ -215,6 +215,9 @@ for (let k = 1; k <= 8; k++) {
   add(d, 'withdrawal', 48.2, 'Beitrag', giro, ext('Musterversicherung AG'), { ...cat, notes: `EREF+B${k}KFZ MREF+MV-KFZ-0815 CRED+DE00ZZZ00000000001 SVWZ+Kfz-Versicherung Vertrag 0815` });
   add(d, 'withdrawal', 12.9, 'Beitrag', giro, ext('Musterversicherung AG'), { ...cat, notes: `EREF+B${k}PHV MREF+MV-PHV-4711 CRED+DE00ZZZ00000000001 SVWZ+Privathaftpflicht Familie Vertrag 4711` });
 }
+// Dieselbe Umbuchung aus der CSV beider eigenen Konten importiert (Belastung + Gutschrift) – für die Duplikatsuche
+add(addDays(today, -12), 'transfer', 30, 'Dauerauftragsbelast', giro, tagesgeld);
+add(addDays(today, -12), 'transfer', 30, 'Dauerauftragsgutschr', giro, tagesgeld);
 // Eine aktuelle große Ausgabe (für die Warnungen)
 add(addDays(today, -4), 'withdrawal', 649, 'Neue Waschmaschine', kk, ext('MediaMarkt'), { category: 'Shopping' });
 // Eine doppelt importierte Buchung (für die Dubletten-Erkennung)
