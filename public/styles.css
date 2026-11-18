@@ -1681,3 +1681,4 @@ details.cm-sugg:not([open]) { padding-bottom: 10px; }
 @media (max-width: 640px) { .arch-progress { margin-left: 0; } }
 .arch-drop .drop { min-width: 0; max-width: 100%; box-sizing: border-box; }
 @media (max-width: 640px) { .arch-drop .drop { flex-basis: 100%; } }
+.arch-gap { margin: 6px 0; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--status-warning) 18%, transparent); color: var(--text-primary); }

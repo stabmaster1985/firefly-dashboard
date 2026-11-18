@@ -203,7 +203,24 @@ export function csvArchive(el, { load, memory }) {
     };
     // zuerst, was zum Zeitpunkt der Abweichung passt
     const pick = (list, dateOf) => [...list.filter((x) => inWindow(dateOf(x))), ...list.filter((x) => !inWindow(dateOf(x)))].slice(0, 15);
+    // Liegt zwischen „stimmte noch“ und „stimmt nicht mehr“ gar keine CSV-Datei? Dann sind die Buchungen dort nur
+    // ungeprüft, nicht verdächtig – erst der Export für diese Tage zeigt die Ursache.
+    let luecke = null;
+    if (res.since && res.before) {
+      const ranges = new Map(); // Datei → [erster, letzter Buchungstag]
+      for (const r of rows) {
+        const x = ranges.get(r.file) || [r.book, r.book];
+        if (r.book < x[0]) x[0] = r.book;
+        if (r.book > x[1]) x[1] = r.book;
+        ranges.set(r.file, x);
+      }
+      const from = isoOf(day(res.before) + DAY);
+      const to = isoOf(day(res.since) - DAY);
+      const covered = [...ranges.values()].some(([a, b]) => a <= to && b >= from && !(b <= res.before || a >= res.since));
+      if (from <= to && !covered) luecke = { von: from, bis: to, ende: [...ranges.values()].filter(([, b]) => b <= res.before).map(([, b]) => b).sort().at(-1) || res.before, start: [...ranges.values()].filter(([a]) => a >= res.since).map(([a]) => a).sort()[0] || res.since };
+    }
     return {
+      luecke,
       last: res.last, bank: res.bank, firefly: res.firefly, diff: res.diff, since: res.since, before: res.before,
       missing: pick(res.missing, (r) => r.book).map(rowOut), missingCount: res.missing.length,
       extra: pick(res.extra, (t) => String(t.date).slice(0, 10)).map(txOut), extraCount: res.extra.length,
@@ -219,7 +236,7 @@ export function csvArchive(el, { load, memory }) {
 
   /** Zeile unter dem Abgleich-Status: stimmt der Kontostand mit der Bank überein? */
   const saldoLine = (g) => {
-    const s = g.status?.saldo;
+    let s = g.status?.saldo;
     if (g.key === UNKNOWN) return '';
     if (!g.status) return '<div class="arch-saldo muted">Kontostand laut Bank mit Firefly vergleichen: „Mit Firefly abgleichen“ klicken.</div>';
     if (!s) return '<div class="arch-saldo muted">Kontostand laut Bank mit Firefly vergleichen: „Neu prüfen“ klicken.</div>';
@@ -230,12 +247,17 @@ export function csvArchive(el, { load, memory }) {
     const item = (x, extra = '') => `<li><span class="date">${fmtDate(x.date)}</span> <b>${money(x.amount, 'EUR', { signed: true })}</b> ${esc(x.text)}${link(x)}${extra}</li>`;
     const half = (x) => Math.abs(Math.abs(x.amount) * 2 - Math.abs(s.diff)) < 0.005 || Math.abs(Math.abs(x.amount) - Math.abs(s.diff)) < 0.005;
     const hint = (x) => (half(x) ? ' <span class="badge bad">passt zur Differenz</span>' : '');
+    // fehlt eine ganze Datei, ist der Saldo-Sprung über die Lücke keine „fehlende Zeile“
+    if (s.luecke && s.gaps?.length) s = { ...s, gaps: s.gaps.filter((x) => !(x.prev <= s.luecke.ende && x.date >= s.luecke.start)) };
     return `<div class="arch-saldo bad">
       <div><b>Kontostand weicht ab: ${money(s.diff, 'EUR', { signed: true })}</b> – Bank am ${fmtDate(s.last)}: ${money(s.bank)}, Firefly: ${money(s.firefly)}.
         ${s.since ? (s.before ? `Bis ${fmtDate(s.before)} stimmte es, ab ${fmtDate(s.since)} nicht mehr – die Ursache liegt dazwischen.` : `Die Differenz besteht schon am ersten Tag der CSV-Dateien (${fmtDate(s.since)}) – Ursache davor (z. B. Anfangssaldo) oder ältere CSV-Dateien hochladen.`) : ''}</div>
+      ${s.luecke ? `<div class="arch-gap"><b>Für ${fmtDate(s.luecke.von)} – ${fmtDate(s.luecke.bis)} liegt keine CSV-Datei im Archiv</b> (eine Datei endet am ${fmtDate(s.luecke.ende)}, die nächste beginnt am ${fmtDate(s.luecke.start)}).
+        Genau dort liegt die Abweichung – die Buchungen dieser Tage sind deshalb nur <b>ungeprüft</b>, nicht unbedingt falsch.
+        <b>Lösung:</b> im Online-Banking die Umsätze ab ${fmtDate(s.luecke.von)} bis ${fmtDate(s.luecke.bis)} (gern etwas mehr) als CSV exportieren, oben ins Archiv legen und „Neu prüfen“ – dann zeigt der Vergleich die genaue Ursache.</div>` : ''}
       ${s.wrong.length ? `<div>In Firefly mit falscher Richtung bzw. falschem Vorzeichen (z. B. Umbuchung vertauscht – zählt doppelt):<ul>${s.wrong.map((x) => item(x, ` <span class="muted">· Firefly: ${money(x.firefly, 'EUR', { signed: true })}</span>${hint({ amount: x.amount })}`)).join('')}</ul></div>` : ''}
       ${s.missing.length ? `<div>Bei der Bank, aber nicht auf diesem Konto in Firefly${s.missingCount > s.missing.length ? ` (${s.missingCount}, die ersten ${s.missing.length})` : ''} – fehlt oder liegt auf einem anderen Konto:<ul>${s.missing.map((x) => item(x, hint(x))).join('')}</ul></div>` : ''}
-      ${s.extra.length ? `<div>In Firefly auf diesem Konto, aber nicht in den CSV-Dateien${s.extraCount > s.extra.length ? ` (${s.extraCount}, die ersten ${s.extra.length})` : ''} – doppelt, falsches Konto oder noch nicht gebucht:<ul>${s.extra.map((x) => item(x, `${hint(x)}${x.twin ? `<br><span class="badge warn">vermutlich doppelt</span> <span class="muted">gleiche Buchung schon vorhanden – ${esc(x.twin)}</span>${link({ group: x.twinGroup })}` : ''}`)).join('')}</ul>
+      ${s.extra.length ? `<div>In Firefly auf diesem Konto, aber nicht in den CSV-Dateien${s.extraCount > s.extra.length ? ` (${s.extraCount}, die ersten ${s.extra.length})` : ''} – ${s.luecke ? 'die meisten liegen in den Tagen ohne CSV (markiert); verdächtig sind nur die übrigen:' : 'doppelt, falsches Konto oder noch nicht gebucht:'}<ul>${s.extra.map((x) => item(x, `${s.luecke && x.date >= s.luecke.von && x.date <= s.luecke.bis ? ' <span class="badge">keine CSV für diesen Tag</span>' : ''}${hint(x)}${x.twin ? `<br><span class="badge warn">vermutlich doppelt</span> <span class="muted">gleiche Buchung schon vorhanden – ${esc(x.twin)}</span>${link({ group: x.twinGroup })}` : ''}`)).join('')}</ul>
         ${s.extra.some((x) => x.twin) ? '<div class="muted">„Vermutlich doppelt“: Dieselbe Bewegung steht zweimal in Firefly – oft einmal aus der CSV dieses Kontos (Ausgabe/Einnahme) und einmal aus der des anderen eigenen Kontos (Umbuchung). Eine davon in Firefly löschen; bei Geld zwischen eigenen Konten die Umbuchung behalten.</div>' : ''}</div>` : ''}
       ${s.pending?.length ? `<div>In den CSV-Dateien als <b>vorgemerkt</b> (ohne Saldo), aber schon in Firefly – die Bank bucht sie später, oft mit anderem Text oder Datum; steht die gebuchte Fassung auch in Firefly, zählt der Betrag doppelt:<ul>${s.pending.map((x) => item(x, `${hint(x)}${x.twin ? `<br><span class="badge warn">vermutlich doppelt</span> <span class="muted">gebuchte Fassung – ${esc(x.twin)}</span>${link({ group: x.twinGroup })}` : ''}`)).join('')}</ul>
         ${s.pending.some((x) => x.twin) ? '<div class="muted">Die vorgemerkte Buchung in Firefly löschen, die gebuchte behalten.</div>' : ''}</div>` : ''}
