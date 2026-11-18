@@ -24,6 +24,7 @@ import { createExcluded } from './lib/excluded.js';
 import { createMqtt } from './lib/mqtt.js';
 import { createAutoCat } from './lib/autocat.js';
 import { createLedger } from './lib/ledger.js';
+import { createImportReport } from './lib/importreport.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
@@ -136,6 +137,9 @@ const handleCsvSync = createCsvSync(DATA_DIR);
 const handleCsvArchive = createCsvArchive(DATA_DIR);
 const handleSyncJob = createSyncJob(DATA_DIR, { firefly: { ...firefly, invalidate: dataChanged }, actions: handleActions, csvMemory: (items) => handleCsvSync.remember(items.filter((i) => i.fp).map((i) => ({ fp: i.fp, j: i.j, name: i.name }))) }); // ohne Fingerabdruck: kein CSV-Gedächtnis (z. B. Gegenkonten korrigieren)
 
+// Import-Bericht: nach dem Import (n8n) CSV ins Archiv und Daten prüfen – Kontostand, Duplikate, Gegenkonten
+const importReport = createImportReport({ dataDir: DATA_DIR, firefly: { ...firefly, invalidate: () => dataChanged() }, view, archive: handleCsvArchive, actions: handleActions });
+
 // Daten aufräumen: vorbereitete Pläne (Regeln aus der Import-Konfiguration, Konten zusammenführen)
 const handleCleanup = createCleanup(DATA_DIR);
 
@@ -242,6 +246,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/local/csvsync') return handleCsvSync(req, res);
   if (url.pathname === '/local/syncjob' || url.pathname.startsWith('/local/syncjob/')) return handleSyncJob(req, res, url);
   if (url.pathname === '/local/csvarchive' || url.pathname.startsWith('/local/csvarchive/')) return handleCsvArchive(req, res, url);
+  if (url.pathname === '/local/importbericht') return importReport(req, res, url);
   if (url.pathname === '/local/excluded') {
     if (req.method !== 'GET') res.on('finish', () => mqtt.soon(2000)); // Summen ändern sich
     return excluded.handle(req, res, url);
@@ -269,6 +274,15 @@ const server = http.createServer(async (req, res) => {
 
 // Ziele, Einstellungen, Monatsabschluss und Warnungen
 const handleAutomation = createAutomation({ dataDir: DATA_DIR, firefly: view, actions: handleActions });
+// „Testen“ bei Automationen mit Auslöser „Import-Bericht“: den letzten Bericht senden
+{
+  const preview = handleActions.hooks.preview;
+  handleActions.hooks.preview = async (action) => {
+    if (action.trigger !== 'import-report') return preview ? preview(action) : undefined;
+    const b = importReport.last() || { status: 'ok', titel: 'Import-Prüfung: Beispiel', text: 'Noch kein Bericht – das ist ein Beispiel.', konten: [] };
+    return { typ: 'import_bericht', test: true, ...b, daten: { typ: 'import_bericht', test: true, ...b } };
+  };
+}
 
 if (WARM_MINUTES > 0) warmNow = startWarmer(firefly, { minutes: WARM_MINUTES, ledger: view, paydays: () => [...paydays] });
 

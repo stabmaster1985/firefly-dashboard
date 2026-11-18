@@ -1685,3 +1685,13 @@ details.cm-sugg:not([open]) { padding-bottom: 10px; }
 .update-banner { position: fixed; left: 50%; transform: translateX(-50%); bottom: 20px; z-index: 80; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
   padding: 10px 14px; border-radius: 12px; background: var(--surface-1); border: 1px solid var(--accent); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2); font-size: 14px; max-width: calc(100vw - 32px); }
 @media (max-width: 760px) { .update-banner { bottom: calc(76px + env(safe-area-inset-bottom)); left: 16px; right: 16px; transform: none; max-width: none; justify-content: space-between; } }
+
+/* Import-Bericht (Aufgaben) */
+.report-head { padding: 8px 12px; border-radius: 8px; margin-bottom: 8px; }
+.report-head.ok { background: color-mix(in srgb, var(--positive) 14%, transparent); }
+.report-head.warnung, .report-head.fehler { background: color-mix(in srgb, var(--status-warning) 20%, transparent); }
+.report-list { margin: 0 0 8px; padding-left: 4px; list-style: none; display: grid; gap: 4px; font-size: 14px; }
+.report-list li.bad { color: var(--text-primary); }
+.report-links { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; margin-bottom: 8px; }
+.report-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; }
+.report-actions .arch-busy { margin: 0; }

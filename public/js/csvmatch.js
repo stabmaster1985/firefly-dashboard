@@ -429,3 +429,71 @@ export function saldoCheck(rows, txs, { accountId, current, today }) {
   result.before = k > 0 ? diffs[k - 1][0] : null; // null: schon vor der ersten CSV-Zeile
   return result;
 }
+
+// ---- Kontostand-Vergleich zusammenfassen (Browser: CSV-Archiv · Server: Import-Bericht) -------------------
+const DAY_MS = 86400000;
+const dayMs = (iso) => Date.parse(`${iso}T12:00:00Z`);
+const isoOfMs = (ms) => new Date(ms).toISOString().slice(0, 10);
+const fmtDay = (d) => String(d).slice(0, 10).split('-').reverse().join('.');
+
+/**
+ * Ergebnis von saldoCheck in kurze, speicherbare Form: Abweichung, seit wann, verdächtige Buchungen (je max. 15),
+ * Lücke ohne CSV-Datei zwischen „stimmte noch“ und „stimmt nicht mehr“.
+ */
+export function summarizeSaldo(res, rows, accountId) {
+  const inWindow = (d) => !res.since || ((!res.before || d > isoOfMs(dayMs(res.before) - 4 * DAY_MS)) && d <= isoOfMs(dayMs(res.since) + 4 * DAY_MS));
+  const rowOut = (r) => ({ date: r.book, amount: r.amount, text: [r.name, r.purpose || r.text].filter(Boolean).join(' · ').slice(0, 140) });
+  const describe = (t) => [t.description, t.type === 'transfer' ? `Umbuchung ${t.source_name} → ${t.destination_name}` : t.type === 'withdrawal' ? `an ${t.destination_name}` : `von ${t.source_name}`].filter(Boolean).join(' · ');
+  const txOut = (t) => {
+    const twin = res.twins.get(String(t.transaction_journal_id));
+    return {
+      date: String(t.date).slice(0, 10), amount: String(t.source_id) === String(accountId) ? -t.amount : t.amount, text: describe(t).slice(0, 140), group: t.groupId,
+      ...(twin ? { twin: `${fmtDay(twin.date)}: ${describe(twin)}`.slice(0, 160), twinGroup: twin.groupId } : {}),
+    };
+  };
+  // zuerst, was zum Zeitpunkt der Abweichung passt
+  const pick = (list, dateOf) => [...list.filter((x) => inWindow(dateOf(x))), ...list.filter((x) => !inWindow(dateOf(x)))].slice(0, 15);
+  // Liegt zwischen „stimmte noch“ und „stimmt nicht mehr“ gar keine CSV-Datei? Dann sind die Buchungen dort nur
+  // ungeprüft, nicht verdächtig – erst der Export für diese Tage zeigt die Ursache.
+  let luecke = null;
+  if (res.since && res.before) {
+    const ranges = new Map(); // Datei → [erster, letzter Buchungstag]
+    for (const r of rows) {
+      const x = ranges.get(r.file) || [r.book, r.book];
+      if (r.book < x[0]) x[0] = r.book;
+      if (r.book > x[1]) x[1] = r.book;
+      ranges.set(r.file, x);
+    }
+    const from = isoOfMs(dayMs(res.before) + DAY_MS);
+    const to = isoOfMs(dayMs(res.since) - DAY_MS);
+    const covered = [...ranges.values()].some(([a, b]) => a <= to && b >= from && !(b <= res.before || a >= res.since));
+    if (from <= to && !covered) luecke = { von: from, bis: to, ende: [...ranges.values()].filter(([, b]) => b <= res.before).map(([, b]) => b).sort().at(-1) || res.before, start: [...ranges.values()].filter(([a]) => a >= res.since).map(([a]) => a).sort()[0] || res.since };
+  }
+  return {
+    luecke,
+    last: res.last, bank: res.bank, firefly: res.firefly, diff: res.diff, since: res.since, before: res.before,
+    missing: pick(res.missing, (r) => r.book).map(rowOut), missingCount: res.missing.length,
+    extra: pick(res.extra, (t) => String(t.date).slice(0, 10)).map(txOut), extraCount: res.extra.length,
+    wrong: res.wrong.slice(0, 15).map((w) => ({ ...rowOut(w.row), firefly: w.firefly, group: w.t.groupId, transfer: w.t.type === 'transfer' })), wrongCount: res.wrong.length,
+    // vorgemerkt: nur, was in Firefly steckt (sonst stört es den Kontostand nicht)
+    pending: pick(res.pending.filter((p) => p.t), (p) => p.row.book).map((p) => ({
+      ...rowOut(p.row), group: p.t.groupId,
+      ...(p.booked ? { twin: `${fmtDay(p.booked.date)}: ${describe(p.booked)}`.slice(0, 160), twinGroup: p.booked.groupId } : {}),
+    })),
+    gaps: res.csvGaps.slice(0, 10).map((x) => ({ date: x.day, prev: x.prev, change: x.change, rows: x.rows, amount: x.delta })),
+  };
+}
+
+/** Eckdaten einer Bank-CSV: eigenes Konto (häufigste IBAN Auftragskonto), Zeitraum, Zeilen. */
+export function fileInfo(text) {
+  try {
+    const parsed = readRows(text);
+    const dates = parsed.rows.map((r) => r.date).sort();
+    const owns = new Map();
+    parsed.rows.forEach((r) => r.own && owns.set(r.own.toUpperCase(), (owns.get(r.own.toUpperCase()) || 0) + 1));
+    const own = [...owns].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+    return { own, from: dates[0] || '', to: dates.at(-1) || '', rows: parsed.rows.length, ...(parsed.rows.length ? {} : { error: 'keine Buchungszeilen erkannt' }) };
+  } catch (err) {
+    return { own: '', from: '', to: '', rows: 0, error: err.message };
+  }
+}

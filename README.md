@@ -656,6 +656,35 @@ zuordnen. Achtung: Mit geänderter Zuordnung erkennt die „klassische“ Dublet
 importierte Zeilen nicht mehr – alte Dateien also nicht erneut importieren, und die erste neue
 Datei erst ab dem Tag nach dem letzten Import beginnen lassen.
 
+### Import-Bericht: nach jedem Import automatisch prüfen
+
+Die meisten Fehler entstehen beim Import (doppelte Umbuchungen aus beiden Konten, falsche Gegenkonten über die
+IBAN eines Zahlungsdienstleisters, fehlende Tage im CSV-Archiv). Der Import-Bericht prüft direkt danach – ohne
+dass jemand das Dashboard öffnet:
+
+- **Kontostand je Konto** mit CSV im Archiv gegen die Bank („Saldo nach Buchung“) – inkl. „für Tag X–Y fehlt
+  eine CSV-Datei“ und „vermutlich doppelt“
+- **doppelte Buchungen** der letzten Wochen (auch dieselbe Umbuchung aus der CSV beider eigenen Konten)
+- **falsch zugeordnete Gegenkonten** und **neue Händler ohne Kategorie**
+
+Einrichtung im eigenen n8n-Import-Workflow – nach dem Import je Bank-CSV ein Knoten **HTTP Request**:
+
+| Einstellung | Wert |
+|---|---|
+| Method | `POST` |
+| URL | `http://<dashboard>:8080/local/importbericht?name={{ $binary.data.fileName }}` |
+| Authentication | bei gesetztem `DASHBOARD_PASSWORD`: *Basic Auth* mit `DASHBOARD_USER` / `DASHBOARD_PASSWORD` |
+| Header | `X-Requested-With: firefly-dashboard` |
+| Body | *n8n Binary File*, Feld `data`, Content-Type `text/csv` |
+
+Die Datei landet im **CSV-Archiv** (gleiche Dateien nur einmal) – so hat das Archiv keine Lücken mehr. Gut eine
+Minute nach der letzten Datei prüft der Server (`&warten=Sekunden` ändert die Wartezeit, `&pruefen=0`
+verschiebt sie auf eine spätere Datei). Ohne CSV: `POST /local/importbericht` mit `{"pruefen": true}`.
+Das Ergebnis steht unter **Aufgaben → Letzter Import-Bericht** (dort auch „Jetzt prüfen“), geht an
+Automationen mit dem Auslöser **„Import-Bericht“** (Felder `status` = ok/warnung, `titel`, `text`, `konten` …)
+und – gibt es keine solche Automation – bei Problemen an die Automation **„Warnungen“**.
+`GET /local/importbericht` liefert den letzten Bericht (z. B. für Home Assistant).
+
 ### Daten aufräumen (Prüfen → Aufräumen)
 
 Alles wird erst im Dashboard vorbereitet und angepasst; gespeichert auf dem Server

@@ -36,6 +36,10 @@ const firstSentence = (s) => {
 export async function tasksPage(view) {
   view.innerHTML = `
     <div class="grid">
+      <section class="card span-12" id="t-report-card">
+        <div class="card-head"><h2>Letzter Import-Bericht</h2><span class="meta" id="t-report-meta"></span></div>
+        <div id="t-report"><p class="muted">Lade …</p></div>
+      </section>
       <section class="card span-12">
         <div class="card-head"><h2>Offene Aufgaben</h2><span class="meta" id="t-meta">wird geprüft …</span></div>
         <div class="list task-list" id="t-list"></div>
@@ -49,6 +53,7 @@ export async function tasksPage(view) {
         </div>
       </section>
     </div>`;
+  importReportCard(view);
   const list = view.querySelector('#t-list');
   const meta = view.querySelector('#t-meta');
 
@@ -135,4 +140,52 @@ export async function tasksPage(view) {
     set('job', live ? [{ n: 1, badge: j.status === 'laeuft' ? '⏳' : '⏸', prio: j.status === 'pausiert' ? 0 : 5, warn: j.status === 'pausiert', count: j.status === 'pausiert',
       title: j.status === 'laeuft' ? `Übertragung läuft: ${j.ok} von ${j.total}` : 'Übertragung angehalten', sub: j.message || 'CSV-Abgleich → Übertragung auf dem Server', href: '#/abgleich?karte=s-job' }] : []);
   });
+}
+
+// ---- Import-Bericht (vom Server nach jedem Import, siehe lib/importreport.js) -------------------------------
+const fmtTime = (iso) => new Date(iso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const euro = (n) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', signDisplay: 'exceptZero' }).format(n);
+const dmy = (d) => String(d).slice(0, 10).split('-').reverse().join('.');
+
+function importReportCard(view) {
+  const box = view.querySelector('#t-report');
+  const meta = view.querySelector('#t-report-meta');
+  let poll = null;
+  const render = (d) => {
+    if (!view.isConnected) return clearInterval(poll);
+    const b = d?.bericht;
+    const busy = d?.laeuft || d?.geplant;
+    meta.textContent = b ? `${fmtTime(b.at)}${b.grund ? ` · ${b.grund}` : ''}` : '';
+    const konto = (k) => `<li class="${k.ok === false ? 'bad' : ''}">${k.ok === true ? '✓' : k.ok === false ? '✗' : '–'} <b>${esc(k.name)}</b>
+      ${k.ok === true ? `<span class="muted">Kontostand stimmt (${dmy(k.last)})</span>`
+        : k.ok === false ? `Kontostand weicht um <b>${euro(k.diff)}</b> ab${k.luecke ? ` – für ${dmy(k.luecke.von)}–${dmy(k.luecke.bis)} fehlt eine CSV-Datei` : k.since ? ` seit ${dmy(k.since)}` : ''}${k.doppelt ? ` · ${k.doppelt} vermutlich doppelt` : ''}`
+        : `<span class="muted">${esc(k.hinweis || '')}</span>`}${k.bis ? ` <span class="muted">· CSV bis ${dmy(k.bis)}</span>` : ''}</li>`;
+    box.innerHTML = `
+      ${!b ? `<p class="muted" style="margin-top:0">Noch kein Bericht. Nach jedem Import prüft das Dashboard selbst, ob alles stimmt – dafür ruft dein n8n-Import-Workflow
+          <code>/local/importbericht</code> auf und legt die Bank-CSV gleich ins CSV-Archiv (Einrichtung siehe Hilfe „?“ bzw. README).</p>`
+        : `<div class="report-head ${b.status}"><b>${esc(b.titel)}</b></div>
+          ${b.konten?.length ? `<ul class="report-list">${b.konten.map(konto).join('')}</ul>` : ''}
+          ${b.status === 'fehler' ? `<p class="bad">${esc(b.text)}</p>` : ''}
+          <div class="report-links">
+            ${b.konten?.some((k) => k.ok === false) ? '<a href="#/abgleich?karte=s-archive">Kontostand im CSV-Abgleich ansehen →</a>' : ''}
+            ${b.duplikate?.length ? `<a href="#/pruefen?karte=c-dup">${b.duplikate.length} mögliche doppelte Buchung${b.duplikate.length === 1 ? '' : 'en'} →</a>` : ''}
+            ${b.falscheKonten?.length ? `<a href="#/aufraeumen?karte=a-wrong">${b.falscheKonten.reduce((a, x) => a + x.anzahl, 0)} Buchungen bei falschem Gegenkonto →</a>` : ''}
+            ${b.neueHaendler?.length ? `<a href="#/zuordnen?karte=z-open">${b.neueHaendler.length} neue Händler ohne Kategorie →</a>` : ''}
+          </div>`}
+      <div class="report-actions">${busy ? '<span class="arch-busy" role="status"><span class="spinner" aria-hidden="true"></span> Prüfung läuft …</span>'
+        : '<button class="btn small" type="button" data-report-run>Jetzt prüfen</button> <span class="muted">prüft Kontostand je Konto mit CSV im Archiv, Duplikate, Gegenkonten und neue Händler</span>'}</div>`;
+    if (busy && !poll) poll = setInterval(load, 3000);
+    if (!busy && poll) {
+      clearInterval(poll);
+      poll = null;
+    }
+  };
+  const load = () => fetch('/local/importbericht', { headers: { 'X-No-Cache': '1' } }).then((r) => r.json()).then(render).catch(() => (box.innerHTML = '<p class="muted">Bericht konnte nicht geladen werden.</p>'));
+  box.addEventListener('click', async (e) => {
+    if (!e.target.closest('[data-report-run]')) return;
+    e.target.disabled = true;
+    await fetch('/local/importbericht', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' }, body: JSON.stringify({ pruefen: true, jetzt: true, grund: 'von Hand' }) }).catch(() => {});
+    setTimeout(load, 300);
+  });
+  load();
 }
