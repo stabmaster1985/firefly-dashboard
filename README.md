@@ -667,7 +667,21 @@ dass jemand das Dashboard öffnet:
 - **doppelte Buchungen** der letzten Wochen (auch dieselbe Umbuchung aus der CSV beider eigenen Konten)
 - **falsch zugeordnete Gegenkonten** und **neue Händler ohne Kategorie**
 
-Einrichtung im eigenen n8n-Import-Workflow – nach dem Import je Bank-CSV ein Knoten **HTTP Request**:
+**Einrichtung mit der Vorlage** `n8n/firefly-import-bericht.json` (Zusatz-Workflow, wird aus deinem
+Import-Workflow aufgerufen):
+
+1. In n8n *Import from File* → `n8n/firefly-import-bericht.json`. Im Knoten **Einstellungen + Dateien** die
+   Adresse des Dashboards eintragen; bei den beiden HTTP-Knoten Zugangsdaten **Basic Auth** mit
+   `DASHBOARD_USER` / `DASHBOARD_PASSWORD` anlegen (ohne Passwort: Authentication *None*). Speichern –
+   aktivieren ist nicht nötig.
+2. Im **eigenen Import-Workflow** an den Knoten, der die Bank-CSV als Datei (Binary) hat – meist der direkt
+   vor dem Upload zum Data Importer –, zusätzlich einen Knoten **Execute Workflow** hängen (*Source: Database*,
+   *Workflow: Firefly: Import-Bericht (Dashboard)*). Jede CSV geht ins Archiv; geprüft wird spätestens
+   5 Minuten danach.
+3. Optional am **Ende** des Import-Workflows denselben Execute-Workflow-Knoten noch einmal – ohne Datei. Dann
+   prüft das Dashboard 10 Sekunden nach dem Import statt nach 5 Minuten.
+
+Ohne Vorlage geht es auch direkt mit einem Knoten **HTTP Request**:
 
 | Einstellung | Wert |
 |---|---|
@@ -675,7 +689,7 @@ Einrichtung im eigenen n8n-Import-Workflow – nach dem Import je Bank-CSV ein K
 | URL | `http://<dashboard>:8080/local/importbericht?name={{ $binary.data.fileName }}` |
 | Authentication | bei gesetztem `DASHBOARD_PASSWORD`: *Basic Auth* mit `DASHBOARD_USER` / `DASHBOARD_PASSWORD` |
 | Header | `X-Requested-With: firefly-dashboard` |
-| Body | *n8n Binary File*, Feld `data`, Content-Type `text/csv` |
+| Body | *n8n Binary File*, Feld `data` |
 
 Die Datei landet im **CSV-Archiv** (gleiche Dateien nur einmal) – so hat das Archiv keine Lücken mehr. Gut eine
 Minute nach der letzten Datei prüft der Server (`&warten=Sekunden` ändert die Wartezeit, `&pruefen=0`

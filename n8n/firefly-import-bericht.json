@@ -1,0 +1,209 @@
+{
+  "name": "Firefly: Import-Bericht (Dashboard)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Firefly: Import-Bericht (Dashboard)\n\nWird aus deinem **Import-Workflow** aufgerufen (Knoten *Execute Workflow*, Quelle *Database*, dieser Workflow).\n\n**1. Bank-CSV ins Archiv** – Execute-Workflow-Knoten an den Knoten hängen, der die Bank-CSV als **Datei (Binary)** hat\n(meist der vor dem Upload zum Data Importer). Jede CSV landet im CSV-Archiv des Dashboards; die Prüfung startet\nspätestens 5 Minuten danach.\n\n**2. Optional, genauer:** am **Ende** des Import-Workflows (Import fertig) denselben Workflow noch einmal aufrufen –\nohne Datei. Dann prüft das Dashboard schon 10 Sekunden später.\n\n**Einrichten:** in *Einstellungen* die Adresse des Dashboards eintragen; beim HTTP-Knoten die Zugangsdaten\n(Basic Auth, Benutzer/Passwort des Dashboards). Ohne DASHBOARD_PASSWORD: Authentication auf *None*.\n\nErgebnis: Dashboard → Aufgaben → „Letzter Import-Bericht“, Automation „Import-Bericht“ bzw. „Warnungen“.",
+        "height": 420,
+        "width": 520,
+        "color": 4
+      },
+      "id": "n0",
+      "name": "Anleitung",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -120,
+        -420
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "n1",
+      "name": "Vom Import-Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Einstellungen: Adresse des Dashboards (wie im Browser, ohne / am Ende)\nconst DASHBOARD_URL = 'http://192.168.0.X:8080';\n// Wartezeit bis zur Prüfung: nach einer CSV-Datei großzügig (der Import läuft evtl. noch),\n// ohne Datei (Aufruf am Ende des Imports) kurz\nconst WARTEN_NACH_DATEI = 300;\nconst WARTEN_OHNE_DATEI = 10;\n\nconst out = [];\nfor (const item of $input.all()) {\n  for (const [key, bin] of Object.entries(item.binary || {})) {\n    const isCsv = /\\.csv$/i.test(bin.fileName || '') || /csv|text\\/plain|octet-stream/i.test(bin.mimeType || '');\n    if (!isCsv) continue;\n    out.push({ json: { url: DASHBOARD_URL, name: bin.fileName || 'umsaetze.csv', warten: WARTEN_NACH_DATEI }, binary: { data: bin } });\n  }\n}\nif (!out.length) return [{ json: { url: DASHBOARD_URL, ohneDatei: true, warten: WARTEN_OHNE_DATEI } }];\nreturn out;"
+      },
+      "id": "n2",
+      "name": "Einstellungen + Dateien",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "d1",
+              "leftValue": "={{ $json.ohneDatei === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "n3",
+      "name": "Ohne Datei?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        440,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}/local/importbericht",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Requested-With",
+              "value": "firefly-dashboard"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ pruefen: true, warten: $json.warten, grund: 'nach Import (n8n)' }) }}",
+        "options": {}
+      },
+      "id": "n4",
+      "name": "Nur prüfen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        0
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "dashboard",
+          "name": "Firefly Dashboard"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}/local/importbericht",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "name",
+              "value": "={{ $json.name }}"
+            },
+            {
+              "name": "warten",
+              "value": "={{ $json.warten }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Requested-With",
+              "value": "firefly-dashboard"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "id": "n5",
+      "name": "CSV ins Archiv",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        200
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "dashboard",
+          "name": "Firefly Dashboard"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Vom Import-Workflow": {
+      "main": [
+        [
+          {
+            "node": "Einstellungen + Dateien",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Einstellungen + Dateien": {
+      "main": [
+        [
+          {
+            "node": "Ohne Datei?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ohne Datei?": {
+      "main": [
+        [
+          {
+            "node": "Nur prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "CSV ins Archiv",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
