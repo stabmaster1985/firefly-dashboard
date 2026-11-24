@@ -1700,3 +1700,4 @@ details.cm-sugg:not([open]) { padding-bottom: 10px; }
 .pc-cause code { overflow-wrap: anywhere; }
 .link-btn.danger { color: var(--negative); }
 .z-ff-fixall { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.z-ff-btns { display: flex; flex-wrap: wrap; gap: 8px; }

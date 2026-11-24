@@ -122,8 +122,12 @@ export async function assignPage(view) {
   const ffCandidates = () => data.automatisch.filter((m) => m.cond && (m.category || m.split) && m.quelle !== 'buchung');
   /** Karte „In Firefly übernehmen“ – ein Fehler darin zeigt sich in der Karte, statt sie leer zu lassen. */
   function renderFirefly() {
+    // Scrollstand der Liste behalten (sonst springt sie nach jedem Häkchen nach oben)
+    const top = $('z-ff').querySelector('.z-ff-table')?.scrollTop || 0;
     try {
       renderFireflyCard();
+      const box = $('z-ff').querySelector('.z-ff-table');
+      if (box && top) box.scrollTop = top;
     } catch (err) {
       console.error(err);
       $('z-ff').innerHTML = `<div class="empty bad">Die Liste konnte nicht angezeigt werden: ${esc(err.message)}. Bitte melden.</div>`;
@@ -189,7 +193,8 @@ export async function assignPage(view) {
             <option value="24"${ffRange === '24' ? ' selected' : ''}>letzte 24 Monate</option>
             <option value="none"${ffRange === 'none' ? ' selected' : ''}>nein, nur künftige Importe</option></select></label>
           ${editAction && ffRange !== 'none' ? `<label class="z-ff-over" title="Buchungen dieser Händler, die in Firefly schon eine andere Kategorie haben, direkt umstellen (einmalig, per n8n). Einzeln zugeordnete („nur diese“) bleiben. Künftige Importe: weiterhin nur ohne Kategorie."><input type="checkbox" data-ff-over${ffOverwrite ? ' checked' : ''}> auch vorhandene Kategorien umstellen</label>` : ''}
-          <button class="btn primary" type="button" id="z-ff-send"${n && !ffBusy ? '' : ' disabled'}>${ffBusy ? '<span class="spinner"></span> Überträgt …' : `${n} als Regel${n === 1 ? '' : 'n'} nach Firefly`}</button>
+          <span class="z-ff-btns">${editAction && n ? `<button class="btn" type="button" id="z-ff-fix-picked"${ffBusy ? ' disabled' : ''} title="Bei den angehakten Händlern die Kategorie direkt in Firefly setzen – bei Buchungen mit anderer oder ohne Kategorie (ohne Regel; Rückfrage zeigt vorher alles)">Kategorie bei ${n} angehakten jetzt setzen</button>` : ''}
+          <button class="btn primary" type="button" id="z-ff-send"${n && !ffBusy ? '' : ' disabled'}>${ffBusy ? '<span class="spinner"></span> Überträgt …' : `${n} als Regel${n === 1 ? '' : 'n'} nach Firefly`}</button></span>
         </div>
         ${ffBusy ? `<div class="cm-note" role="status"><span class="spinner"></span> ${esc(ffBusy)}</div>` : ffNote && !fixAllNote ? `<div class="cm-note" role="status">${ffNote}</div>` : ''}
         <p class="muted small-text">Angehakt sind nur deine bestätigten Zuordnungen („✓ Passt“ oder geändert). Andere (Händlerliste, gelernt, Import, KI) erst prüfen – „bearbeiten“ springt zum Händler – oder selbst anhaken. Bereits übertragene Regeln bleiben bestehen; „geändert“ heißt: im Dashboard jetzt eine andere Kategorie – erneut übertragen ändert die Regel.</p>`
@@ -439,7 +444,7 @@ export async function assignPage(view) {
     </div>`;
   }
   async function loadBookings(key, fresh = false) {
-    if (bookings.has(key) && !fresh) return;
+    if (bookings.has(key) && !fresh) return render(); // schon geladen: nur wieder anzeigen
     bookings.set(key, 'laden');
     render();
     try {
@@ -711,11 +716,13 @@ export async function assignPage(view) {
         });
       })();
     }
-    if (t.dataset.ffOverOne || t.id === 'z-ff-fix-all') {
-      // eine Zeile („… jetzt setzen“) oder alle übertragenen Händler, bei denen in Firefly noch etwas fehlt
-      const all = t.id === 'z-ff-fix-all';
-      fixAllNote = all;
-      const fs = all ? ffFixable() : data.firefly.filter((x) => x.key === t.dataset.ffOverOne);
+    if (t.dataset.ffOverOne || t.id === 'z-ff-fix-all' || t.id === 'z-ff-fix-picked') {
+      // eine Zeile („… jetzt setzen“), alle übertragenen Händler, bei denen in Firefly noch etwas fehlt, oder die angehakten
+      const picked = t.id === 'z-ff-fix-picked';
+      const all = t.id === 'z-ff-fix-all' || picked;
+      fixAllNote = t.id === 'z-ff-fix-all';
+      const fs = picked ? ffCandidates().filter((m) => ffPick.has(m.key)).map((m) => ({ key: m.key, name: m.name, category: ffCat(m), split: m.split || [], keep: Boolean(m.festKeep) }))
+        : all ? ffFixable() : data.firefly.filter((x) => x.key === t.dataset.ffOverOne);
       if (!fs.length) return;
       const label = all ? `${fs.length} Händler${fs.length === 1 ? '' : 'n'}` : fs[0].name;
       return (async () => {
