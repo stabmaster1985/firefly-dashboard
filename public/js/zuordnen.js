@@ -104,11 +104,17 @@ export async function assignPage(view) {
     const fresh = Date.now() - new Date(m.ff.sentAt).getTime() < 10 * 60_000; // Firefly wendet die Regel evtl. noch an
     const parts = [`<span class="badge good" title="Regel in Firefly angelegt">Regel in Firefly</span>`];
     parts.push(`<span class="muted">${st.ziel} von ${st.ziel + st.ohne + st.andere} Buchungen (24 Monate) dort mit „${esc(ffCat(m) || 'Unterscheidung')}“</span>`);
-    if (st.andere) parts.push(`<span class="badge warn" title="${esc(`In Firefly noch: ${andere}. Die Regel ändert vorhandene Kategorien nicht – Händler anhaken, „auch vorhandene Kategorien umstellen“ und erneut übertragen.`)}">${st.andere} mit anderer Kategorie</span>${editAction ? ` <button class="link-btn" type="button" data-ff-over-one="${esc(m.key)}"${ffBusy ? ' disabled' : ''}>umstellen</button>` : ''}`);
+    if (st.andere) parts.push(`<span class="badge warn" title="${esc(`In Firefly noch: ${andere}. Die Regel ändert vorhandene Kategorien nicht – „jetzt setzen“ stellt sie direkt um.`)}">${st.andere} mit anderer Kategorie</span>`);
     if (st.ohne) parts.push(fresh ? `<span class="badge" title="Firefly wendet die Regel gerade an – die Liste lädt nach etwa 2 und 7 Minuten neu">${st.ohne} ohne Kategorie – Firefly arbeitet noch</span>`
-      : `<span class="badge bad" title="Die Regel hat diese Buchungen nicht erfasst. Prüfen: Läuft die Automation „Firefly-Regeln anlegen“ fehlerfrei (n8n-Ausführungen)? Passt die Bedingung der Regel zu den Buchungen (Regel in Firefly öffnen, „Testen“)? Erneut übertragen mit „rückwirkend anwenden“.">${st.ohne} noch ohne Kategorie</span>`);
+      : `<span class="badge bad" title="Die Regel hat diese Buchungen nicht erfasst. „jetzt setzen“ setzt sie direkt. Ursache prüfen: Läuft die Automation „Firefly-Regeln anlegen“ fehlerfrei (n8n-Ausführungen)? Passt die Bedingung der Regel zu den Buchungen (Regel in Firefly öffnen, „Testen“)? Erneut übertragen mit „rückwirkend anwenden“.">${st.ohne} noch ohne Kategorie</span>`);
+    if (editAction && (st.andere || (st.ohne && !fresh))) parts.push(fixButton(m.key, st, fresh));
     return parts.join(' ');
   }
+  /** „jetzt setzen“: Buchungen mit anderer bzw. (nach Ablauf der Regel) ohne Kategorie direkt in Firefly setzen. */
+  const fixButton = (key, st, fresh) => {
+    const n = st.andere + (fresh ? 0 : st.ohne);
+    return `<button class="btn small" type="button" data-ff-over-one="${esc(key)}"${fresh ? '' : ' data-ohne="1"'}${ffBusy ? ' disabled' : ''} title="Die Kategorie bei diesen Buchungen direkt in Firefly setzen (Automation „Kategorie übernehmen“) – vorher zeigt eine Rückfrage, was sich ändert">${n} jetzt setzen</button>`;
+  };
   const ffCandidates = () => data.automatisch.filter((m) => m.cond && (m.category || m.split) && m.quelle !== 'buchung');
   /** Karte „In Firefly übernehmen“ – ein Fehler darin zeigt sich in der Karte, statt sie leer zu lassen. */
   function renderFirefly() {
@@ -182,7 +188,7 @@ export async function assignPage(view) {
     : '<div class="empty">Keine automatischen Zuordnungen mit erkennbarem Händler.</div>'}
       ${elsewhere.length ? `<details class="r-hidden"><summary>${elsewhere.length} Regel${elsewhere.length === 1 ? '' : 'n'} schon in Firefly wirksam (die Buchungen haben dort ihre Kategorie)</summary>
         <ul>${elsewhere.map((f) => `<li>${esc(f.name)} → ${esc(f.category || 'Unterscheidungen')}${f.stand ? ` <span class="muted">· ${f.stand.ziel} von ${f.stand.ziel + f.stand.ohne + f.stand.andere} Buchungen (24 Monate) so in Firefly</span>` : ''}
-          ${f.stand?.andere ? ` <span class="badge warn" title="${esc(`In Firefly noch: ${f.stand.namen.map((c) => `„${c.name}“ ${c.n}×`).join(', ')}`)}">${f.stand.andere} mit anderer Kategorie</span>${editAction ? ` <button class="link-btn" type="button" data-ff-over-one="${esc(f.key)}"${ffBusy ? ' disabled' : ''}>umstellen</button>` : ''}` : ''}
+          ${f.stand?.andere ? ` <span class="badge warn" title="${esc(`In Firefly noch: ${f.stand.namen.map((c) => `„${c.name}“ ${c.n}×`).join(', ')}`)}">${f.stand.andere} mit anderer Kategorie</span>` : ''}${f.stand?.ohne ? ` <span class="badge bad">${f.stand.ohne} ohne Kategorie</span>` : ''}${editAction && f.stand && (f.stand.andere || f.stand.ohne) ? ` ${fixButton(f.key, f.stand, false)}` : ''}
           <button class="link-btn" type="button" data-ff-remove="${esc(f.key)}">Regel entfernen</button></li>`).join('')}</ul></details>` : ''}
       ${data.einzeln?.length ? `<div class="z-ff-single"><b>${data.einzeln.length} einzeln zugeordnete Buchung${data.einzeln.length === 1 ? '' : 'en'}</b> <span class="muted">(„nur diese“) – dafür gibt es keine Regel; ${editAction ? 'direkt per n8n setzen:' : 'braucht die Automation „Kategorie übernehmen“.'}</span>
         ${editAction ? `<button class="btn small" type="button" id="z-ff-single"${ffBusy ? ' disabled' : ''}>In Firefly setzen</button>` : ''}</div>` : ''}`}
@@ -226,7 +232,7 @@ export async function assignPage(view) {
     let ok = 0;
     for (let k = 0; k < change.length; k += 25) {
       const part = change.slice(k, k + 25);
-      ffBusy = `Stelle vorhandene Kategorien um … ${k} von ${change.length}`;
+      ffBusy = `Setze Kategorien in Firefly … ${k} von ${change.length}`;
       renderFirefly();
       const r = await runAction(editAction, {
         typ: 'kategorien_uebernehmen',
@@ -237,7 +243,7 @@ export async function assignPage(view) {
     if (ok) refreshLater([6_000, 20_000]); // der Server erneuert die Monate kurz nach der Änderung
     return ok;
   }
-  const changeSummary = (change) => [...change.reduce((acc, c) => acc.set(`${c.alt} → ${c.kategorie}`, (acc.get(`${c.alt} → ${c.kategorie}`) || 0) + 1), new Map())]
+  const changeSummary = (change) => [...change.reduce((acc, c) => acc.set(`${c.alt || 'ohne Kategorie'} → ${c.kategorie}`, (acc.get(`${c.alt || 'ohne Kategorie'} → ${c.kategorie}`) || 0) + 1), new Map())]
     .sort((a, b) => b[1] - a[1]);
 
   /** Nach dem rückwirkenden Anwenden: Firefly braucht etwas – in 2 und 7 Minuten neu laden (der Server erneuert vorher). */
@@ -675,11 +681,11 @@ export async function assignPage(view) {
       const f = data.firefly.find((x) => x.key === t.dataset.ffOverOne);
       if (!f) return;
       return (async () => {
-        ffBusy = `Suche Buchungen von ${f.name} mit anderer Kategorie …`;
+        ffBusy = `Suche Buchungen von ${f.name}, die in Firefly nicht „${f.category || 'wie zugeordnet'}“ haben …`;
         renderFirefly();
         let change;
         try {
-          change = (await call('POST', { ueberschreiben: { monate: ffRange === '24' ? '24' : 'all', items: [{ key: f.key, category: f.category, split: f.split || [], keep: Boolean(f.keep) }] } })).buchungen;
+          change = (await call('POST', { ueberschreiben: { ohne: t.dataset.ohne === '1', monate: ffRange === '24' ? '24' : 'all', items: [{ key: f.key, category: f.category, split: f.split || [], keep: Boolean(f.keep) }] } })).buchungen;
         } catch (err) {
           ffNote = `<span class="bad">${esc(err.message)}</span>`;
           change = null;
@@ -688,15 +694,15 @@ export async function assignPage(view) {
         renderFirefly();
         if (!change) return;
         if (!change.length) {
-          ffNote = 'Keine Buchungen mit anderer Kategorie gefunden (einzeln zugeordnete und ausgeblendete zählen nicht).';
+          ffNote = 'Keine passenden Buchungen gefunden (einzeln zugeordnete und ausgeblendete zählen nicht).';
           return renderFirefly();
         }
         const pairs = changeSummary(change);
-        if (!window.confirm(`${f.name}: ${change.length} Buchung${change.length === 1 ? '' : 'en'} in Firefly umstellen?\n${pairs.slice(0, 8).map(([k, n]) => `• ${k} (${n}×)`).join('\n')}${pairs.length > 8 ? '\n…' : ''}`)) return;
-        return ffDo('Stelle vorhandene Kategorien um …', async () => {
+        if (!window.confirm(`${f.name}: ${change.length} Buchung${change.length === 1 ? '' : 'en'} in Firefly setzen?\n${pairs.slice(0, 8).map(([k, n]) => `• ${k} (${n}×)`).join('\n')}${pairs.length > 8 ? '\n…' : ''}`)) return;
+        return ffDo('Setze die Kategorien in Firefly …', async () => {
           const ok = await overwriteExisting(change);
-          return ok === change.length ? `<span class="good">✓ ${ok} Buchung${ok === 1 ? '' : 'en'} von ${esc(f.name)} umgestellt.</span>`
-            : `<span class="bad">Nur ${ok} von ${change.length} umgestellt – bitte erneut versuchen.</span>`;
+          return ok === change.length ? `<span class="good">✓ ${ok} Buchung${ok === 1 ? '' : 'en'} von ${esc(f.name)} gesetzt.</span>`
+            : `<span class="bad">Nur ${ok} von ${change.length} gesetzt – bitte erneut versuchen.</span>`;
         });
       })();
     }
