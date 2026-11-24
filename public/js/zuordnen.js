@@ -46,6 +46,8 @@ export async function assignPage(view) {
   let ffView = storage('ffd-z-ff-view', 'offen'); // offen | angehakt | firefly | alle
   let ffSource = ''; // Quelle oder '' = alle
   let ffNote = '';
+  let fixPrev = null; // „Was ist betroffen?“: null | 'laden' | Fehlertext | { change, off: Set }
+  let fixOpen = false;
   let fixAllNote = false; // Meldung von „Alle jetzt setzen“ oben statt unter dem Knopf zeigen
   let ffBusy = '';
   let data;
@@ -119,6 +121,35 @@ export async function assignPage(view) {
   /** Übertragene Händler, bei denen in Firefly noch Buchungen eine andere (oder, nach Ablauf der Regel, keine) Kategorie haben. */
   const ffFixable = () => (data.firefly || []).filter((f) => f.sentAt && f.stand
     && (f.stand.andere || (f.stand.ohne && Date.now() - new Date(f.sentAt).getTime() >= 10 * 60_000)));
+  const fixSelected = () => (fixPrev?.change || []).filter((c, i) => !fixPrev.off.has(i));
+  /** Liste „Was ist betroffen?“: je Buchung alt → neu, abwählbar. */
+  function fixListHtml() {
+    if (!fixOpen) return '';
+    if (!fixPrev || fixPrev === 'laden') return `<div class="muted"><span class="spinner"></span> Suche betroffene Buchungen …</div>`;
+    if (typeof fixPrev === 'string') return `<div class="bad">${esc(fixPrev)}</div>`;
+    const { change, off } = fixPrev;
+    if (!change.length) return '<div class="muted">Keine Buchungen gefunden (einzeln zugeordnete und ausgeblendete zählen nicht).</div>';
+    const names = new Map((data.firefly || []).map((f) => [f.key, f.name]));
+    const groups = new Map();
+    change.forEach((c, i) => groups.set(c.key, [...(groups.get(c.key) || []), i]));
+    return `<p class="muted small-text">Häkchen entfernen, was nicht geändert werden soll. Zeitraum wie „rückwirkend anwenden“ („alle“ = 10 Jahre).</p>
+      <div class="table-wrap z-ff-fixtable"><table><tbody>${[...groups].map(([key, idx]) => `<tr class="z-fix-head" style="cursor:default"><td class="pick-cell"><input type="checkbox" data-fix-group="${esc(key)}" aria-label="alle von ${esc(names.get(key) || key)}"${idx.every((i) => !off.has(i)) ? ' checked' : ''}></td>
+          <td colspan="4" class="z-fix-text"><b>${esc(names.get(key) || key)}</b> <span class="muted">${idx.length} Buchung${idx.length === 1 ? '' : 'en'}</span></td></tr>
+        ${idx.map((i) => { const c = change[i]; return `<tr style="cursor:default"><td class="pick-cell"><input type="checkbox" data-fix-row="${i}"${off.has(i) ? '' : ' checked'} aria-label="auswählen"></td>
+          <td class="date">${fmtDate(c.date)}</td><td class="z-fix-text"><div class="desc">${esc(String(c.description || '').slice(0, 80))}</div>${c.notes && c.notes !== c.description ? `<div class="flow">${esc(c.notes)}</div>` : ''}</td><td class="num">${money(Number(c.amount), data.waehrung)}</td>
+          <td class="z-fix-cat"><span class="muted">${esc(c.alt || 'ohne Kategorie')}</span> → <b>${esc(c.kategorie)}</b></td></tr>`; }).join('')}`).join('')}</tbody></table></div>`;
+  }
+  async function loadFixPreview() {
+    fixPrev = 'laden';
+    renderFirefly();
+    try {
+      const change = (await call('POST', { ueberschreiben: { ohne: true, monate: ffRange === '24' ? '24' : 'all', items: ffFixable().map((f) => ({ key: f.key, category: f.category, split: f.split || [], keep: Boolean(f.keep) })) } })).buchungen;
+      fixPrev = { change, off: new Set() };
+    } catch (err) {
+      fixPrev = err.message;
+    }
+    renderFirefly();
+  }
   const ffCandidates = () => data.automatisch.filter((m) => m.cond && (m.category || m.split) && m.quelle !== 'buchung');
   /** Karte „In Firefly übernehmen“ – ein Fehler darin zeigt sich in der Karte, statt sie leer zu lassen. */
   function renderFirefly() {
@@ -179,7 +210,8 @@ export async function assignPage(view) {
       ${!rulesAction ? `<div class="cm-note"><b>Zum Übertragen fehlt die Automation „Firefly-Regeln anlegen“.</b> Unter <a href="#/automationen">Automationen</a> eine Automation mit diesem Auslöser einrichten (Vorlage n8n/firefly-buchung-bearbeiten.json, dieselbe wie für „Kategorie übernehmen“ – nur der Auslöser ist ein anderer).</div>
         ${cands.length ? `<p class="muted">Vorgemerkt sind deine bestätigten Zuordnungen (${[...ffPick].filter((k) => keys.has(k)).length} von ${cands.length} Händlern):</p><ul class="z-ff-plain">${cands.filter((m) => ffPick.has(m.key)).slice(0, 50).map((m) => `<li>${esc(m.name)} → ${esc(m.category)} ${quelle(m.quelle)} <button type="button" class="link-btn" data-edit="${esc(m.key)}">bearbeiten</button></li>`).join('')}</ul>` : ''}` : `
       ${editAction && fixable.length ? `<div class="cm-note z-ff-fixall"><span><b>${fixable.length} übertragene Händler</b> haben in Firefly noch Buchungen mit anderer oder ohne Kategorie (${fixable.reduce((a, f) => a + f.stand.andere + f.stand.ohne, 0)} in den letzten 24 Monaten).</span>
-        <button class="btn small" type="button" id="z-ff-fix-all"${ffBusy ? ' disabled' : ''}>${ffBusy ? '<span class="spinner"></span> läuft …' : 'Alle jetzt setzen'}</button></div>` : ''}
+        <button class="btn small" type="button" id="z-ff-fix-all"${ffBusy || (fixPrev?.change && fixSelected().length === 0) ? ' disabled' : ''}>${ffBusy ? '<span class="spinner"></span> läuft …' : fixPrev?.change ? `${fixSelected().length} ausgewählte jetzt setzen` : 'Alle jetzt setzen'}</button>
+        <details class="z-ff-fixlist" data-fix-details${fixOpen ? ' open' : ''}><summary>Was ist betroffen?</summary>${fixListHtml()}</details></div>` : ''}
       ${ffNote && fixAllNote ? `<div class="cm-note" role="status">${ffNote}</div>` : ''}
       ${cands.length ? `${filterBar}${shown.length ? `<div class="table-wrap z-ff-table"><table><thead><tr><th class="pick-cell"><input type="checkbox" id="z-ff-all" aria-label="alle angezeigten auswählen" title="alle angezeigten"></th><th>Händler</th><th>Kategorie</th><th class="num hide-sm">24 Monate</th></tr></thead>
         <tbody>${shown.map((m) => `<tr style="cursor:default">
@@ -204,7 +236,11 @@ export async function assignPage(view) {
           ${f.stand?.andere ? ` <span class="badge warn" title="${esc(`In Firefly noch: ${f.stand.namen.map((c) => `„${c.name}“ ${c.n}×`).join(', ')}`)}">${f.stand.andere} mit anderer Kategorie</span>` : ''}${f.stand?.ohne ? ` <span class="badge bad">${f.stand.ohne} ohne Kategorie</span>` : ''}${editAction && f.stand && (f.stand.andere || f.stand.ohne) ? ` ${fixButton(f.key, f.stand, false)}` : ''}
           <button class="link-btn" type="button" data-ff-remove="${esc(f.key)}">Regel entfernen</button></li>`).join('')}</ul></details>` : ''}
       ${data.einzeln?.length ? `<div class="z-ff-single"><b>${data.einzeln.length} einzeln zugeordnete Buchung${data.einzeln.length === 1 ? '' : 'en'}</b> <span class="muted">(„nur diese“) – dafür gibt es keine Regel; ${editAction ? 'direkt per n8n setzen:' : 'braucht die Automation „Kategorie übernehmen“.'}</span>
-        ${editAction ? `<button class="btn small" type="button" id="z-ff-single"${ffBusy ? ' disabled' : ''}>In Firefly setzen</button>` : ''}</div>` : ''}`}
+        ${editAction ? `<button class="btn small" type="button" id="z-ff-single"${ffBusy ? ' disabled' : ''}>In Firefly setzen</button>` : ''}
+        <details class="z-ff-fixlist"><summary>Welche?</summary><div class="table-wrap"><table><tbody>${data.einzeln.map((t) => `<tr style="cursor:default">
+          <td class="date">${fmtDate(t.date)}</td><td><div class="desc">${esc(String(t.description || '').slice(0, 90))}</div><div class="flow">${esc(t.destination_name || t.source_name || '')}</div></td>
+          <td class="num">${signedAmount(t)}</td><td>→ <b>${esc(t.ffd_ziel || '')}</b></td></tr>`).join('')}</tbody></table></div>
+          <p class="muted small-text">Zurücksetzen: beim Händler „Buchungen ansehen“ → „zurücksetzen“.</p></details></div>` : ''}`}
       ${ffBusy && (!rulesAction || !cands.length) ? `<p class="muted"><span class="spinner"></span> ${esc(ffBusy)}</p>` : ''}`;
     const all = $('z-ff').querySelector('#z-ff-all');
     if (all) {
@@ -348,7 +384,9 @@ export async function assignPage(view) {
       ffNote = `<span class="bad">${esc(err.message)}</span>`;
     }
     ffBusy = '';
+    fixPrev = null; // Daten geändert: Liste „Was ist betroffen?“ neu laden, falls offen
     render();
+    if (fixOpen && ffFixable().length) loadFixPreview();
   }
 
   // ---- Aufteilen: je nach Buchungstext eine andere Kategorie (Versicherer mit Kfz- und Familienversicherung) ----
@@ -754,6 +792,19 @@ export async function assignPage(view) {
         });
       })();
     }
+    if (t.id === 'z-ff-fix-all' && fixPrev?.change) {
+      const change = fixSelected();
+      if (!change.length) return;
+      fixAllNote = true;
+      const pairs = changeSummary(change);
+      if (!window.confirm(`${change.length} ausgewählte Buchung${change.length === 1 ? '' : 'en'} in Firefly setzen?\n${pairs.slice(0, 10).map(([k, n]) => `• ${k} (${n}×)`).join('\n')}${pairs.length > 10 ? `\n… und ${pairs.length - 10} weitere` : ''}`)) return;
+      return ffDo('Setze die Kategorien in Firefly …', async () => {
+        const r = await overwriteExisting(change);
+        fixPrev = null;
+        fixOpen = false;
+        return overwriteReport(r, `Buchung${change.length === 1 ? '' : 'en'}`);
+      });
+    }
     if (t.dataset.ffOverOne || t.id === 'z-ff-fix-all' || t.id === 'z-ff-fix-picked') {
       // eine Zeile („… jetzt setzen“), alle übertragenen Händler, bei denen in Firefly noch etwas fehlt, oder die angehakten
       const picked = t.id === 'z-ff-fix-picked';
@@ -833,6 +884,12 @@ export async function assignPage(view) {
     }
   });
   // Aufteilen: jede Eingabe sofort in den Entwurf (übersteht Neuzeichnen, z. B. wenn die Buchungen nachladen)
+  view.addEventListener('toggle', (e) => {
+    if (!e.target.matches?.('[data-fix-details]')) return;
+    if (fixOpen === e.target.open) return;
+    fixOpen = e.target.open;
+    if (fixOpen && !fixPrev) loadFixPreview();
+  }, true);
   view.addEventListener('input', (e) => {
     const box = e.target.closest('[data-split-box]');
     if (box) readDraft(box.dataset.splitBox);
@@ -842,6 +899,18 @@ export async function assignPage(view) {
     if (e.target.closest('[data-split-box]') && (e.target.matches('[data-sf], [data-split-rest], [data-split-keep]'))) {
       readDraft(e.target.closest('[data-split-box]').dataset.splitBox);
       return render();
+    }
+    if (e.target.dataset.fixRow !== undefined || e.target.dataset.fixGroup !== undefined) {
+      if (!fixPrev?.change) return;
+      const idx = e.target.dataset.fixRow !== undefined ? [Number(e.target.dataset.fixRow)]
+        : fixPrev.change.map((c, i) => (c.key === e.target.dataset.fixGroup ? i : -1)).filter((i) => i >= 0);
+      idx.forEach((i) => (e.target.checked ? fixPrev.off.delete(i) : fixPrev.off.add(i)));
+      const list = $('z-ff').querySelector('.z-ff-fixtable');
+      const top = list?.scrollTop || 0;
+      renderFirefly();
+      const again = $('z-ff').querySelector('.z-ff-fixtable');
+      if (again) again.scrollTop = top;
+      return;
     }
     if (e.target.dataset.ff) {
       if (e.target.checked) ffPick.add(e.target.dataset.ff);
@@ -859,6 +928,8 @@ export async function assignPage(view) {
     }
     if (e.target.matches('[data-ff-range]')) {
       ffRange = e.target.value;
+      fixPrev = null; // Zeitraum geändert: Liste „Was ist betroffen?“ neu
+      if (fixOpen) return loadFixPreview();
       return renderFirefly();
     }
     if (e.target.matches('[data-ff-over]')) {

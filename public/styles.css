@@ -1701,3 +1701,21 @@ details.cm-sugg:not([open]) { padding-bottom: 10px; }
 .link-btn.danger { color: var(--negative); }
 .z-ff-fixall { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
 .z-ff-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.z-ff-fixlist { flex-basis: 100%; }
+.z-ff-fixlist summary { cursor: pointer; font-size: 14px; }
+.z-ff-fixtable { max-height: 420px; overflow-y: auto; margin-top: 6px; }
+.z-ff-fixtable table, .z-ff-single .z-ff-fixlist table { font-size: 13px; }
+.z-fix-head td { background: var(--surface-2); }
+.z-ff-fixtable .flow { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .z-ff-fixtable tr { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; }
+  .z-ff-fixtable tr:not(.z-fix-head) td.pick-cell { grid-row: 1 / span 3; grid-column: 1; }
+  .z-ff-fixtable tr:not(.z-fix-head) td.date { grid-row: 1; grid-column: 2; }
+  .z-ff-fixtable tr:not(.z-fix-head) td.num { grid-row: 1; grid-column: 3; }
+  .z-ff-fixtable tr:not(.z-fix-head) td.z-fix-text { grid-row: 2; }
+  .z-ff-fixtable tr:not(.z-fix-head) td.z-fix-cat { grid-row: 3; }
+  .z-ff-fixtable td { border-top: 0; }
+  .z-ff-fixtable tr { border-top: 1px solid var(--border); }
+  .z-ff-fixtable td.z-fix-text, .z-ff-fixtable td.z-fix-cat { grid-column: 2 / -1; border-top: 0; padding-top: 0; }
+  .z-ff-fixtable tr.z-fix-head td.z-fix-text { grid-column: 2 / -1; padding-top: 10px; }
+}
