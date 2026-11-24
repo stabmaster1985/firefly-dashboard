@@ -481,3 +481,53 @@ export function toFireflyRules(rules) {
     };
   });
 }
+
+// ---- Aufteilen (Zuordnen): eine Zeile unterscheidet nach Beschreibung, Notiz oder Betrag -------------------------
+const num = (x) => {
+  let v = String(x ?? '').replace(/[\s€]/g, '');
+  if (v.includes(',') && v.includes('.')) v = v.replace(/\./g, '').replace(',', '.');
+  else v = v.replace(',', '.');
+  return /^\d+(\.\d+)?$/.test(v) ? Number(v) : NaN;
+};
+/** Betrag für „Aufteilen“: „48,20“ (genau) oder „40–60“ / „40 bis 60“ (Bereich) → { min, max } oder null. */
+export function parseAmountSpec(value) {
+  const parts = String(value ?? '').trim().split(/\s*(?:–|—|bis|-)\s*/i).filter(Boolean);
+  if (parts.length < 1 || parts.length > 2) return null;
+  const nums = parts.map(num);
+  const a = nums[0];
+  const b = nums.length > 1 ? nums[1] : nums[0];
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return { min: Math.min(a, b), max: Math.max(a, b) };
+}
+/** Einheitliche Schreibweise zum Speichern: „48.20“ bzw. „40.00-60.00“ ('' = ungültig). */
+export function normAmountSpec(value) {
+  const r = parseAmountSpec(value);
+  if (!r) return '';
+  return r.min === r.max ? r.min.toFixed(2) : `${r.min.toFixed(2)}-${r.max.toFixed(2)}`;
+}
+/** Zum Anzeigen: „48,20 €“ bzw. „40,00–60,00 €“. */
+export function showAmountSpec(value) {
+  const r = parseAmountSpec(value);
+  if (!r) return String(value ?? '');
+  const f = (n) => n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return r.min === r.max ? `${f(r.min)} €` : `${f(r.min)}–${f(r.max)} €`;
+}
+/** Trifft eine Aufteilungs-Zeile ({ field, value }) die Buchung? Text: enthält (ab 2 Zeichen), Betrag: genau bzw. im Bereich. */
+export function splitLineHit(x, t) {
+  if (x?.field === 'amount') {
+    const r = parseAmountSpec(x.value);
+    const a = Math.abs(Number(t?.amount));
+    return Boolean(r) && Number.isFinite(a) && a >= r.min - 0.005 && a <= r.max + 0.005;
+  }
+  const q = String(x?.value ?? '').trim().toLowerCase();
+  return q.length >= 2 && String(t?.[x?.field] ?? '').toLowerCase().includes(q);
+}
+/** Bedingung für die Firefly-Regel einer Aufteilungs-Zeile (Betrag: genau bzw. Bereich einschließlich der Grenzen). */
+export function splitCond(x) {
+  if (x.field === 'amount') {
+    const r = parseAmountSpec(x.value);
+    if (r && r.min === r.max) return { field: 'amount', op: 'equals', value: r.min.toFixed(2) };
+    if (r) return { field: 'amount', op: 'between', value: (r.min - 0.01).toFixed(2), value2: (r.max + 0.01).toFixed(2) };
+  }
+  return { field: x.field, op: 'contains', value: x.value };
+}

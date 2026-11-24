@@ -7,7 +7,7 @@ import * as api from './api.js';
 import { money, esc, fmtDate, percent } from './util.js';
 import { card, skeleton, txAttrs, bindTxDetails, signedAmount, setFolded } from './common.js';
 import { actionFor, runAction, setCategory } from './txedit.js';
-import { toFireflyRules } from './rules.js';
+import { toFireflyRules, splitLineHit, splitCond, normAmountSpec, showAmountSpec } from './rules.js';
 import { isoDate, today, storage, store } from './util.js';
 
 const FF_GROUP = 'Dashboard: Händler → Kategorie (Zuordnen)';
@@ -185,7 +185,7 @@ export async function assignPage(view) {
         <tbody>${shown.map((m) => `<tr style="cursor:default">
           <td class="pick-cell"><input type="checkbox" data-ff="${esc(m.key)}" ${ffPick.has(m.key) ? 'checked' : ''} aria-label="${esc(m.name)}"></td>
           <td><div class="desc">${esc(m.name)} ${status(m)}</div><div class="flow">${quelle(m.quelle)} <button type="button" class="link-btn" data-edit="${esc(m.key)}">bearbeiten</button> · ${esc(m.cond.field === 'party' ? 'Empfänger' : m.cond.field === 'notes' ? 'Notizen' : 'Beschreibung')} ${m.cond.op === 'equals' ? 'ist' : 'enthält'} „${esc(m.cond.value)}“</div></td>
-          <td>${m.festKeep ? '<span class="muted">übrige bleiben</span>' : esc(mainCat(m))}${m.split ? `<div class="flow">+ ${m.split.length} Unterscheidung${m.split.length === 1 ? '' : 'en'} (${m.split.map((x) => `„${esc(x.value)}“ → ${esc(x.category)}`).join(', ')})</div>` : ''}</td>
+          <td>${m.festKeep ? '<span class="muted">übrige bleiben</span>' : esc(mainCat(m))}${m.split ? `<div class="flow">+ ${m.split.length} Unterscheidung${m.split.length === 1 ? '' : 'en'} (${m.split.map((x) => `${x.field === 'amount' ? esc(showAmountSpec(x.value)) : `„${esc(x.value)}“`} → ${esc(x.category)}`).join(', ')})</div>` : ''}</td>
           <td class="num hide-sm">${money(m.auto, data.waehrung)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Keine Händler in dieser Auswahl.</div>'}
         <div class="z-ff-actions">
           <label>rückwirkend anwenden <select class="input select" data-ff-range>
@@ -221,7 +221,7 @@ export async function assignPage(view) {
     const rules = list.flatMap((f) => [
       ...(f.keep ? [] : [{ id: keyId(f.key), enabled: true, when: [f.cond], setCategory: f.category, addTags: [] }]), // keep: keine allgemeine Regel
       // umgekehrt: die erste Zeile läuft in Firefly zuerst (wie im Dashboard)
-      ...[...(f.split || [])].reverse().map((x) => ({ split: true, id: keyId(`${f.key}|${x.field}|${x.value}`), enabled: true, when: [f.cond, { field: x.field, op: 'contains', value: x.value }], setCategory: x.category, addTags: [] })),
+      ...[...(f.split || [])].reverse().map((x) => ({ split: true, id: keyId(`${f.key}|${x.field}|${x.value}`), enabled: true, when: [f.cond, splitCond(x)], setCategory: x.category, addTags: [] })),
     ]);
     const splitIds = new Set(rules.filter((r) => r.split).map((r) => r.id));
     const regeln = toFireflyRules(rules).map((r, k, arr) => ({
@@ -353,7 +353,9 @@ export async function assignPage(view) {
 
   // ---- Aufteilen: je nach Buchungstext eine andere Kategorie (Versicherer mit Kfz- und Familienversicherung) ----
   const low = (x) => String(x ?? '').toLowerCase();
-  const matchLine = (lines, t) => lines.find((x) => x.value.trim().length >= 2 && x.category.trim() && low(t[x.field]).includes(low(x.value).trim()));
+  const matchLine = (lines, t) => lines.find((x) => x.category.trim() && splitLineHit(x, t));
+  /** Zeile lesbar: „Notiz enthält „kfz““ bzw. „Betrag 48,20 €“. */
+  const lineText = (x) => (x.field === 'amount' ? `Betrag ${esc(showAmountSpec(x.value))}` : `${x.field === 'notes' ? 'Notiz' : 'Text'} enthält „${esc(x.value)}“`);
   /** Kennzeichen, die nur einen Teil der Buchungen betreffen – Mandatsreferenz zuerst (sie gehört zu genau einem Vertrag). */
   function splitHints(list) {
     const counts = new Map();
@@ -380,10 +382,15 @@ export async function assignPage(view) {
         }
       }
     }
+    // Gleichbleibende Beträge (z. B. zwei Verträge beim selben Versicherer)
+    for (const t of list) {
+      const a = normAmountSpec(Math.abs(Number(t.amount)).toFixed(2));
+      if (a) add('amount', a, 'Betrag');
+    }
     return [...counts.values()]
       .filter((c) => c.n >= 2 && c.n < list.length) // kommt mehrfach vor, aber nicht überall
       .sort((a, b) => Number(b.kind === 'Mandatsreferenz') - Number(a.kind === 'Mandatsreferenz') || b.n - a.n)
-      .slice(0, 12);
+      .slice(0, 14);
   }
   function splitBlock(m) {
     if (!splitOpen.has(m.key)) return '';
@@ -391,8 +398,9 @@ export async function assignPage(view) {
     const b = bookings.get(m.key);
     const list = b && typeof b === 'object' ? b.buchungen : null;
     const line = (x, i) => `<div class="z-split-line" data-line="${i}">
-        <select class="input select" data-sf="field" aria-label="Wo suchen"><option value="description"${x.field === 'description' ? ' selected' : ''}>Beschreibung</option><option value="notes"${x.field === 'notes' ? ' selected' : ''}>Notiz</option></select>
-        <span class="muted">enthält</span><input class="input" data-sf="value" value="${esc(x.value)}" placeholder="z. B. Kfz oder Vertragsnummer" aria-label="Text">
+        <select class="input select" data-sf="field" aria-label="Wo suchen"><option value="description"${x.field === 'description' ? ' selected' : ''}>Beschreibung</option><option value="notes"${x.field === 'notes' ? ' selected' : ''}>Notiz</option><option value="amount"${x.field === 'amount' ? ' selected' : ''}>Betrag</option></select>
+        ${x.field === 'amount' ? `<span class="muted">ist</span><input class="input" data-sf="value" value="${esc(x.value.includes('.') && !x.value.includes(',') ? x.value.replace(/\./g, ',') : x.value)}" placeholder="z. B. 48,20 oder 40–60" aria-label="Betrag" inputmode="decimal">`
+    : `<span class="muted">enthält</span><input class="input" data-sf="value" value="${esc(x.value)}" placeholder="z. B. Kfz oder Vertragsnummer" aria-label="Text">`}
         <span class="muted">→</span>${catInput(x.category, 'data-sf="category"')}
         <button type="button" class="link-btn" data-split-del="${i}" aria-label="Unterscheidung entfernen">✕</button>
         ${list ? (() => {
@@ -412,11 +420,11 @@ export async function assignPage(view) {
     : ff ? `${esc(target || '')} <span class="badge" title="Kategorie steht so in Firefly – bleibt">Firefly</span>` : !hit && d.keep ? `${esc(target || '–')} <span class="muted">(bleibt)</span>` : `→ <b>${esc(target || '–')}</b>${hit ? '' : ' <span class="muted">(sonst)</span>'}`}</td></tr>`;
     }).join('') : '';
     return `<div class="z-split" data-split-box="${esc(m.key)}">
-      <p class="muted" style="margin-top:0">Je nach Buchungstext eine andere Kategorie – z. B. beim Versicherer die Kfz-Versicherung (Mandatsreferenz oder „Kfz“ im Text) nach „KFZ“, die Familienversicherung nach „Familie“. Die erste passende Zeile gilt.
+      <p class="muted" style="margin-top:0">Je nach Buchungstext oder Betrag eine andere Kategorie – z. B. beim Versicherer die Kfz-Versicherung (Mandatsreferenz oder „Kfz“ im Text, oder ihr fester Beitrag) nach „KFZ“, die Familienversicherung nach „Familie“. Betrag: genau (48,20) oder Bereich (40–60). Die erste passende Zeile gilt.
         Buchungen, die in Firefly schon eine Kategorie haben, stellt die Aufteilung über „In Firefly übernehmen“ (rückwirkend anwenden) um – in der Vorschau „per Firefly-Regel“; künftige Importe auch dann, wenn der Import schon eine Kategorie setzt.</p>
       ${d.lines.map(line).join('')}
       <div class="z-split-actions"><button type="button" class="btn small" data-split-add>+ Unterscheidung</button>
-        ${hints.length ? `<span class="muted">Vorschläge:</span> ${hints.map((h, i) => `<button type="button" class="chip small" data-split-hint="${i}" title="${esc(h.kind)} in ${h.field === 'notes' ? 'der Notiz' : 'der Beschreibung'}">${esc(h.kind === 'Wort' ? h.value : `${h.kind} ${h.value}`)} · ${h.n}×</button>`).join(' ')}` : list ? '' : '<span class="muted">Lade Buchungen …</span>'}</div>
+        ${hints.length ? `<span class="muted">Vorschläge:</span> ${hints.map((h, i) => `<button type="button" class="chip small" data-split-hint="${i}" title="${esc(h.field === 'amount' ? 'Gleicher Betrag' : `${h.kind} in ${h.field === 'notes' ? 'der Notiz' : 'der Beschreibung'}`)}">${esc(h.field === 'amount' ? showAmountSpec(h.value) : h.kind === 'Wort' ? h.value : `${h.kind} ${h.value}`)} · ${h.n}×</button>`).join(' ')}` : list ? '' : '<span class="muted">Lade Buchungen …</span>'}</div>
       <div class="z-split-rest"><span class="muted">sonst</span>
         <select class="input select" data-split-keep aria-label="Übrige Buchungen"><option value="set"${d.keep ? '' : ' selected'}>→ Kategorie festlegen</option><option value="keep"${d.keep ? ' selected' : ''}>Kategorie beibehalten</option></select>
         ${d.keep ? '' : catInput(d.rest, 'data-split-rest')}
@@ -551,7 +559,7 @@ export async function assignPage(view) {
           ${!m.fest && m.category && m.quelle !== 'buchung' ? `<button class="btn small primary" type="button" data-ok="${esc(m.key)}" data-name="${esc(m.name)}" data-category="${esc(m.category)}" title="Kategorie bestätigen – gilt dann als deine Zuordnung">✓ Passt</button>` : ''}
           ${m.cond ? `<button class="link-btn" type="button" data-split="${esc(m.key)}" title="Unterschiedliche Kategorien je nach Buchungstext, z. B. Kfz- und Familienversicherung beim selben Versicherer">${splitOpen.has(m.key) ? 'Aufteilen schließen' : 'aufteilen'}</button>` : ''}
           ${m.fest ? `<button class="link-btn" type="button" data-reset="${esc(m.key)}" title="Deine Zuordnung entfernen – dann gelten wieder Regeln, Händlerliste und KI">zurücksetzen</button>` : ''}</form>` : '<div class="z-form"></div>'}
-        ${m.split ? `<div class="z-split-sum">Aufgeteilt: ${m.split.map((x) => `${x.field === 'notes' ? 'Notiz' : 'Text'} enthält „${esc(x.value)}“ → <b>${esc(x.category)}</b>`).join(' · ')} · sonst ${m.festKeep ? '<b>bleibt die vorhandene Kategorie</b>' : `→ <b>${esc(mainCat(m) || '–')}</b>`}</div>` : ''}
+        ${m.split ? `<div class="z-split-sum">Aufgeteilt: ${m.split.map((x) => `${lineText(x)} → <b>${esc(x.category)}</b>`).join(' · ')} · sonst ${m.festKeep ? '<b>bleibt die vorhandene Kategorie</b>' : `→ <b>${esc(mainCat(m) || '–')}</b>`}</div>` : ''}
       </div>${splitBlock(m)}${txBlock(m.key)}`).join('')}</div>
       ${autoList.length > shownAuto ? `<button class="btn" id="z-auto-more" style="margin-top:12px">Weitere ${Math.min(40, autoList.length - shownAuto)} zeigen</button>` : ''}`
     : `<div class="empty">${autoFilter === 'pruefen' ? 'Alles geprüft. 🎉' : 'Noch nichts bestätigt.'}</div>`}`
@@ -672,9 +680,9 @@ export async function assignPage(view) {
         return render();
       }
       if (t.dataset.splitSave) {
-        const lines = d.lines.filter((x) => x.value.trim().length >= 2 && x.category.trim());
+        const lines = d.lines.filter((x) => (x.field === 'amount' ? Boolean(normAmountSpec(x.value)) : x.value.trim().length >= 2) && x.category.trim());
         if (!d.keep && !d.rest.trim()) return alert('Bitte eine Kategorie für „sonst“ eintragen – oder „vorhandene Kategorie beibehalten“ wählen.');
-        if (!lines.length) return alert('Bitte mindestens eine Unterscheidung mit Text und Kategorie eintragen.');
+        if (!lines.length) return alert('Bitte mindestens eine Unterscheidung mit Text bzw. Betrag und Kategorie eintragen.');
         splitOpen.delete(key);
         return update(call('POST', { key, name: t.dataset.name, category: d.keep ? '' : d.rest.trim(), split: lines, keep: d.keep }));
       }

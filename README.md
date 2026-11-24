@@ -199,9 +199,10 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   nur, was du noch nicht bestätigt („✓ Passt“) oder geändert hast, so wird die Liste kürzer
   (Bestätigtes unter „Von dir bestätigt“, mit Status „nur Dashboard“ / „in Firefly“); eine
   Zuordnung gilt für alle Buchungen des Händlers, auch künftige. **Aufteilen:** Stecken hinter einem Händler verschiedene
-  Verträge (Versicherer mit Kfz- und Familienversicherung), bekommt er je nach Buchungstext eine
-  andere Kategorie – „Notiz enthält Mandatsreferenz … → KFZ“, sonst eine Standard-Kategorie; mit
-  Vorschlägen (Mandatsreferenzen, Wörter, die nur einen Teil der Buchungen betreffen) und Vorschau.
+  Verträge (Versicherer mit Kfz- und Familienversicherung), bekommt er je nach Buchungstext oder Betrag
+  eine andere Kategorie – „Notiz enthält Mandatsreferenz … → KFZ“ oder „Betrag 48,20 € → KFZ“ (genau
+  oder Bereich wie 40–60), sonst eine Standard-Kategorie; mit Vorschlägen (Mandatsreferenzen, Wörter
+  und gleichbleibende Beträge, die nur einen Teil der Buchungen betreffen) und Vorschau.
   Statt einer Standard-Kategorie geht auch „sonst: Kategorie beibehalten“ – dann ändern sich nur
   die Buchungen, die eine Unterscheidung trifft.
   In Firefly entstehen daraus eigene Regeln, die vor der allgemeinen laufen. „Buchungen ansehen“ klappt die
