@@ -795,6 +795,11 @@ http
             if (a.kategorie) j.category = a.kategorie;
             if (Array.isArray(a.tags)) j.tags = a.tags;
           }
+          // /webhook/langsam: wie ein Proxy vor n8n, der große Pakete nach 60 s mit 504 abbricht (n8n speichert trotzdem)
+          if (url.pathname.endsWith('/langsam') && (data.aenderungen || []).length > 5) {
+            res.writeHead(504, { 'Content-Type': 'text/html' });
+            return res.end('<html><head><title>504 Gateway Time-out</title></head><body><center><h1>504 Gateway Time-out</h1></center><hr><center>openresty</center></body></html>');
+          }
         }
         if (data.typ === 'gegenkonto_setzen') {
           const list = data.aenderungen || [];

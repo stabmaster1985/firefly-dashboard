@@ -243,17 +243,44 @@ export async function assignPage(view) {
   /** Vorhandene Kategorien direkt umstellen (Automation „Kategorie übernehmen“) – in Paketen gegen Zeitüberschreitungen. */
   async function overwriteExisting(change) {
     let ok = 0;
-    let last = null; // letzte Antwort von n8n – für die Fehlersuche
-    for (let k = 0; k < change.length; k += 25) {
-      const part = change.slice(k, k + 25);
-      ffBusy = `Setze Kategorien in Firefly … ${k} von ${change.length}`;
+    let last = null; // letzte Fehler-Antwort von n8n – für die Fehlersuche
+    // Kleine Pakete, Größe nach Antwortzeit (Ziel ~25 s): Ein Proxy vor n8n bricht lange Anfragen nach ~60 s mit 504 ab
+    let size = 8;
+    const queue = change.map((c) => ({ c, tries: 0 }));
+    const total = change.length;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    while (queue.length) {
+      const part = queue.splice(0, size);
+      ffBusy = `Setze Kategorien in Firefly … ${total - queue.length - part.length} von ${total}`;
       renderFirefly();
+      const t0 = Date.now();
       const r = await runAction(editAction, {
         typ: 'kategorien_uebernehmen',
-        aenderungen: part.map((c) => ({ transaction_group_id: c.transaction_group_id, transaction_journal_id: c.transaction_journal_id, datum: c.date, beschreibung: c.description, betrag: c.amount, kategorie_alt: c.alt, kategorie: c.kategorie })),
+        aenderungen: part.map(({ c }) => ({ transaction_group_id: c.transaction_group_id, transaction_journal_id: c.transaction_journal_id, datum: c.date, beschreibung: c.description, betrag: c.amount, kategorie_alt: c.alt, kategorie: c.kategorie })),
       }).catch((err) => ({ ok: false, response: err.message }));
+      if (r.ok) {
+        ok += part.length;
+        size = Math.max(2, Math.min(25, Math.round(size * 25_000 / Math.max(1000, Date.now() - t0))));
+        continue;
+      }
       last = r;
-      if (r.ok) ok += part.length;
+      // Zeitüberschreitung (504 vom Proxy o. ä.): n8n arbeitet meist weiter – kurz warten, in Firefly nachsehen, Rest erneut
+      const timeout = !r.status || [502, 503, 504, 524].includes(r.status);
+      let rest = part;
+      if (timeout) {
+        ffBusy = `Zeitüberschreitung bei n8n – prüfe in Firefly, was angekommen ist … (${total - queue.length - part.length} von ${total})`;
+        renderFirefly();
+        await sleep(30_000);
+        const chk = await call('POST', { pruefeKategorien: part.map(({ c }) => ({ g: c.transaction_group_id, j: c.transaction_journal_id, kategorie: c.kategorie })) }).catch(() => null);
+        if (chk && !chk.fehler) {
+          const missing = new Set(chk.fehlt.map((x) => String(x.j)));
+          rest = part.filter(({ c }) => missing.has(String(c.transaction_journal_id)));
+          ok += part.length - rest.length;
+        }
+        size = Math.max(2, Math.floor(size / 2));
+      }
+      const again = rest.filter((x) => x.tries < 2).map((x) => ({ ...x, tries: x.tries + 1 }));
+      if (timeout) queue.unshift(...again);
     }
     // Nicht auf „200“ von n8n verlassen: in Firefly nachsehen, ob die Kategorie wirklich angekommen ist
     let check = null;
@@ -263,15 +290,18 @@ export async function assignPage(view) {
       check = await call('POST', { pruefeKategorien: change.map((c) => ({ g: c.transaction_group_id, j: c.transaction_journal_id, kategorie: c.kategorie })) }).catch(() => null);
       refreshLater([6_000, 20_000]); // der Server erneuert die Monate kurz nach der Änderung
     }
-    return { ok, check, last, total: change.length };
+    return { ok, check, last: ok < change.length ? last : null, total: change.length };
   }
   /** Ergebnis von overwriteExisting als Meldung (mit Hinweisen zur Fehlersuche). */
   function overwriteReport(r, what) {
-    const reply = r.last ? `${r.last.status ? `HTTP ${r.last.status}` : 'keine Antwort'}${r.last.response ? `: ${String(r.last.response).slice(0, 200)}` : ''}` : '';
+    const body = String(r.last?.response || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const reply = r.last ? `${r.last.status ? `HTTP ${r.last.status}` : 'keine Antwort'}${body ? `: ${body.slice(0, 160)}` : ''}` : '';
+    const proxyHint = [502, 504, 524].includes(r.last?.status)
+      ? '<br><span class="muted">Ein Proxy vor n8n (z. B. Nginx Proxy Manager) bricht lange Anfragen ab. Das Dashboard schickt dann kleinere Pakete und prüft nach; dauerhaft hilft es, beim Proxy-Host von n8n die Zeitgrenze zu erhöhen (Advanced: <code>proxy_read_timeout 300s;</code>) – oder die Automation direkt auf n8n zeigen zu lassen (http://IP:5678/webhook/…).</span>' : '';
     const name = esc(editAction?.name || 'Kategorie übernehmen');
     if (!r.ok) {
       return `<span class="bad">Nichts gesetzt – die Automation „${name}“ meldet einen Fehler (${esc(reply)}).</span>
-        <br><span class="muted">In n8n unter „Executions“ die letzte Ausführung des Workflows ansehen. Ist es der Workflow aus der Vorlage n8n/firefly-buchung-bearbeiten.json (aktuelle Fassung)?</span>`;
+        <br><span class="muted">In n8n unter „Executions“ die letzte Ausführung des Workflows ansehen. Ist es der Workflow aus der Vorlage n8n/firefly-buchung-bearbeiten.json (aktuelle Fassung)?</span>${proxyHint}`;
     }
     const c = r.check;
     if (c && c.geprueft && c.ok === c.geprueft && r.ok === r.total) return `<span class="good">✓ ${r.ok} ${what} gesetzt – in Firefly nachgeprüft.</span>`;
@@ -282,7 +312,7 @@ export async function assignPage(view) {
         Abhilfe: in n8n die Vorlage n8n/firefly-buchung-bearbeiten.json importieren und die Automation auf deren Webhook zeigen lassen; die letzte Ausführung unter „Executions“ zeigt, wo es hängt.</span>`;
     }
     const failed = r.ok < r.total ? ` <span class="bad">${r.total - r.ok} nicht gesetzt (${esc(reply)}) – erneut versuchen.</span>` : '';
-    return `<span class="good">✓ ${r.ok} ${what} an n8n übergeben${c?.fehler ? ` – Nachprüfung in Firefly nicht möglich (${esc(c.fehler)})` : ''}.</span>${failed}`;
+    return `<span class="good">✓ ${r.ok} ${what} an n8n übergeben${c?.fehler ? ` – Nachprüfung in Firefly nicht möglich (${esc(c.fehler)})` : ''}.</span>${failed}${failed ? proxyHint : ''}`;
   }
   const changeSummary = (change) => [...change.reduce((acc, c) => acc.set(`${c.alt || 'ohne Kategorie'} → ${c.kategorie}`, (acc.get(`${c.alt || 'ohne Kategorie'} → ${c.kategorie}`) || 0) + 1), new Map())]
     .sort((a, b) => b[1] - a[1]);
