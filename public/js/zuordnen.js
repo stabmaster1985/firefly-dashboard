@@ -230,6 +230,7 @@ export async function assignPage(view) {
   /** Vorhandene Kategorien direkt umstellen (Automation „Kategorie übernehmen“) – in Paketen gegen Zeitüberschreitungen. */
   async function overwriteExisting(change) {
     let ok = 0;
+    let last = null; // letzte Antwort von n8n – für die Fehlersuche
     for (let k = 0; k < change.length; k += 25) {
       const part = change.slice(k, k + 25);
       ffBusy = `Setze Kategorien in Firefly … ${k} von ${change.length}`;
@@ -237,11 +238,38 @@ export async function assignPage(view) {
       const r = await runAction(editAction, {
         typ: 'kategorien_uebernehmen',
         aenderungen: part.map((c) => ({ transaction_group_id: c.transaction_group_id, transaction_journal_id: c.transaction_journal_id, datum: c.date, beschreibung: c.description, betrag: c.amount, kategorie_alt: c.alt, kategorie: c.kategorie })),
-      }).catch(() => ({ ok: false }));
+      }).catch((err) => ({ ok: false, response: err.message }));
+      last = r;
       if (r.ok) ok += part.length;
     }
-    if (ok) refreshLater([6_000, 20_000]); // der Server erneuert die Monate kurz nach der Änderung
-    return ok;
+    // Nicht auf „200“ von n8n verlassen: in Firefly nachsehen, ob die Kategorie wirklich angekommen ist
+    let check = null;
+    if (ok) {
+      ffBusy = 'Prüfe in Firefly, ob die Kategorien angekommen sind …';
+      renderFirefly();
+      check = await call('POST', { pruefeKategorien: change.map((c) => ({ g: c.transaction_group_id, j: c.transaction_journal_id, kategorie: c.kategorie })) }).catch(() => null);
+      refreshLater([6_000, 20_000]); // der Server erneuert die Monate kurz nach der Änderung
+    }
+    return { ok, check, last, total: change.length };
+  }
+  /** Ergebnis von overwriteExisting als Meldung (mit Hinweisen zur Fehlersuche). */
+  function overwriteReport(r, what) {
+    const reply = r.last ? `${r.last.status ? `HTTP ${r.last.status}` : 'keine Antwort'}${r.last.response ? `: ${String(r.last.response).slice(0, 200)}` : ''}` : '';
+    const name = esc(editAction?.name || 'Kategorie übernehmen');
+    if (!r.ok) {
+      return `<span class="bad">Nichts gesetzt – die Automation „${name}“ meldet einen Fehler (${esc(reply)}).</span>
+        <br><span class="muted">In n8n unter „Executions“ die letzte Ausführung des Workflows ansehen. Ist es der Workflow aus der Vorlage n8n/firefly-buchung-bearbeiten.json (aktuelle Fassung)?</span>`;
+    }
+    const c = r.check;
+    if (c && c.geprueft && c.ok === c.geprueft && r.ok === r.total) return `<span class="good">✓ ${r.ok} ${what} gesetzt – in Firefly nachgeprüft.</span>`;
+    if (c && c.geprueft && c.ok < c.geprueft) {
+      const ist = [...new Set(c.fehlt.map((x) => x.ist || 'ohne Kategorie'))].slice(0, 4).join(', ');
+      return `<span class="bad">n8n hat ${r.ok === r.total ? 'alles' : `${r.ok} von ${r.total}`} angenommen, aber in Firefly ist ${c.ok ? `nur bei ${c.ok} von ${c.geprueft}` : `bei keiner der ${c.geprueft}`} geprüften Buchungen die neue Kategorie angekommen (dort steht: ${esc(ist)}).</span>
+        <br><span class="muted">Antwort von n8n: <code>${esc(reply) || '–'}</code>. Die Automation „${name}“ ruft vermutlich einen Workflow auf, der den Typ „kategorien_uebernehmen“ nicht verarbeitet (eigener oder alter Workflow, oder einer, der sofort „OK“ antwortet).
+        Abhilfe: in n8n die Vorlage n8n/firefly-buchung-bearbeiten.json importieren und die Automation auf deren Webhook zeigen lassen; die letzte Ausführung unter „Executions“ zeigt, wo es hängt.</span>`;
+    }
+    const failed = r.ok < r.total ? ` <span class="bad">${r.total - r.ok} nicht gesetzt (${esc(reply)}) – erneut versuchen.</span>` : '';
+    return `<span class="good">✓ ${r.ok} ${what} an n8n übergeben${c?.fehler ? ` – Nachprüfung in Firefly nicht möglich (${esc(c.fehler)})` : ''}.</span>${failed}`;
   }
   const changeSummary = (change) => [...change.reduce((acc, c) => acc.set(`${c.alt || 'ohne Kategorie'} → ${c.kategorie}`, (acc.get(`${c.alt || 'ohne Kategorie'} → ${c.kategorie}`) || 0) + 1), new Map())]
     .sort((a, b) => b[1] - a[1]);
@@ -665,15 +693,12 @@ export async function assignPage(view) {
           await sendRules(res.firefly);
           await call('POST', { ff: { sent: true } });
           list.forEach((m) => ffPick.delete(m.key));
-          let over = '';
           let fail = '';
           if (change.length) {
-            const ok = await overwriteExisting(change);
-            over = ok === change.length ? ` · ${ok} vorhandene Kategorie${ok === 1 ? '' : 'n'} umgestellt` : '';
-            if (ok < change.length) fail = ` <span class="bad">Nur ${ok} von ${change.length} vorhandenen Kategorien umgestellt – den Händler erneut übertragen stellt den Rest um.</span>`;
+            fail = `<br>${overwriteReport(await overwriteExisting(change), 'vorhandene Kategorien')}`;
           }
           if (ffRange !== 'none') refreshLater();
-          return `<span class="good">✓ ${res.firefly.length} Regel${res.firefly.length === 1 ? '' : 'n'} in Firefly (Gruppe „${esc(FF_GROUP)}“)${over}${ffRange === 'none' ? '' : '. Firefly wendet die Regeln jetzt auf Buchungen ohne Kategorie an – das kann ein paar Minuten dauern; die Listen aktualisieren sich von selbst'}.</span>${fail}`;
+          return `<span class="good">✓ ${res.firefly.length} Regel${res.firefly.length === 1 ? '' : 'n'} in Firefly (Gruppe „${esc(FF_GROUP)}“)${ffRange === 'none' ? '' : '. Firefly wendet die Regeln jetzt auf Buchungen ohne Kategorie an – das kann ein paar Minuten dauern; die Listen aktualisieren sich von selbst'}.</span>${fail}`;
         });
       })();
     }
@@ -700,9 +725,7 @@ export async function assignPage(view) {
         const pairs = changeSummary(change);
         if (!window.confirm(`${f.name}: ${change.length} Buchung${change.length === 1 ? '' : 'en'} in Firefly setzen?\n${pairs.slice(0, 8).map(([k, n]) => `• ${k} (${n}×)`).join('\n')}${pairs.length > 8 ? '\n…' : ''}`)) return;
         return ffDo('Setze die Kategorien in Firefly …', async () => {
-          const ok = await overwriteExisting(change);
-          return ok === change.length ? `<span class="good">✓ ${ok} Buchung${ok === 1 ? '' : 'en'} von ${esc(f.name)} gesetzt.</span>`
-            : `<span class="bad">Nur ${ok} von ${change.length} gesetzt – bitte erneut versuchen.</span>`;
+          return overwriteReport(await overwriteExisting(change), `Buchung${change.length === 1 ? '' : 'en'} von ${esc(f.name)}`);
         });
       })();
     }
