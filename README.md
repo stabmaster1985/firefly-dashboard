@@ -212,7 +212,9 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
   „PayPal – Händler nicht im Text“. **In Firefly übernehmen:** ausgewählte Zuordnungen werden per
   Automation „Firefly-Regeln anlegen“ zu Firefly-Regeln „Händler → Kategorie“ (Gruppe „Dashboard:
   Händler → Kategorie (Zuordnen)“) – nur für Ausgaben ohne Kategorie, auf Wunsch rückwirkend; so setzt
-  Firefly die Kategorie künftig schon beim Import. Einzeln zugeordnete Buchungen setzt das Dashboard
+  Firefly die Kategorie künftig schon beim Import. Mit „auch vorhandene Kategorien umstellen“ stellt das
+  Dashboard zusätzlich alte Buchungen dieser Händler um, die in Firefly schon eine andere Kategorie haben
+  (einmalig, per Automation „Kategorie übernehmen“). Einzeln zugeordnete Buchungen setzt das Dashboard
   per Automation „Kategorie übernehmen“ direkt in Firefly. Wirkt in Übersicht, Kategorien,
   Jahresrückblick, Händler, Fragen, Berichten und MQTT; in den Buchungsdetails steht
   „automatisch“. Bis zum Übertragen bleibt Firefly unverändert (Zuordnungen in `DATA_DIR/autocat.json`;

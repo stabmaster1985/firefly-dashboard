@@ -787,6 +787,15 @@ http
           res.writeHead(200, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ ok: true, anzahl: n }));
         }
+        if (data.typ === 'kategorien_uebernehmen') {
+          // wie der Workflow: je Buchung Kategorie (und ggf. Tags) setzen
+          for (const a of data.aenderungen || []) {
+            const j = journals.find((x) => x.id === String(a.transaction_journal_id));
+            if (!j) continue;
+            if (a.kategorie) j.category = a.kategorie;
+            if (Array.isArray(a.tags)) j.tags = a.tags;
+          }
+        }
         if (data.typ === 'gegenkonto_setzen') {
           const list = data.aenderungen || [];
           const apply = (a) => {
