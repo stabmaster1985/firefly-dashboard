@@ -93,6 +93,22 @@ export async function assignPage(view) {
   /** Kategorie der allgemeinen Firefly-Regel – leer, wenn die übrigen Buchungen ihre Kategorie behalten (keep). */
   const ffCat = (m) => (m.festKeep ? '' : mainCat(m));
   const UP_TO_DATE = (m) => m.ff && m.ff.sentAt && m.ff.category === ffCat(m) && Boolean(m.ff.keep) === Boolean(m.festKeep) && sameSplit(m.ff.split, m.split);
+  /**
+   * Übertragen – und was davon in Firefly angekommen ist: Die Regel setzt nur Buchungen ohne Kategorie; Buchungen mit
+   * anderer Kategorie bleiben (dafür „auch vorhandene Kategorien umstellen“).
+   */
+  function ffState(m) {
+    const st = m.ffStand;
+    if (!st) return '<span class="badge good" title="Regel in Firefly angelegt">Regel in Firefly</span>';
+    const andere = st.namen.map((c) => `„${c.name}“ ${c.n}×`).join(', ');
+    const fresh = Date.now() - new Date(m.ff.sentAt).getTime() < 10 * 60_000; // Firefly wendet die Regel evtl. noch an
+    const parts = [`<span class="badge good" title="Regel in Firefly angelegt">Regel in Firefly</span>`];
+    parts.push(`<span class="muted">${st.ziel} von ${st.ziel + st.ohne + st.andere} Buchungen (24 Monate) dort mit „${esc(ffCat(m) || 'Unterscheidung')}“</span>`);
+    if (st.andere) parts.push(`<span class="badge warn" title="${esc(`In Firefly noch: ${andere}. Die Regel ändert vorhandene Kategorien nicht – Händler anhaken, „auch vorhandene Kategorien umstellen“ und erneut übertragen.`)}">${st.andere} mit anderer Kategorie</span>${editAction ? ` <button class="link-btn" type="button" data-ff-over-one="${esc(m.key)}"${ffBusy ? ' disabled' : ''}>umstellen</button>` : ''}`);
+    if (st.ohne) parts.push(fresh ? `<span class="badge" title="Firefly wendet die Regel gerade an – die Liste lädt nach etwa 2 und 7 Minuten neu">${st.ohne} ohne Kategorie – Firefly arbeitet noch</span>`
+      : `<span class="badge bad" title="Die Regel hat diese Buchungen nicht erfasst. Prüfen: Läuft die Automation „Firefly-Regeln anlegen“ fehlerfrei (n8n-Ausführungen)? Passt die Bedingung der Regel zu den Buchungen (Regel in Firefly öffnen, „Testen“)? Erneut übertragen mit „rückwirkend anwenden“.">${st.ohne} noch ohne Kategorie</span>`);
+    return parts.join(' ');
+  }
   const ffCandidates = () => data.automatisch.filter((m) => m.cond && (m.category || m.split) && m.quelle !== 'buchung');
   /** Karte „In Firefly übernehmen“ – ein Fehler darin zeigt sich in der Karte, statt sie leer zu lassen. */
   function renderFirefly() {
@@ -120,7 +136,7 @@ export async function assignPage(view) {
     const sent = data.firefly.filter((f) => f.sentAt).length;
     const marked = cands.filter((m) => ffPick.has(m.key)).length;
     $('z-ff-meta').textContent = [marked ? `${marked} vorgemerkt` : '', sent ? `${sent} Regel${sent === 1 ? '' : 'n'} in Firefly` : ''].filter(Boolean).join(' · ');
-    const status = (m) => (m.gemischt ? `<span class="badge bad" title="${esc(`In Firefly in verschiedenen Kategorien: ${m.gemischt.map((c) => c.name).join(', ')} – vermutlich verschiedene Händler`)}">⚠ verschiedene Händler?</span> ` : '') + (UP_TO_DATE(m) ? '<span class="badge good">in Firefly</span>'
+    const status = (m) => (m.gemischt ? `<span class="badge bad" title="${esc(`In Firefly in verschiedenen Kategorien: ${m.gemischt.map((c) => c.name).join(', ')} – vermutlich verschiedene Händler`)}">⚠ verschiedene Händler?</span> ` : '') + (UP_TO_DATE(m) ? ffState(m)
       : m.ff?.sentAt ? `<span class="badge warn" title="In Firefly steht noch „${esc(m.ff.category)}“">geändert</span>` : '');
     const n = [...ffPick].filter((k) => keys.has(k)).length;
     // Filter: Status und Quelle (Text über das Filterfeld der Karte)
@@ -144,7 +160,7 @@ export async function assignPage(view) {
         sie greifen bei künftigen Importen und auf Wunsch rückwirkend, <b>nur bei Ausgaben ohne Kategorie</b> (vorhandene Kategorien bleiben). Ausnahme: Unterscheidungen beim Aufteilen gelten immer, auch über eine vorhandene Kategorie.
         Sollen auch alte Buchungen umgestellt werden, die schon eine andere Kategorie haben: „auch vorhandene Kategorien umstellen“ anhaken.
         Danach stehen die Kategorien in Firefly selbst.</p>
-      ${ffNote ? `<div class="cm-note">${ffNote}</div>` : ''}
+      ${ffNote && (!rulesAction || !cands.length) ? `<div class="cm-note">${ffNote}</div>` : ''}
       ${!rulesAction ? `<div class="cm-note"><b>Zum Übertragen fehlt die Automation „Firefly-Regeln anlegen“.</b> Unter <a href="#/automationen">Automationen</a> eine Automation mit diesem Auslöser einrichten (Vorlage n8n/firefly-buchung-bearbeiten.json, dieselbe wie für „Kategorie übernehmen“ – nur der Auslöser ist ein anderer).</div>
         ${cands.length ? `<p class="muted">Vorgemerkt sind deine bestätigten Zuordnungen (${[...ffPick].filter((k) => keys.has(k)).length} von ${cands.length} Händlern):</p><ul class="z-ff-plain">${cands.filter((m) => ffPick.has(m.key)).slice(0, 50).map((m) => `<li>${esc(m.name)} → ${esc(m.category)} ${quelle(m.quelle)} <button type="button" class="link-btn" data-edit="${esc(m.key)}">bearbeiten</button></li>`).join('')}</ul>` : ''}` : `
       ${cands.length ? `${filterBar}${shown.length ? `<div class="table-wrap z-ff-table"><table><thead><tr><th class="pick-cell"><input type="checkbox" id="z-ff-all" aria-label="alle angezeigten auswählen" title="alle angezeigten"></th><th>Händler</th><th>Kategorie</th><th class="num hide-sm">24 Monate</th></tr></thead>
@@ -159,15 +175,18 @@ export async function assignPage(view) {
             <option value="24"${ffRange === '24' ? ' selected' : ''}>letzte 24 Monate</option>
             <option value="none"${ffRange === 'none' ? ' selected' : ''}>nein, nur künftige Importe</option></select></label>
           ${editAction && ffRange !== 'none' ? `<label class="z-ff-over" title="Buchungen dieser Händler, die in Firefly schon eine andere Kategorie haben, direkt umstellen (einmalig, per n8n). Einzeln zugeordnete („nur diese“) bleiben. Künftige Importe: weiterhin nur ohne Kategorie."><input type="checkbox" data-ff-over${ffOverwrite ? ' checked' : ''}> auch vorhandene Kategorien umstellen</label>` : ''}
-          <button class="btn primary" type="button" id="z-ff-send"${n && !ffBusy ? '' : ' disabled'}>${n} als Regel${n === 1 ? '' : 'n'} nach Firefly</button>
+          <button class="btn primary" type="button" id="z-ff-send"${n && !ffBusy ? '' : ' disabled'}>${ffBusy ? '<span class="spinner"></span> Überträgt …' : `${n} als Regel${n === 1 ? '' : 'n'} nach Firefly`}</button>
         </div>
+        ${ffBusy ? `<div class="cm-note" role="status"><span class="spinner"></span> ${esc(ffBusy)}</div>` : ffNote ? `<div class="cm-note" role="status">${ffNote}</div>` : ''}
         <p class="muted small-text">Angehakt sind nur deine bestätigten Zuordnungen („✓ Passt“ oder geändert). Andere (Händlerliste, gelernt, Import, KI) erst prüfen – „bearbeiten“ springt zum Händler – oder selbst anhaken. Bereits übertragene Regeln bleiben bestehen; „geändert“ heißt: im Dashboard jetzt eine andere Kategorie – erneut übertragen ändert die Regel.</p>`
     : '<div class="empty">Keine automatischen Zuordnungen mit erkennbarem Händler.</div>'}
       ${elsewhere.length ? `<details class="r-hidden"><summary>${elsewhere.length} Regel${elsewhere.length === 1 ? '' : 'n'} schon in Firefly wirksam (die Buchungen haben dort ihre Kategorie)</summary>
-        <ul>${elsewhere.map((f) => `<li>${esc(f.name)} → ${esc(f.category)} <button class="link-btn" type="button" data-ff-remove="${esc(f.key)}">Regel entfernen</button></li>`).join('')}</ul></details>` : ''}
+        <ul>${elsewhere.map((f) => `<li>${esc(f.name)} → ${esc(f.category || 'Unterscheidungen')}${f.stand ? ` <span class="muted">· ${f.stand.ziel} von ${f.stand.ziel + f.stand.ohne + f.stand.andere} Buchungen (24 Monate) so in Firefly</span>` : ''}
+          ${f.stand?.andere ? ` <span class="badge warn" title="${esc(`In Firefly noch: ${f.stand.namen.map((c) => `„${c.name}“ ${c.n}×`).join(', ')}`)}">${f.stand.andere} mit anderer Kategorie</span>${editAction ? ` <button class="link-btn" type="button" data-ff-over-one="${esc(f.key)}"${ffBusy ? ' disabled' : ''}>umstellen</button>` : ''}` : ''}
+          <button class="link-btn" type="button" data-ff-remove="${esc(f.key)}">Regel entfernen</button></li>`).join('')}</ul></details>` : ''}
       ${data.einzeln?.length ? `<div class="z-ff-single"><b>${data.einzeln.length} einzeln zugeordnete Buchung${data.einzeln.length === 1 ? '' : 'en'}</b> <span class="muted">(„nur diese“) – dafür gibt es keine Regel; ${editAction ? 'direkt per n8n setzen:' : 'braucht die Automation „Kategorie übernehmen“.'}</span>
         ${editAction ? `<button class="btn small" type="button" id="z-ff-single"${ffBusy ? ' disabled' : ''}>In Firefly setzen</button>` : ''}</div>` : ''}`}
-      ${ffBusy ? `<p class="muted">${esc(ffBusy)}</p>` : ''}`;
+      ${ffBusy && (!rulesAction || !cands.length) ? `<p class="muted"><span class="spinner"></span> ${esc(ffBusy)}</p>` : ''}`;
     const all = $('z-ff').querySelector('#z-ff-all');
     if (all) {
       all.checked = shown.length > 0 && shown.every((m) => ffPick.has(m.key));
@@ -202,9 +221,28 @@ export async function assignPage(view) {
     if (!res.ok) throw new Error(`n8n antwortet mit ${res.status || 'Fehler'}: ${String(res.response || '').slice(0, 200)}`);
   }
 
+  /** Vorhandene Kategorien direkt umstellen (Automation „Kategorie übernehmen“) – in Paketen gegen Zeitüberschreitungen. */
+  async function overwriteExisting(change) {
+    let ok = 0;
+    for (let k = 0; k < change.length; k += 25) {
+      const part = change.slice(k, k + 25);
+      ffBusy = `Stelle vorhandene Kategorien um … ${k} von ${change.length}`;
+      renderFirefly();
+      const r = await runAction(editAction, {
+        typ: 'kategorien_uebernehmen',
+        aenderungen: part.map((c) => ({ transaction_group_id: c.transaction_group_id, transaction_journal_id: c.transaction_journal_id, datum: c.date, beschreibung: c.description, betrag: c.amount, kategorie_alt: c.alt, kategorie: c.kategorie })),
+      }).catch(() => ({ ok: false }));
+      if (r.ok) ok += part.length;
+    }
+    if (ok) refreshLater([6_000, 20_000]); // der Server erneuert die Monate kurz nach der Änderung
+    return ok;
+  }
+  const changeSummary = (change) => [...change.reduce((acc, c) => acc.set(`${c.alt} → ${c.kategorie}`, (acc.get(`${c.alt} → ${c.kategorie}`) || 0) + 1), new Map())]
+    .sort((a, b) => b[1] - a[1]);
+
   /** Nach dem rückwirkenden Anwenden: Firefly braucht etwas – in 2 und 7 Minuten neu laden (der Server erneuert vorher). */
-  function refreshLater() {
-    for (const ms of [120_000, 420_000]) {
+  function refreshLater(times = [120_000, 420_000]) {
+    for (const ms of times) {
       setTimeout(async () => {
         if (!view.isConnected || ffBusy || splitOpen.size || view.contains(document.activeElement) && document.activeElement.matches('input, select')) return;
         try {
@@ -598,17 +636,20 @@ export async function assignPage(view) {
         // Vorher zählen, welche Buchungen schon eine andere Kategorie haben – die stellt das Dashboard direkt um
         let change = [];
         if (overwrite) {
-          t.disabled = true;
+          ffBusy = 'Suche Buchungen, die in Firefly eine andere Kategorie haben …';
+          ffNote = '';
+          renderFirefly();
           try {
             change = (await call('POST', { ueberschreiben: { monate: ffRange, items: list.map((m) => ({ key: m.key, category: ffCat(m), split: m.split || [], keep: Boolean(m.festKeep) })) } })).buchungen;
           } catch (err) {
             ffNote = `<span class="bad">${esc(err.message)}</span>`;
             return renderFirefly();
           } finally {
-            t.disabled = false;
+            ffBusy = '';
+            renderFirefly();
           }
         }
-        const pairs = [...change.reduce((acc, c) => acc.set(`${c.alt} → ${c.kategorie}`, (acc.get(`${c.alt} → ${c.kategorie}`) || 0) + 1), new Map())].sort((a, b) => b[1] - a[1]);
+        const pairs = changeSummary(change);
         const overText = !overwrite ? '' : change.length
           ? `\n\nAußerdem ${change.length} Buchung${change.length === 1 ? '' : 'en'} mit anderer Kategorie umstellen:\n${pairs.slice(0, 8).map(([k, n]) => `• ${k} (${n}×)`).join('\n')}${pairs.length > 8 ? '\n…' : ''}`
           : '\n\nBuchungen mit anderer Kategorie: keine gefunden.';
@@ -621,23 +662,41 @@ export async function assignPage(view) {
           let over = '';
           let fail = '';
           if (change.length) {
-            // in Paketen, damit n8n nicht in eine Zeitüberschreitung läuft
-            let ok = 0;
-            for (let k = 0; k < change.length; k += 25) {
-              const part = change.slice(k, k + 25);
-              ffBusy = `Stelle vorhandene Kategorien um … ${k} von ${change.length}`;
-              renderFirefly();
-              const r = await runAction(editAction, {
-                typ: 'kategorien_uebernehmen',
-                aenderungen: part.map((c) => ({ transaction_group_id: c.transaction_group_id, transaction_journal_id: c.transaction_journal_id, datum: c.date, beschreibung: c.description, betrag: c.amount, kategorie_alt: c.alt, kategorie: c.kategorie })),
-              }).catch(() => ({ ok: false }));
-              if (r.ok) ok += part.length;
-            }
+            const ok = await overwriteExisting(change);
             over = ok === change.length ? ` · ${ok} vorhandene Kategorie${ok === 1 ? '' : 'n'} umgestellt` : '';
             if (ok < change.length) fail = ` <span class="bad">Nur ${ok} von ${change.length} vorhandenen Kategorien umgestellt – den Händler erneut übertragen stellt den Rest um.</span>`;
           }
           if (ffRange !== 'none') refreshLater();
           return `<span class="good">✓ ${res.firefly.length} Regel${res.firefly.length === 1 ? '' : 'n'} in Firefly (Gruppe „${esc(FF_GROUP)}“)${over}${ffRange === 'none' ? '' : '. Firefly wendet die Regeln jetzt auf Buchungen ohne Kategorie an – das kann ein paar Minuten dauern; die Listen aktualisieren sich von selbst'}.</span>${fail}`;
+        });
+      })();
+    }
+    if (t.dataset.ffOverOne) {
+      const f = data.firefly.find((x) => x.key === t.dataset.ffOverOne);
+      if (!f) return;
+      return (async () => {
+        ffBusy = `Suche Buchungen von ${f.name} mit anderer Kategorie …`;
+        renderFirefly();
+        let change;
+        try {
+          change = (await call('POST', { ueberschreiben: { monate: ffRange === '24' ? '24' : 'all', items: [{ key: f.key, category: f.category, split: f.split || [], keep: Boolean(f.keep) }] } })).buchungen;
+        } catch (err) {
+          ffNote = `<span class="bad">${esc(err.message)}</span>`;
+          change = null;
+        }
+        ffBusy = '';
+        renderFirefly();
+        if (!change) return;
+        if (!change.length) {
+          ffNote = 'Keine Buchungen mit anderer Kategorie gefunden (einzeln zugeordnete und ausgeblendete zählen nicht).';
+          return renderFirefly();
+        }
+        const pairs = changeSummary(change);
+        if (!window.confirm(`${f.name}: ${change.length} Buchung${change.length === 1 ? '' : 'en'} in Firefly umstellen?\n${pairs.slice(0, 8).map(([k, n]) => `• ${k} (${n}×)`).join('\n')}${pairs.length > 8 ? '\n…' : ''}`)) return;
+        return ffDo('Stelle vorhandene Kategorien um …', async () => {
+          const ok = await overwriteExisting(change);
+          return ok === change.length ? `<span class="good">✓ ${ok} Buchung${ok === 1 ? '' : 'en'} von ${esc(f.name)} umgestellt.</span>`
+            : `<span class="bad">Nur ${ok} von ${change.length} umgestellt – bitte erneut versuchen.</span>`;
         });
       })();
     }
