@@ -30,6 +30,8 @@ als frischere Alternative zur Standardoberfläche, wenn du deine Finanzen einfac
 
 <p align="center"><img src="docs/screenshots/aufgaben.png" width="720" alt="Aufgaben: offene Pflege-Punkte mit Anzahl und alle Werkzeuge"><br><b>Aufgaben</b> – was gerade zu tun ist, mit Sprung zur passenden Stelle</p>
 
+<p align="center"><img src="docs/screenshots/nurdashboard.png" width="720" alt="Nur im Dashboard: was nicht in Firefly steht, mit Sicherung"><br><b>Nur im Dashboard</b> – was nicht in Firefly steht, Sicherung herunterladen und zurückspielen</p>
+
 <p align="center"><img src="docs/screenshots/handy.png" width="600" alt="Am Handy: Übersicht hell und Labor dunkel"><br><b>Am Handy</b> – hell und dunkel, installierbar als App</p>
 
 <sub>Alle Bilder zeigen die Demo-Daten (<code>npm run demo</code>), keine echten Finanzen.</sub>
@@ -307,7 +309,13 @@ Server aus erreichbar sein (im selben Docker-Netz z. B. `http://n8n:5678/webhook
 ### Deine Daten im Dashboard
 
 Alles, was du im Dashboard selbst anlegst, liegt in `DATA_DIR` (Docker: Volume
-`firefly-dashboard-data` → `/data`) und übersteht damit jedes Update:
+`firefly-dashboard-data` → `/data`) und übersteht damit jedes Update. Die Seite **Nur im Dashboard**
+(Werkzeuge) zeigt, was davon nicht in Firefly steht und nach einer Neuinstallation mit leerem
+Datenordner fehlen würde – getrennt nach „verändert die Auswertungen“ (mit Weg nach Firefly),
+„neu einzurichten“ und „käme als Hinweis wieder“. Dort lässt sich alles als **eine Sicherungsdatei**
+herunterladen (auch CSV-Archiv und Automationen – vertraulich aufbewahren) und wieder zurückspielen;
+der bisherige Stand bleibt dabei unter `DATA_DIR/backups/vor-wiederherstellung-…`, danach startet
+das Dashboard neu (Docker startet es wieder).
 
 | Datei | Inhalt |
 |---|---|

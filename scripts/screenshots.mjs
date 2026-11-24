@@ -184,6 +184,10 @@ await desk.waitForTimeout(300);
 await desk.evaluate(() => scrollTo(0, 0));
 await shot('aufraeumen');
 
+await open('datenstand');
+await desk.waitForFunction(() => !/gezählt/.test(document.querySelector('#ls-meta')?.textContent || 'gezählt'), null, { timeout: 60000 });
+await shot('nurdashboard');
+
 // Handy: hell (Übersicht) und dunkel (Labor), nebeneinander
 const phone = [];
 for (const [scheme, route] of [['light', ''], ['dark', 'labor?tab=uebersicht']]) {

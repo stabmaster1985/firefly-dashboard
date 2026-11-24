@@ -18,6 +18,7 @@ import { askPage } from './ask.js';
 import { partyDetail } from './party.js';
 import { assignPage } from './zuordnen.js';
 import { tasksPage } from './tasks.js';
+import { localStatePage } from './localstate.js';
 import { initNav, navRendered, resetSheet } from './nav.js';
 import { openHelp, helpPage } from './helpui.js';
 import { PAGES, CARDS, pageOfCard } from './help.js';
@@ -42,6 +43,7 @@ const ROUTES = {
   aufraeumen: { view: cleanup, title: 'Daten aufräumen', nav: 'cleanup', noPeriod: true, help: 'cleanup' },
   empfaenger: { view: merchants, title: 'Händler', nav: 'merchants', noPeriod: true, help: 'merchants' },
   fragen: { view: askPage, title: 'Fragen', nav: 'ask', noPeriod: true, help: 'ask' },
+  datenstand: { view: localStatePage, title: 'Nur im Dashboard', nav: 'localdata', noPeriod: true, help: 'localdata' },
   hilfe: { view: helpPage, title: 'Hilfe', nav: 'help', noPeriod: true },
 };
 const DETAIL = {
@@ -56,7 +58,7 @@ const titleEl = document.getElementById('page-title');
 // Bereiche mit eigener Farbe: Auswerten (blau), Daten pflegen (türkis), Labor (violett), Einstellungen (grau)
 const AREA = {
   overview: 'auswerten', categories: 'auswerten', tags: 'auswerten', merchants: 'auswerten', recurring: 'auswerten', transactions: 'auswerten',
-  accounts: 'auswerten', year: 'auswerten', ask: 'auswerten', assign: 'pflegen', tasks: 'pflegen', check: 'pflegen', csvsync: 'pflegen', cleanup: 'pflegen', lab: 'labor', actions: 'system', help: 'system',
+  accounts: 'auswerten', year: 'auswerten', ask: 'auswerten', assign: 'pflegen', tasks: 'pflegen', check: 'pflegen', csvsync: 'pflegen', cleanup: 'pflegen', lab: 'labor', actions: 'system', localdata: 'system', help: 'system',
 };
 document.querySelectorAll('.nav a[data-route]').forEach((a) => (a.dataset.area = AREA[a.dataset.route] || 'auswerten'));
 const periodSelect = document.getElementById('period-select');
@@ -411,6 +413,7 @@ const TASKS = [ // Aktionen ohne eigene Karte
   ['Buchungen in ein anderes Gegenkonto verschieben', 'buchungen', 'transactions', 'verschieben empfänger gegenkonto ändern sammelaktion'],
   ['Kategorie für mehrere Buchungen setzen', 'buchungen', 'transactions', 'sammelaktion mehrere kategorie setzen tag hinzufügen'],
   ['Automation einrichten (n8n)', 'automationen', 'actions', 'webhook n8n automation regeln anlegen kategorie übernehmen'],
+  ['Sicherung herunterladen / zurückspielen', 'datenstand', 'localdata', 'sicherung backup export import neu installieren umzug verloren daten wiederherstellen'],
 ];
 const fold = (x) => String(x || '').toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
 let functionIndex = null;

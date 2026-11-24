@@ -1719,3 +1719,6 @@ details.cm-sugg:not([open]) { padding-bottom: 10px; }
   .z-ff-fixtable td.z-fix-text, .z-ff-fixtable td.z-fix-cat { grid-column: 2 / -1; border-top: 0; padding-top: 0; }
   .z-ff-fixtable tr.z-fix-head td.z-fix-text { grid-column: 2 / -1; padding-top: 10px; }
 }
+.ls-backup { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin-top: 12px; }
+.ls-backup label.btn { cursor: pointer; }
+.ls-backup .btn { display: inline-flex; align-items: center; min-height: 40px; margin: 0; }

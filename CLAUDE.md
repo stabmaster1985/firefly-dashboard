@@ -30,6 +30,7 @@ committet wird.
 | `zuordnen.png` | Zuordnen (automatische Kategorien) |
 | `aufgaben.png` | Aufgaben (offene Pflege-Punkte, alle Werkzeuge) |
 | `aufraeumen.png` | Daten aufräumen (Gegenkonten zusammenführen) |
+| `nurdashboard.png` | Nur im Dashboard (was nicht in Firefly steht, Sicherung) |
 | `handy.png` | Handy: Übersicht hell, Labor dunkel |
 
 Gemeinsame Teile (Farben, Menü, Kopfzeile, Karten, Kennzahl-Kacheln) erscheinen auf allen Bildern –

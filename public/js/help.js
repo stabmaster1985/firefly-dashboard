@@ -67,6 +67,14 @@ export const PAGES = {
     firefly: READ_ONLY,
     cards: ['p-months', 'p-years', 'p-cats', 'p-tx'],
   },
+  localdata: {
+    title: 'Nur im Dashboard',
+    what: 'Was du im Dashboard angelegt hast, das nicht in Firefly steht – und was nach einer Neuinstallation mit leerem Datenordner fehlen würde. Dazu Sicherung herunterladen und zurückspielen.',
+    app: 'Oben: Sicherung als eine Datei herunterladen (alles aus /data, auch CSV-Archiv und Automationen) bzw. zurückspielen – der bisherige Stand bleibt dabei im Datenordner unter backups/vor-wiederherstellung-… erhalten, danach startet das Dashboard neu. Darunter: was deine Auswertungen verändert (deine Zuordnungen, einzeln zugeordnete Buchungen, zusammengeführte Kategorien, Labor-Regeln, KI, ausgeblendete Buchungen – je mit Weg nach Firefly), was du neu einrichten müsstest (Automationen, Ziele, Wiederkehrend, Labor-Gruppen …) und was als Hinweis wiederkäme („Kein Duplikat“, „passt so“, CSV-Archiv). „gelernt“ und „Händlerliste“ errechnet das Dashboard von selbst wieder.',
+    firefly: READ_ONLY,
+    tips: ['Updates (git pull, neues Image) behalten alles – der Datenordner liegt im Docker-Volume firefly-dashboard-data. Gefährlich ist nur, das Volume zu löschen oder auf einen anderen Rechner umzuziehen.', 'Die Sicherung enthält Webhook-Adressen und ggf. Kopfzeilen deiner Automationen – vertraulich aufbewahren.', 'Gelb markiert: lässt sich nach Firefly übertragen – danach ist es auch ohne Sicherung sicher.'],
+    cards: [],
+  },
   tasks: {
     title: 'Aufgaben',
     what: 'Alles, was beim Pflegen der Daten gerade zu tun ist – auf einen Blick, mit Anzahl und Sprung zur passenden Karte. Darunter alle Pflege-Werkzeuge an einer Stelle.',
