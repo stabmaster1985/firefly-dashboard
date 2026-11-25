@@ -26,7 +26,7 @@ const call = (method, body) => fetch('/local/autocat', { method, headers: method
     return data;
   });
 
-export async function assignPage(view) {
+export async function assignPage(view, { params } = {}) {
   view.innerHTML = `
     <div class="grid">
       <section class="card span-12" id="z-cover">${skeleton(3)}</section>
@@ -43,8 +43,8 @@ export async function assignPage(view) {
   const ffSeen = new Map(); // Händler → Stand bei der letzten Vorbelegung
   let ffRange = 'all';
   let ffOverwrite = storage('ffd-z-ff-over', '') === '1'; // rückwirkend auch vorhandene (andere) Kategorien umstellen
-  let ffView = storage('ffd-z-ff-view', 'offen'); // offen | angehakt | firefly | alle
-  let ffSource = ''; // Quelle oder '' = alle
+  let ffView = params?.get('quelle') ? 'alle' : storage('ffd-z-ff-view', 'offen'); // offen | angehakt | firefly | alle
+  let ffSource = params?.get('quelle') || ''; // Quelle oder '' = alle (Link von „Nur im Dashboard“: ?quelle=import)
   let ffNote = '';
   let fixPrev = null; // „Was ist betroffen?“: null | 'laden' | Fehlertext | { change, off: Set }
   let fixOpen = false;

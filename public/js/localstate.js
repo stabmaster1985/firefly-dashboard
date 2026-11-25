@@ -2,7 +2,7 @@
 // Was wäre nach einer Neuinstallation mit leerem /data weg, was müsste neu eingerichtet werden, was kommt von
 // selbst wieder? Dazu Sicherung herunterladen und zurückspielen.
 
-import { esc, money } from './util.js';
+import { esc, money, fmtDate } from './util.js';
 
 const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
 const plural = (n, one, many) => `${n.toLocaleString('de-DE')} ${n === 1 ? one : many}`;
@@ -77,33 +77,38 @@ export async function localStatePage(view) {
   // ---- Zahlen ----
   const notInFf = d.zuordnungen.nichtInFirefly;
   const mergesOpen = d.zusammenfuehrungen.filter((m) => !m.inFirefly);
+  const viaZuordnen = (quelle) => `#/zuordnen?karte=z-ff&quelle=${quelle}`;
+  const setHint = '→ Zuordnen, „In Firefly übernehmen“ (gefiltert auf diese Quelle): anhaken und „Kategorie bei … angehakten jetzt setzen“ – oder als Regel nach Firefly.';
+  const mergedFf = (a.zusammengefuehrt?.items || []).filter((x) => x.firefly); // Firefly hat noch den alten Namen
   const num = [
     {
-      n: n('zuordnung'), warn: true, href: '#/zuordnen?karte=z-ff', title: 'Kategorien aus deinen Händler-Zuordnungen',
-      sub: `${plural(n('zuordnung'), 'Buchung', 'Buchungen')} ohne Kategorie in Firefly bekommen sie nur hier${eur(q.zuordnung)} (${zeitraum}). ${plural(d.zuordnungen.gesamt, 'Zuordnung', 'Zuordnungen')}, davon ${notInFf.length} noch nicht als Firefly-Regel${notInFf.length ? ` (z. B. ${notInFf.slice(0, 4).map((x) => x.name).join(', ')})` : ''}. → „In Firefly übernehmen“, ggf. „jetzt setzen“.`,
+      n: n('zuordnung'), warn: true, href: viaZuordnen('zuordnung'), title: 'Kategorien aus deinen Händler-Zuordnungen', items: q.zuordnung?.items,
+      sub: `${plural(n('zuordnung'), 'Buchung hat', 'Buchungen haben')} in Firefly keine Kategorie und ${n('zuordnung') === 1 ? 'bekommt' : 'bekommen'} sie nur hier${eur(q.zuordnung)}. ${plural(d.zuordnungen.gesamt, 'Zuordnung', 'Zuordnungen')}, davon ${notInFf.length} noch nicht als Firefly-Regel${notInFf.length ? ` (z. B. ${notInFf.slice(0, 4).map((x) => x.name).join(', ')})` : ''}. ${setHint}`,
     },
     {
-      n: d.einzeln, warn: true, href: '#/zuordnen?karte=z-ff', title: 'Einzeln zugeordnete Buchungen („nur diese“)',
-      sub: `Davon ${n('buchung')} ohne Kategorie in Firefly${eur(q.buchung)} (${zeitraum}). → „In Firefly übernehmen“ → „In Firefly setzen“.`,
+      n: n('buchung'), warn: true, href: '#/zuordnen?karte=z-ff', title: 'Einzeln zugeordnete Buchungen („nur diese“)', items: q.buchung?.items,
+      sub: `In Firefly ohne Kategorie${eur(q.buchung)}. → Zuordnen, „In Firefly übernehmen“ ganz unten: „In Firefly setzen“.`,
     },
     {
-      n: mergesOpen.length, warn: true, href: '#/aufraeumen?karte=a-catmerge', title: 'Zusammengeführte Kategorien, nicht in Firefly übertragen',
-      sub: `${mergesOpen.slice(0, 5).map((m) => `${m.von} → ${m.nach}`).join(', ')}${mergesOpen.length > 5 ? ' …' : ''}. ${plural(a.zusammengefuehrt?.n || 0, 'Buchung', 'Buchungen')} erscheinen dadurch unter einem anderen Namen. → „Kategorien zusammenführen“ → in Firefly übertragen.`,
+      n: mergesOpen.length ? (a.zusammengefuehrt?.n || mergesOpen.length) : mergedFf.length, warn: true, href: '#/aufraeumen?karte=a-catmerge', title: 'Zusammengeführte Kategorien', items: mergesOpen.length ? a.zusammengefuehrt?.items : mergedFf,
+      sub: mergesOpen.length
+        ? `Nicht nach Firefly übertragen: ${mergesOpen.slice(0, 5).map((m) => `${m.von} → ${m.nach}`).join(', ')}${mergesOpen.length > 5 ? ' …' : ''}. Diese Buchungen erscheinen nur im Dashboard unter dem neuen Namen. → Aufräumen, „Kategorien zusammenführen“, unten „nach Firefly übertragen“.`
+        : `Die Zusammenführungen sind übertragen, aber in Firefly stehen diese Buchungen noch unter dem alten Namen (Regel nicht auf alle angewendet, z. B. weil das Übertragen damals scheiterte). → Aufräumen, „Kategorien zusammenführen“, unten bei der Zusammenführung „erneut übertragen“.`,
     },
     {
-      n: n('regel'), href: '#/labor', title: 'Kategorien aus deinen Labor-Regeln',
-      sub: `${plural(n('regel'), 'Buchung', 'Buchungen')}${eur(q.regel)} – aus ${plural(d.laborRegeln.regeln, 'Regel', 'Regeln')}. → Labor „In Firefly anlegen“ (ob schon geschehen, merkt sich das Dashboard nicht).`,
+      n: n('regel'), href: viaZuordnen('regel'), title: 'Kategorien aus deinen Labor-Regeln', items: q.regel?.items,
+      sub: `In Firefly ohne Kategorie${eur(q.regel)} – das Labor hat ${plural(d.laborRegeln.regeln, 'Regel', 'Regeln')}. ${setHint}`,
     },
     {
-      n: n('import'), href: '#/aufraeumen?karte=a-import', title: 'Kategorien aus deiner Import-Zuordnung',
-      sub: `${plural(n('import'), 'Buchung', 'Buchungen')}${eur(q.import)} – aus der hinterlegten Data-Importer-Konfiguration. → „Regeln aus der Import-Konfiguration“ nach Firefly übertragen.`,
+      n: n('import'), href: viaZuordnen('import'), title: 'Kategorien aus deiner Import-Zuordnung', items: q.import?.items,
+      sub: `In Firefly ohne Kategorie${eur(q.import)} – die Kategorie kommt aus der hinterlegten Data-Importer-Konfiguration. Auch wenn unter Aufräumen alles übertragen ist: Diese Buchungen hat keine Firefly-Regel erfasst. ${setHint}`,
     },
     {
-      n: n('ki'), href: '#/labor', title: 'Kategorien aus KI-Bewertungen',
-      sub: `${plural(n('ki'), 'Buchung', 'Buchungen')}${eur(q.ki)} – ${plural(d.ki.bewertungen, 'Bewertung', 'Bewertungen')} (neu erstellen dauert lange). → Labor: als Regeln nach Firefly.`,
+      n: n('ki'), href: viaZuordnen('ki'), title: 'Kategorien aus KI-Bewertungen', items: q.ki?.items,
+      sub: `In Firefly ohne Kategorie${eur(q.ki)} – ${plural(d.ki.bewertungen, 'Bewertung', 'Bewertungen')} (neu erstellen dauert lange). ${setHint}`,
     },
     {
-      n: (d.ausgeblendet.buchungen || 0) + d.ausgeblendet.gegenkonten.length, warn: true, href: '#/pruefen?karte=c-excl', title: 'Ausgeblendete Buchungen und Gegenkonten',
+      n: (d.ausgeblendet.buchungen || 0) + d.ausgeblendet.gegenkonten.length, warn: true, href: '#/pruefen?karte=c-excl', title: 'Ausgeblendete Buchungen und Gegenkonten', items: a.ausgeblendet?.items,
       sub: `${plural(a.ausgeblendet?.n || 0, 'Buchung zählt', 'Buchungen zählen')} in den Auswertungen nicht mit${eur(a.ausgeblendet)}: ${plural(d.ausgeblendet.buchungen, 'einzelne Buchung', 'einzelne Buchungen')}${d.ausgeblendet.gegenkonten.length ? `, Gegenkonten ${d.ausgeblendet.gegenkonten.slice(0, 4).join(', ')}${d.ausgeblendet.gegenkonten.length > 4 ? ' …' : ''}` : ''}. Gibt es in Firefly nicht – nur über die Sicherung.`,
     },
   ];
@@ -143,13 +148,21 @@ export async function localStatePage(view) {
     : '<div class="cm-note good">Nichts, was nur im Dashboard steckt – eine Neuinstallation zeigt dasselbe.</div>';
 }
 
+/** Wer: Gegenkonto – fehlt es („(no name)“), der Anfang der Notiz. */
+const who = (x) => (x.party && x.party !== '(no name)' ? x.party : x.notes || x.description || '–');
+
 function rows(list, okText = '') {
   const open = list.filter((r) => r.n > 0);
   const none = list.filter((r) => !r.n);
-  return `${open.map((r) => `<a class="row task" href="${r.href}">
+  const items = (r) => (r.items?.length ? `<details class="ls-items"><summary>Welche Buchungen? (${r.items.length < r.n ? `die neuesten ${r.items.length} von ${r.n.toLocaleString('de-DE')}` : r.items.length})</summary>
+      <div class="table-wrap"><table><tbody>${r.items.map((x) => `<tr style="cursor:default"><td class="date">${fmtDate(x.date)}</td>
+        <td><div class="desc">${esc(who(x))}</div><div class="flow">${esc([x.description, x.notes].filter((t) => t && t !== who(x)).join(' · '))}</div></td>
+        <td class="num">${money(Math.abs(Number(x.amount)) * (x.type === 'withdrawal' ? -1 : 1))}</td>
+        <td><span class="muted">Firefly: ${esc(x.firefly || 'ohne')}</span>${x.dashboard ? ` → <b>${esc(x.dashboard)}</b>` : ''}</td></tr>`).join('')}</tbody></table></div></details>` : '');
+  return `${open.map((r) => `<div class="row task ls-row">
       <div class="task-n ${r.warn ? 'warn' : ''}">${r.badge ?? r.n.toLocaleString('de-DE')}</div>
-      <div style="min-width:0"><div class="title">${esc(r.title)}</div><div class="subtitle">${esc(r.sub || '')}</div></div>
-      <span class="task-go" aria-hidden="true">›</span></a>`).join('')}
+      <div style="min-width:0"><div class="title">${esc(r.title)}</div><div class="subtitle">${esc(r.sub || '')}</div>${items(r)}</div>
+      <a class="task-go" href="${r.href}" title="Dorthin" aria-label="Dorthin: ${esc(r.title)}">›</a></div>`).join('')}
     ${!open.length ? '<div class="empty">Nichts davon.</div>' : ''}
     ${none.length || okText ? `<p class="muted task-ok">${[okText, none.length ? `Nichts bei: ${none.map((r) => esc(r.title)).join(' · ')}` : ''].filter(Boolean).join('<br>')}</p>` : ''}`;
 }

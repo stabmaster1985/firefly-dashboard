@@ -282,7 +282,8 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
         <div class="list cm-merged">${merged.map((m) => `<div class="row" style="cursor:default">
           <div style="min-width:0"><div class="title">„${esc(m.from)}“ → „${esc(m.to)}“</div>
             <div class="subtitle">${m.sentAt ? `in Firefly übertragen am ${fmtDate(m.sentAt)} (Regel in der Gruppe „${esc(RULE_GROUP)}“)` : m.firefly ? '<span class="bad">für Firefly vorgesehen, Übertragen fehlgeschlagen – erneut versuchen</span>' : 'nur im Dashboard – lässt sich jederzeit nach Firefly übertragen'}</div></div>
-          <span class="cm-acts">${!m.sentAt && rulesAction ? `<button class="btn small" type="button" data-tofirefly="${esc(m.from)}" title="Regel „Kategorie ist ${esc(m.from)} → ${esc(m.to)}“ in Firefly anlegen und auf alle Buchungen anwenden">nach Firefly übertragen</button>` : ''}
+          <span class="cm-acts">${!m.sentAt && rulesAction ? `<button class="btn small" type="button" data-tofirefly="${esc(m.from)}" title="Regel „Kategorie ist ${esc(m.from)} → ${esc(m.to)}“ in Firefly anlegen und auf alle Buchungen anwenden">nach Firefly übertragen</button>`
+    : m.sentAt && rulesAction ? `<button class="link-btn" type="button" data-tofirefly="${esc(m.from)}" title="Stehen in Firefly noch Buchungen unter „${esc(m.from)}“ (z. B. weil das Anwenden damals fehlschlug): Regel erneut anlegen und auf alle Buchungen anwenden">erneut übertragen</button>` : ''}
             <button class="link-btn" type="button" data-unmerge="${esc(m.from)}">aufheben</button></span></div>`).join('')}</div>
         ${merged.filter((m) => !m.sentAt).length > 1 && rulesAction ? `<button class="btn small" type="button" id="cm-all" style="margin-top:10px">Alle ${merged.filter((m) => !m.sentAt).length} nach Firefly übertragen</button>` : ''}
         <p class="muted small-text">„Aufheben“ wirkt sofort im Dashboard; wurde schon nach Firefly übertragen, wird die Regel dort entfernt –
