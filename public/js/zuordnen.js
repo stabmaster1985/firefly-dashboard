@@ -106,12 +106,16 @@ export async function assignPage(view) {
     const andere = st.namen.map((c) => `„${c.name}“ ${c.n}×`).join(', ');
     const fresh = Date.now() - new Date(m.ff.sentAt).getTime() < 10 * 60_000; // Firefly wendet die Regel evtl. noch an
     const parts = [`<span class="badge good" title="Regel in Firefly angelegt">Regel in Firefly</span>`];
-    parts.push(`<span class="muted">${st.ziel} von ${st.ziel + st.ohne + st.andere} Buchungen (24 Monate) dort mit „${esc(ffCat(m) || 'Unterscheidung')}“</span>`);
+    const total = st.ziel + st.ohne + st.andere;
+    parts.push(total ? `<span class="muted">${st.ziel} von ${total} Buchungen (24 Monate) dort ${ffCat(m) ? `mit „${esc(ffCat(m))}“` : 'wie aufgeteilt'}</span>` : '');
+    // Buchungen, für die es keine Regel gibt – sie bleiben, wie sie sind (kein Fehler)
+    const frei = (st.frei || 0) + (st.einzeln || 0);
+    if (frei) parts.push(`<span class="badge" title="${esc([st.frei ? `${st.frei}: keine Unterscheidung trifft und „sonst: Kategorie beibehalten“ – dafür gibt es keine Regel; sie behalten in Firefly ihre Kategorie bzw. bleiben ohne (im Dashboard ggf. automatisch zugeordnet). Sollen sie eine bekommen: beim Händler „aufteilen“ – eine weitere Unterscheidung oder für „sonst“ eine Kategorie wählen; einzelne über „Buchungen ansehen“ → „nur diese“.` : '', st.einzeln ? `${st.einzeln}: einzeln zugeordnet („nur diese“) – unten „In Firefly setzen“.` : ''].filter(Boolean).join(' '))}">${frei} ohne Regel</span>`);
     if (st.andere) parts.push(`<span class="badge warn" title="${esc(`In Firefly noch: ${andere}. Die Regel ändert vorhandene Kategorien nicht – „jetzt setzen“ stellt sie direkt um.`)}">${st.andere} mit anderer Kategorie</span>`);
     if (st.ohne) parts.push(fresh ? `<span class="badge" title="Firefly wendet die Regel gerade an – die Liste lädt nach etwa 2 und 7 Minuten neu">${st.ohne} ohne Kategorie – Firefly arbeitet noch</span>`
       : `<span class="badge bad" title="Die Regel hat diese Buchungen nicht erfasst. „jetzt setzen“ setzt sie direkt. Ursache prüfen: Läuft die Automation „Firefly-Regeln anlegen“ fehlerfrei (n8n-Ausführungen)? Passt die Bedingung der Regel zu den Buchungen (Regel in Firefly öffnen, „Testen“)? Erneut übertragen mit „rückwirkend anwenden“.">${st.ohne} noch ohne Kategorie</span>`);
     if (editAction && (st.andere || (st.ohne && !fresh))) parts.push(fixButton(m.key, st, fresh));
-    return parts.join(' ');
+    return parts.filter(Boolean).join(' ');
   }
   /** „jetzt setzen“: Buchungen mit anderer bzw. (nach Ablauf der Regel) ohne Kategorie direkt in Firefly setzen. */
   const fixButton = (key, st, fresh) => {
