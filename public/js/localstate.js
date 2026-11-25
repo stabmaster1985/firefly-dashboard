@@ -3,6 +3,7 @@
 // selbst wieder? Dazu Sicherung herunterladen und zurückspielen.
 
 import { esc, money, fmtDate } from './util.js';
+import { actionFor, runAction } from './txedit.js';
 
 const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
 const plural = (n, one, many) => `${n.toLocaleString('de-DE')} ${n === 1 ? one : many}`;
@@ -58,8 +59,10 @@ export async function localStatePage(view) {
   browserCard($('ls-browser'));
 
   let d;
+  let editAction = null;
   try {
     const r = await fetch('/local/nurdashboard', { headers: { 'X-No-Cache': '1' } });
+    editAction = await actionFor('categorize').catch(() => null);
     d = await r.json();
     if (!r.ok) throw new Error(d.message || `HTTP ${r.status}`);
   } catch (err) {
@@ -78,34 +81,37 @@ export async function localStatePage(view) {
   const notInFf = d.zuordnungen.nichtInFirefly;
   const mergesOpen = d.zusammenfuehrungen.filter((m) => !m.inFirefly);
   const viaZuordnen = (quelle) => `#/zuordnen?karte=z-ff&quelle=${quelle}`;
-  const setHint = '→ Zuordnen, „In Firefly übernehmen“ (gefiltert auf diese Quelle): anhaken und „Kategorie bei … angehakten jetzt setzen“ – oder als Regel nach Firefly.';
+  const setHint = editAction ? '→ Direkt hier: „… in Firefly setzen“. Für künftige Importe zusätzlich unter Zuordnen → „In Firefly übernehmen“ als Regel.'
+    : '→ Zuordnen, „In Firefly übernehmen“ (gefiltert auf diese Quelle): anhaken und „jetzt setzen“ – braucht die Automation „Kategorie übernehmen“.';
+  // Einnahmen kennt „Zuordnen“ nicht (nur Ausgaben) – darum hier eigens nennen
+  const inc = (o) => { const k = (o?.items || []).filter((x) => x.type === 'deposit').length; return k ? ` Davon ${plural(k, 'Einnahme', 'Einnahmen')} – die stehen nicht unter Zuordnen (das kennt nur Ausgaben).` : ''; };
   const mergedFf = (a.zusammengefuehrt?.items || []).filter((x) => x.firefly); // Firefly hat noch den alten Namen
   const num = [
     {
       n: n('zuordnung'), warn: true, href: viaZuordnen('zuordnung'), title: 'Kategorien aus deinen Händler-Zuordnungen', items: q.zuordnung?.items,
-      sub: `${plural(n('zuordnung'), 'Buchung hat', 'Buchungen haben')} in Firefly keine Kategorie und ${n('zuordnung') === 1 ? 'bekommt' : 'bekommen'} sie nur hier${eur(q.zuordnung)}. ${plural(d.zuordnungen.gesamt, 'Zuordnung', 'Zuordnungen')}, davon ${notInFf.length} noch nicht als Firefly-Regel${notInFf.length ? ` (z. B. ${notInFf.slice(0, 4).map((x) => x.name).join(', ')})` : ''}. ${setHint}`,
+      sub: `${plural(n('zuordnung'), 'Buchung hat', 'Buchungen haben')} in Firefly keine Kategorie und ${n('zuordnung') === 1 ? 'bekommt' : 'bekommen'} sie nur hier${eur(q.zuordnung)}. ${plural(d.zuordnungen.gesamt, 'Zuordnung', 'Zuordnungen')}${notInFf.length ? `, ${notInFf.length} davon noch keine Firefly-Regel – nur für künftige Importe wichtig (z. B. ${notInFf.slice(0, 4).map((x) => x.name).join(', ')})` : ''}.${inc(q.zuordnung)} ${setHint}`, fix: 'zuordnung',
     },
     {
       n: n('buchung'), warn: true, href: '#/zuordnen?karte=z-ff', title: 'Einzeln zugeordnete Buchungen („nur diese“)', items: q.buchung?.items,
-      sub: `In Firefly ohne Kategorie${eur(q.buchung)}. → Zuordnen, „In Firefly übernehmen“ ganz unten: „In Firefly setzen“.`,
+      sub: `In Firefly ohne Kategorie${eur(q.buchung)}.${inc(q.buchung)} ${setHint}`, fix: 'buchung',
     },
     {
       n: mergesOpen.length ? (a.zusammengefuehrt?.n || mergesOpen.length) : mergedFf.length, warn: true, href: '#/aufraeumen?karte=a-catmerge', title: 'Zusammengeführte Kategorien', items: mergesOpen.length ? a.zusammengefuehrt?.items : mergedFf,
       sub: mergesOpen.length
-        ? `Nicht nach Firefly übertragen: ${mergesOpen.slice(0, 5).map((m) => `${m.von} → ${m.nach}`).join(', ')}${mergesOpen.length > 5 ? ' …' : ''}. Diese Buchungen erscheinen nur im Dashboard unter dem neuen Namen. → Aufräumen, „Kategorien zusammenführen“, unten „nach Firefly übertragen“.`
+        ? `${plural(mergesOpen.length, 'Zusammenführung', 'Zusammenführungen')} nur im Dashboard: ${mergesOpen.slice(0, 5).map((m) => `${m.von} → ${m.nach}`).join(', ')}${mergesOpen.length > 5 ? ' …' : ''}. Diese Buchungen stehen in Firefly noch unter dem alten Namen. → Aufräumen, Karte „Kategorien zusammenführen“, ganz unten Liste „Zusammengeführt“: „Alle … nach Firefly übertragen“ (oder je Zeile). Willst du sie bewusst nur im Dashboard, bleibt der Punkt – dann sichert sie nur die Sicherung.`
         : `Die Zusammenführungen sind übertragen, aber in Firefly stehen diese Buchungen noch unter dem alten Namen (Regel nicht auf alle angewendet, z. B. weil das Übertragen damals scheiterte). → Aufräumen, „Kategorien zusammenführen“, unten bei der Zusammenführung „erneut übertragen“.`,
     },
     {
       n: n('regel'), href: viaZuordnen('regel'), title: 'Kategorien aus deinen Labor-Regeln', items: q.regel?.items,
-      sub: `In Firefly ohne Kategorie${eur(q.regel)} – das Labor hat ${plural(d.laborRegeln.regeln, 'Regel', 'Regeln')}. ${setHint}`,
+      sub: `In Firefly ohne Kategorie${eur(q.regel)} – das Labor hat ${plural(d.laborRegeln.regeln, 'Regel', 'Regeln')}.${inc(q.regel)} ${setHint}`, fix: 'regel',
     },
     {
       n: n('import'), href: viaZuordnen('import'), title: 'Kategorien aus deiner Import-Zuordnung', items: q.import?.items,
-      sub: `In Firefly ohne Kategorie${eur(q.import)} – die Kategorie kommt aus der hinterlegten Data-Importer-Konfiguration. Auch wenn unter Aufräumen alles übertragen ist: Diese Buchungen hat keine Firefly-Regel erfasst. ${setHint}`,
+      sub: `In Firefly ohne Kategorie${eur(q.import)} – die Kategorie kommt aus der hinterlegten Data-Importer-Konfiguration. Auch wenn unter Aufräumen alles übertragen ist: Diese Buchungen hat keine Firefly-Regel erfasst.${inc(q.import)} ${setHint}`, fix: 'import',
     },
     {
       n: n('ki'), href: viaZuordnen('ki'), title: 'Kategorien aus KI-Bewertungen', items: q.ki?.items,
-      sub: `In Firefly ohne Kategorie${eur(q.ki)} – ${plural(d.ki.bewertungen, 'Bewertung', 'Bewertungen')} (neu erstellen dauert lange). ${setHint}`,
+      sub: `In Firefly ohne Kategorie${eur(q.ki)} – ${plural(d.ki.bewertungen, 'Bewertung', 'Bewertungen')} (neu erstellen dauert lange).${inc(q.ki)} ${setHint}`, fix: 'ki',
     },
     {
       n: (d.ausgeblendet.buchungen || 0) + d.ausgeblendet.gegenkonten.length, warn: true, href: '#/pruefen?karte=c-excl', title: 'Ausgeblendete Buchungen und Gegenkonten', items: a.ausgeblendet?.items,
@@ -113,6 +119,28 @@ export async function localStatePage(view) {
     },
   ];
   const back = n('gelernt') + n('liste');
+  // „… in Firefly setzen“: die gelisteten Buchungen ohne Firefly-Kategorie direkt setzen (wie „jetzt setzen“ unter Zuordnen)
+  const fixable = (r) => (editAction && r.fix ? (r.items || []).filter((x) => !x.firefly && x.dashboard && x.g && x.j) : []);
+  for (const r of num) r.fixList = fixable(r);
+  if (view.lsFixClick) view.removeEventListener('click', view.lsFixClick); // Seite wird nach dem Setzen neu gezeichnet
+  view.lsFixClick = async (e) => {
+    const b = e.target.closest('[data-ls-fix]');
+    if (!b) return;
+    const r = num.find((x) => x.fix === b.dataset.lsFix);
+    const list = r?.fixList || [];
+    if (!list.length) return;
+    const pairs = [...list.reduce((m, x) => m.set(x.dashboard, (m.get(x.dashboard) || 0) + 1), new Map())].sort((x, y) => y[1] - x[1]);
+    if (!window.confirm(`${plural(list.length, 'Buchung', 'Buchungen')} in Firefly kategorisieren?\n${pairs.slice(0, 10).map(([k, c]) => `• ohne → ${k} (${c}×)`).join('\n')}${pairs.length > 10 ? '\n…' : ''}`)) return;
+    const status = b.parentElement.querySelector('.ls-fix-status');
+    b.disabled = true;
+    status.innerHTML = `<span class="spinner"></span> Setze ${list.length} …`;
+    const res = await setInFirefly(editAction, list, (msg) => (status.innerHTML = `<span class="spinner"></span> ${esc(msg)}`));
+    status.innerHTML = res.ok === list.length && res.checked === res.arrived
+      ? `<span class="good">✓ ${plural(res.ok, 'Buchung', 'Buchungen')} gesetzt – in Firefly nachgeprüft. Die Seite aktualisiert sich gleich.</span>`
+      : `<span class="bad">${res.ok} von ${list.length} an n8n übergeben${res.checked ? `, in Firefly angekommen: ${res.arrived} von ${res.checked} geprüften` : ''}${res.error ? ` (${esc(res.error)})` : ''}.</span>`;
+    if (res.ok) setTimeout(() => view.isConnected && localStatePage(view), 8000);
+  };
+  view.addEventListener('click', view.lsFixClick);
   $('ls-num').innerHTML = rows(num, back ? `✓ ${plural(back, 'Buchung', 'Buchungen')} mit Kategorie „gelernt“ oder „Händlerliste“ – die errechnet das Dashboard von selbst wieder.` : '');
   $('ls-num-meta').textContent = a.fehler ? `Auswertung nicht möglich: ${a.fehler}` : zeitraum;
 
@@ -161,10 +189,45 @@ function rows(list, okText = '') {
         <td><span class="muted">Firefly: ${esc(x.firefly || 'ohne')}</span>${x.dashboard ? ` → <b>${esc(x.dashboard)}</b>` : ''}</td></tr>`).join('')}</tbody></table></div></details>` : '');
   return `${open.map((r) => `<div class="row task ls-row">
       <div class="task-n ${r.warn ? 'warn' : ''}">${r.badge ?? r.n.toLocaleString('de-DE')}</div>
-      <div style="min-width:0"><div class="title">${esc(r.title)}</div><div class="subtitle">${esc(r.sub || '')}</div>${items(r)}</div>
+      <div style="min-width:0"><div class="title">${esc(r.title)}</div><div class="subtitle">${esc(r.sub || '')}</div>
+        ${r.fixList?.length ? `<div class="ls-fix"><button class="btn small" type="button" data-ls-fix="${esc(r.fix)}">${r.fixList.length} in Firefly setzen</button> <span class="ls-fix-status muted small-text"></span></div>` : ''}${items(r)}</div>
       <a class="task-go" href="${r.href}" title="Dorthin" aria-label="Dorthin: ${esc(r.title)}">›</a></div>`).join('')}
     ${!open.length ? '<div class="empty">Nichts davon.</div>' : ''}
     ${none.length || okText ? `<p class="muted task-ok">${[okText, none.length ? `Nichts bei: ${none.map((r) => esc(r.title)).join(' · ')}` : ''].filter(Boolean).join('<br>')}</p>` : ''}`;
+}
+
+/**
+ * Kategorien per Automation „Kategorie übernehmen“ setzen – kleine Pakete (ein Proxy vor n8n bricht lange Anfragen
+ * mit 504 ab; n8n arbeitet dann meist weiter), danach frisch in Firefly nachsehen.
+ */
+async function setInFirefly(action, list, progress) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const check = (part) => fetch('/local/autocat', { method: 'POST', headers, body: JSON.stringify({ pruefeKategorien: part.map((x) => ({ g: x.g, j: x.j, kategorie: x.dashboard })) }) })
+    .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  let ok = 0;
+  let error = '';
+  for (let k = 0; k < list.length; k += 8) {
+    const part = list.slice(k, k + 8);
+    progress(`Setze in Firefly … ${k} von ${list.length}`);
+    const r = await runAction(action, {
+      typ: 'kategorien_uebernehmen',
+      aenderungen: part.map((x) => ({ transaction_group_id: x.g, transaction_journal_id: x.j, datum: x.date, beschreibung: x.description, betrag: x.amount, kategorie_alt: null, kategorie: x.dashboard })),
+    }).catch((err) => ({ ok: false, response: err.message }));
+    if (r.ok) {
+      ok += part.length;
+      continue;
+    }
+    error = `HTTP ${r.status || '–'}`;
+    if (!r.status || [502, 503, 504, 524].includes(r.status)) {
+      progress('Zeitüberschreitung bei n8n – prüfe in Firefly, was angekommen ist …');
+      await sleep(30_000);
+      const c = await check(part);
+      if (c && !c.fehler) ok += c.ok;
+    }
+  }
+  progress('Prüfe in Firefly …');
+  const c = ok ? await check(list) : null;
+  return { ok, checked: c?.geprueft || 0, arrived: c?.ok || 0, error };
 }
 
 /** Einstellungen, die nur dieser Browser kennt (localStorage) – nicht in der Sicherung. */
