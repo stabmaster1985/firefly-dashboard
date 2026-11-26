@@ -158,7 +158,14 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
   monateNow = monate;
   let showSugg = 6;
   let suggOpen = storage('ffd-cm-sugg-open', '1') !== '0'; // Vorschläge auf-/zugeklappt (je Gerät)
+  let mergedOpen = storage('ffd-cm-merged-open', '1') !== '0'; // Liste „Zusammengeführt“ auf-/zugeklappt
+  let mergedView = storage('ffd-cm-merged-view', 'alle'); // offen (nur im Dashboard) | firefly (übertragen) | alle
   el.addEventListener('toggle', (e) => {
+    if (e.target.matches?.('[data-merged-box]')) {
+      mergedOpen = e.target.open;
+      store('ffd-cm-merged-open', mergedOpen ? '1' : '0');
+      return;
+    }
     if (!e.target.matches?.('[data-sugg-box]')) return;
     suggOpen = e.target.open;
     store('ffd-cm-sugg-open', suggOpen ? '1' : '0');
@@ -227,6 +234,8 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
     const list = data.kategorien;
     const active = list.filter((c) => !c.ziel);
     const merged = data.zusammengefuehrt;
+    const mergedOpenN = merged.filter((m) => !m.sentAt).length;
+    const mergedShown = merged.filter((m) => (mergedView === 'offen' ? !m.sentAt : mergedView === 'firefly' ? m.sentAt : true));
     const sugg = suggestions(list, ignoredSugg());
     // ausgeblendete Paare, deren Kategorien es noch gibt (Namen wie in der Liste)
     const byLow = new Map(list.map((c) => [c.name.toLowerCase(), c.name]));
@@ -278,8 +287,10 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
         </div>
       </div>
       ${!rulesAction ? '<p class="muted small-text">„In Firefly“ braucht unter <a href="#/automationen">Automationen</a> eine Automation mit Auslöser „Firefly-Regeln anlegen“ (Vorlage n8n/firefly-buchung-bearbeiten.json).</p>' : ''}
-      ${merged.length ? `<h3 class="sub-h" style="margin-top:18px">Zusammengeführt</h3>
-        <div class="list cm-merged">${merged.map((m) => `<div class="row" style="cursor:default">
+      ${merged.length ? `<details class="cm-merged-box" data-merged-box${mergedOpen ? ' open' : ''}><summary class="sub-h">Zusammengeführt <span class="muted">(${merged.length}${mergedOpenN ? ` · ${mergedOpenN} nur im Dashboard` : ' · alle in Firefly'})</span></summary>
+        <div class="chips" role="group" aria-label="Zusammengeführt filtern" style="margin:8px 0">${[['offen', 'Nur im Dashboard', mergedOpenN], ['firefly', 'In Firefly übertragen', merged.length - mergedOpenN], ['alle', 'Alle', merged.length]].map(([k, label, c]) => `<button type="button" class="chip" data-merged-view="${k}" aria-pressed="${mergedView === k}">${label} ${c}</button>`).join('')}</div>
+        ${mergedShown.length ? '' : `<div class="empty">${mergedView === 'offen' ? 'Alles in Firefly übertragen.' : 'Noch nichts übertragen.'}</div>`}
+        <div class="list cm-merged">${mergedShown.map((m) => `<div class="row" style="cursor:default">
           <div style="min-width:0"><div class="title">„${esc(m.from)}“ → „${esc(m.to)}“</div>
             <div class="subtitle">${m.sentAt ? `in Firefly übertragen am ${fmtDate(m.sentAt)} (Regel in der Gruppe „${esc(RULE_GROUP)}“)` : m.firefly ? '<span class="bad">für Firefly vorgesehen, Übertragen fehlgeschlagen – erneut versuchen</span>' : 'nur im Dashboard – lässt sich jederzeit nach Firefly übertragen'}</div></div>
           <span class="cm-acts">${!m.sentAt && rulesAction ? `<button class="btn small" type="button" data-tofirefly="${esc(m.from)}" title="Regel „Kategorie ist ${esc(m.from)} → ${esc(m.to)}“ in Firefly anlegen und auf alle Buchungen anwenden">nach Firefly übertragen</button>`
@@ -288,7 +299,7 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
         ${merged.filter((m) => !m.sentAt).length > 1 && rulesAction ? `<button class="btn small" type="button" id="cm-all" style="margin-top:10px">Alle ${merged.filter((m) => !m.sentAt).length} nach Firefly übertragen</button>` : ''}
         <p class="muted small-text">„Aufheben“ wirkt sofort im Dashboard; wurde schon nach Firefly übertragen, wird die Regel dort entfernt –
           die Buchungen behalten aber die neue Kategorie (in Firefly ggf. von Hand zurücksetzen). Leere alte Kategorien kannst du in Firefly löschen.
-          Tipp: Auch in der Import-Konfiguration (Data Importer) die alte Kategorie durch die neue ersetzen.</p>` : ''}`;
+          Tipp: Auch in der Import-Konfiguration (Data Importer) die alte Kategorie durch die neue ersetzen.</p></details>` : ''}`;
   }
 
   /** Alle für Firefly vorgesehenen Zusammenführungen als Regeln schicken (die Gruppe wird abgeglichen) und anwenden. */
@@ -372,6 +383,11 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.merge) return merge(b.dataset.merge, b);
+    if (b.dataset.mergedView) {
+      mergedView = b.dataset.mergedView;
+      store('ffd-cm-merged-view', mergedView);
+      return render();
+    }
     if (b.dataset.suggIgnore !== undefined) {
       const x = suggestions(data.kategorien, ignoredSugg())[Number(b.dataset.suggIgnore)];
       store(IGNORE_KEY, JSON.stringify([...ignoredSugg(), ...x.pairs].slice(-500)));

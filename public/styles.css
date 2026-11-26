@@ -1735,3 +1735,5 @@ details.cm-sugg:not([open]) { padding-bottom: 10px; }
   .ls-items td:nth-child(4) { grid-row: 3; grid-column: 1 / -1; border-top: 0; padding-top: 0; }
 }
 .ls-fix { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.cm-merged-box { margin-top: 18px; }
+.cm-merged-box > summary { cursor: pointer; margin: 0; }
