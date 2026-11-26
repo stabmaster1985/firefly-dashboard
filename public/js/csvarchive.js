@@ -325,7 +325,7 @@ export function csvArchive(el, { load, memory, editAction = () => null }) {
             <td>${f.info?.from ? `${fmtDate(f.info.from)} – ${fmtDate(f.info.to)}` : '–'}</td>
             <td class="num">${f.info?.rows ?? '–'} Zeilen</td>
             <td class="muted">hochgeladen ${fmtDate(f.at)}</td>
-            <td><button class="link-btn" data-del="${f.id}" title="Aus dem Archiv löschen">löschen</button></td></tr>`).join('')}</tbody></table>` : ''}
+            <td class="arch-acts"><a class="link-btn" href="/local/csvarchive/file/${f.id}?download=1" download="${esc(f.name)}" title="Originaldatei herunterladen">herunterladen</a> · <button class="link-btn" data-del="${f.id}" title="Aus dem Archiv löschen">löschen</button></td></tr>`).join('')}</tbody></table>` : ''}
         </div>`;
       }).join('')}</div>
       <div class="arch-actions">

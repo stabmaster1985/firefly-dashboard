@@ -1748,3 +1748,13 @@ details.cm-sugg:not([open]) { padding-bottom: 10px; }
 }
 .cm-stand { margin-top: 2px; }
 .refs-row .subtitle, .cm-merged .subtitle { white-space: normal; overflow: visible; text-overflow: clip; }
+.arch-acts { white-space: nowrap; }
+.arch-acts a.link-btn { text-decoration: none; }
+@media (max-width: 600px) {
+  .arch-files, .arch-files tbody { display: block; width: 100%; }
+  .arch-files tr { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 8px 0; border-top: 1px solid var(--border); }
+  .arch-files td { border: 0; padding: 0; }
+  .arch-files td:nth-child(2) { flex: 1 1 calc(100% - 40px); min-width: 0; overflow-wrap: anywhere; }
+  .arch-files td:nth-child(3) { margin-left: 30px; }
+  .arch-files td.arch-acts { flex-basis: 100%; margin-left: 30px; }
+}
