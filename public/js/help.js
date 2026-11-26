@@ -187,7 +187,7 @@ export const CARDS = {
   'd-partners': { title: 'Top-Empfänger', what: 'An wen das Geld in dieser Kategorie geht.', app: 'Klick öffnet die Empfänger-Seite.', firefly: READ_ONLY },
   'd-tx': { title: 'Buchungen', what: 'Alle Buchungen der Kategorie im Zeitraum.', app: 'Klick zeigt Details; dort ggf. Kategorie/Tags ändern.', firefly: 'Nur bei „Kategorie setzen“ / Tags in den Details – über n8n.' },
   // Wiederkehrend
-  'r-table': { title: 'Regelmäßige Zahlungen', what: 'Erkannte Abos und Verträge mit Rhythmus, typischem Betrag, Kosten pro Jahr und nächster erwarteter Zahlung.', app: 'Zahlungen, die länger ausgeblieben sind, gelten als vermutlich beendet; „Inkl. beendete“ zeigt sie mit an.', firefly: READ_ONLY },
+  'r-table': { title: 'Regelmäßige Zahlungen', what: 'Erkannte Abos und Verträge mit Rhythmus, typischem Betrag, Kosten pro Jahr und nächster erwarteter Zahlung.', app: 'Zahlungen, die länger ausgeblieben sind, gelten als vermutlich beendet; „Inkl. beendete“ zeigt sie mit an. „erst 2× – unsicher“: nur zwei gleiche Zahlungen im Abstand von einem halben oder ganzen Jahr – das kann auch eine einmalige Zahlung in zwei Raten sein (Anzahlung und Restzahlung); steht „Anzahlung“, „Restzahlung“ o. ä. im Text, gilt sie gar nicht erst als Vertrag. Kein Vertrag? ✎ → „kein Vertrag – ausblenden“.', firefly: READ_ONLY },
   // Konten
   'acc-chart': { title: 'Kontostand-Verlauf', what: 'Kontostände im gewählten Zeitraum.', app: '', firefly: READ_ONLY },
   'acc-worth': { title: 'Vermögensverlauf', what: 'Summe aller Konten über 1–10 Jahre (Monatsendstände).', app: 'Verbindlichkeiten sind nicht abgezogen.', firefly: READ_ONLY },

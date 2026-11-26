@@ -24,6 +24,8 @@ const LEVELS = {
 };
 
 const DAY = 86400000;
+// Einmalige Zahlungen in Raten (Reise, Handwerker …): mit diesen Worten im Text gelten zwei Termine nicht als Vertrag
+const ONE_OFF = /\b(an|rest|schluss|end|teil)zahlung|\banzahl\b|\brestbetrag|\bschlussrechnung|\bbuchungsnr|\breise(buchung|nummer)?\b/i;
 
 /** Nächster Termin: Monatsrhythmen bleiben auf ihrem Kalendertag (1. bleibt 1.). */
 export function stepDate(d, rhythm, anchorDay) {
@@ -83,6 +85,8 @@ function evaluate(list, level, tight = false) {
   const regular = gaps.filter(fits).length / gaps.length;
   const amount = median(list.map((t) => t.amount));
   const strict = tight || days.length <= 2;
+  // nur zwei Termine und der Text spricht von Anzahlung/Restzahlung o. ä. → einmalige Zahlung in Raten
+  if (days.length <= 2 && list.some((t) => ONE_OFF.test(`${t.description || ''} ${t.notes || ''}`))) return null;
   const spread = strict ? 0.03 : level.spread;
   const stable = list.filter((t) => Math.abs(t.amount - amount) <= Math.max(0.5, amount * spread)).length / list.length;
   if (regular < level.regular || stable < (strict ? 0.8 : level.stable)) return null;
@@ -168,6 +172,8 @@ export function detectRecurring(transactions, kind, levelKey = 'normal') {
           category: [...cats].sort((a, b) => b[1] - a[1])[0]?.[0] || '',
           changed: Math.abs(last.amount - hit.amount) > Math.max(1, hit.amount * 0.05),
           confidence: Math.round(((hit.regular + hit.stable) / 2) * 100),
+          // erst zwei Termine (halb-/jährlich): kann auch eine einmalige Zahlung in zwei Raten sein
+          unsicher: new Set(hit.list.map((t) => isoDate(t.day))).size <= 2,
         });
       }
     }
@@ -480,7 +486,7 @@ export async function recurring(view, { params }) {
           const q = r.via ? `"${r.name}"` : `${op}:"${r.party || r.name}"`;
           return `<tr data-href="#/buchungen?q=${encodeURIComponent(q)}&von=${isoDate(from)}&bis=${isoDate(t0)}"${r.active ? '' : ' class="inactive"'}>
           <td class="pick-cell"><input type="checkbox" data-pick="${esc(idOf(r))}" ${picked.has(idOf(r)) ? 'checked' : ''} aria-label="${esc(r.name)} auswählen"></td>
-          <td><div class="desc">${esc(r.name)}${r.manual ? ' <span class="badge">von Hand</span>' : ''}${deadlineBadge(r)}</div><div class="flow">${esc(r.category || 'ohne Kategorie')}${r.via ? ` · über ${esc(r.via)}` : ''} · ${r.manual ? 'eigener Eintrag' : `${r.count}× seit ${fmtDate(r.first, { month: 'short', year: 'numeric' })}`}<span class="show-sm"> · ${esc(r.rhythm.label)}</span></div></td>
+          <td><div class="desc">${esc(r.name)}${r.manual ? ' <span class="badge">von Hand</span>' : ''}${r.unsicher && !r.manual ? ' <span class="badge warn" title="Erst zwei Zahlungen – kann auch eine einmalige Zahlung in zwei Raten sein (z. B. Anzahlung und Restzahlung). Kein Vertrag? ✎ → ausblenden.">erst 2× – unsicher</span>' : ''}${deadlineBadge(r)}</div><div class="flow">${esc(r.category || 'ohne Kategorie')}${r.via ? ` · über ${esc(r.via)}` : ''} · ${r.manual ? 'eigener Eintrag' : `${r.count}× seit ${fmtDate(r.first, { month: 'short', year: 'numeric' })}`}<span class="show-sm"> · ${esc(r.rhythm.label)}</span></div></td>
           <td class="hide-sm">${esc(r.rhythm.label)}<div class="flow">${r.manual ? 'von dir' : `${r.confidence} % sicher`}</div></td>
           <td class="num"><b>${money(r.amount, r.code)}</b>${r.changed ? `<div class="flow" title="Letzter Betrag weicht ab">zuletzt ${money(r.lastAmount, r.code)}</div>` : ''}</td>
           <td class="num hide-sm">${money(r.perYear / 12, r.code)}</td>
