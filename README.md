@@ -692,6 +692,12 @@ Import-Workflow aufgerufen):
 3. Optional am **Ende** des Import-Workflows denselben Execute-Workflow-Knoten noch einmal – ohne Datei. Dann
    prüft das Dashboard 10 Sekunden nach dem Import statt nach 5 Minuten.
 
+**Kategorien fehlen nach dem Import?** Neuere Versionen des Data Importers schicken Buchungen „im Stapel“
+(`batch_submission`); Firefly soll die Regeln dann am Ende anwenden. Klappt das nicht, wendet die Vorlage
+`n8n/firefly-regeln-nach-import.json` danach alle aktiven Regelgruppen auf die letzten Tage an: importieren,
+Firefly-Adresse und Zugangsdaten (Header Auth `Bearer <Token>`) eintragen und am Ende des Import-Workflows per
+**Execute Workflow** aufrufen.
+
 Ohne Vorlage geht es auch direkt mit einem Knoten **HTTP Request**:
 
 | Einstellung | Wert |
