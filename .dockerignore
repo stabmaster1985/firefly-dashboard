@@ -1,2 +1,12 @@
+# Nur was das Image braucht – kleiner Build-Kontext, weniger Platz für Build-Zwischenstände.
+# Aus .git braucht der Build nur HEAD, refs und das Reflog (Version), nicht die Objekte.
 node_modules
 .env
+.git/objects
+.git/lfs
+.git/modules
+docs
+mock
+scripts
+n8n
+*.md
