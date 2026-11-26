@@ -24,6 +24,7 @@ import { createExcluded } from './lib/excluded.js';
 import { createMqtt } from './lib/mqtt.js';
 import { createAutoCat } from './lib/autocat.js';
 import { createLocalState } from './lib/localstate.js';
+import { createRefs } from './lib/refs.js';
 import { createLedger } from './lib/ledger.js';
 import { createImportReport } from './lib/importreport.js';
 
@@ -146,6 +147,8 @@ const handleCleanup = createCleanup(DATA_DIR);
 
 // „Nur im Dashboard“: was nur in DATA_DIR liegt, Sicherung herunterladen/zurückspielen
 const handleLocalState = createLocalState({ dataDir: DATA_DIR, view, autocat });
+// Aufräumen: Regeln/Import-Konfiguration auf alte Kategorien prüfen, leere Gegenkonten und Tags
+const handleRefs = createRefs({ dataDir: DATA_DIR, firefly, autocat });
 
 // KI-Analyse mit einem lokalen Ollama (optional, Labor)
 const handleAi = createAi({ dataDir: DATA_DIR, firefly: view });
@@ -252,6 +255,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/local/csvarchive' || url.pathname.startsWith('/local/csvarchive/')) return handleCsvArchive(req, res, url);
   if (url.pathname === '/local/importbericht') return importReport(req, res, url);
   if (url.pathname === '/local/nurdashboard') return handleLocalState(req, res, url);
+  if (url.pathname === '/local/bezuege') return handleRefs(req, res, url);
   if (url.pathname === '/local/excluded') {
     if (req.method !== 'GET') res.on('finish', () => mqtt.soon(2000)); // Summen ändern sich
     return excluded.handle(req, res, url);

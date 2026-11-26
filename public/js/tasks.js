@@ -17,7 +17,7 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 // Werkzeuge je Bereich: [Seite (Pfad), Hilfe-Schlüssel, Karten]
 const TOOLS = [
   ['zuordnen', 'assign', ['z-open', 'z-auto', 'z-ff']],
-  ['aufraeumen', 'cleanup', ['a-wrong', 'a-merge', 'a-catmerge', 'a-import']],
+  ['aufraeumen', 'cleanup', ['a-wrong', 'a-merge', 'a-catmerge', 'a-refs', 'a-empty', 'a-import']],
   ['pruefen', 'check', ['c-dup', 'c-import', 'c-excl', 'c-backup']],
   ['abgleich', 'csvsync', ['s-archive', 's-files', 's-open', 's-import']],
 ];

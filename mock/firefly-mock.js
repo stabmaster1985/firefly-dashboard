@@ -104,6 +104,8 @@ const ext = (name) => ({ id: null, name });
 // Gegenkonten mit IBAN in Firefly – „Autohaus Becker“ trägt (fälschlich) die IBAN eines Zahlungsdienstleisters,
 // über den auch die Tankstelle abbucht (für „Falsch zugeordnete Gegenkonten“ und den Import-Bericht)
 const EXT_IBANS = { 'Autohaus Becker': 'DE00 1234 5678 0000 0000 00' };
+// ein Gegenkonto ohne jede Buchung – für „Leere Gegenkonten und Tags“ in Aufräumen
+extId('expense', 'Kiosk am Eck (alt)');
 
 for (let m = new Date(firstDay); m <= today; m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) {
   const y = m.getFullYear();
@@ -256,7 +258,14 @@ const CATEGORIES = [...new Set([...journals.map((j) => j.category).filter(Boolea
 const deletedCats = new Set();
 const categoryId = (name) => String(CATEGORIES.indexOf(name) + 1);
 const categoryName = (id) => CATEGORIES[Number(id) - 1];
-const TAGS = [...new Set(journals.flatMap((j) => j.tags))].sort((a, b) => a.localeCompare(b, 'de'));
+// dazu ein ungenutzter Tag – für „Leere Gegenkonten und Tags“ in Aufräumen
+const TAGS = [...new Set([...journals.flatMap((j) => j.tags), 'urlaub-2019'])].sort((a, b) => a.localeCompare(b, 'de'));
+const deletedTags = new Set();
+// Firefly-Regeln (eigene, nicht vom Dashboard) – für „Regeln und Import-Konfiguration prüfen“
+const RULES = [
+  { id: '1', group: 'Meine Regeln', title: 'Rossmann → Drogerie', triggers: [{ type: 'description_contains', value: 'ROSSMANN' }], actions: [{ type: 'set_category', value: 'Drogerie', order: 1, active: true, stop_processing: false }] },
+  { id: '2', group: 'Meine Regeln', title: 'Kiosk → Zeitschriften', triggers: [{ type: 'description_contains', value: 'KIOSK' }], actions: [{ type: 'set_category', value: 'Zeitschriften', order: 1, active: true, stop_processing: false }, { type: 'add_tag', value: 'kiosk', order: 2, active: true, stop_processing: false }] },
+];
 const tagId = (name) => String(TAGS.indexOf(name) + 1);
 const tagName = (id) => TAGS[Number(id) - 1] ?? (TAGS.includes(decodeURIComponent(id)) ? decodeURIComponent(id) : undefined);
 
@@ -480,7 +489,8 @@ const routes = {
   'insight/income/category': (q) => categoryInsight(q, 'deposit', 1),
   'insight/expense/tag': (q) => tagInsight(q, 'withdrawal', -1),
   'insight/income/tag': (q) => tagInsight(q, 'deposit', 1),
-  tags: (q) => paginate(TAGS, q, (tag) => ({ type: 'tags', id: tagId(tag), attributes: { tag } })),
+  rules: (q) => paginate(RULES, q, (r) => ({ type: 'rules', id: r.id, attributes: { title: r.title, rule_group_id: '1', rule_group_title: r.group, active: true, triggers: r.triggers, actions: r.actions } })),
+  tags: (q) => paginate(TAGS.filter((t) => !deletedTags.has(t)), q, (tag) => ({ type: 'tags', id: tagId(tag), attributes: { tag } })),
   'insight/income/no-category': (q) => {
     const [start, end] = range(q);
     const sum = journals.filter((j) => j.type === 'deposit' && inRange(j, start, end) && !j.category).reduce((s, j) => s + j.amount, 0);
@@ -699,7 +709,7 @@ http
       handler = () => (j ? { data: journalJson(j) } : null);
     }
     const tagRoute = key.match(/^tags\/([^/]+)(\/transactions)?$/);
-    if (tagRoute && tagName(tagRoute[1])) {
+    if (tagRoute && tagName(tagRoute[1]) && !deletedTags.has(tagName(tagRoute[1]))) {
       const name = tagName(tagRoute[1]);
       handler = tagRoute[2]
         ? (q) => {
@@ -775,6 +785,20 @@ http
           }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ ok: true, anzahl: (data.paare || data.ids || []).length }));
+        }
+        if (data.typ === 'tags_loeschen') {
+          for (const id of data.ids || []) if (tagName(id)) deletedTags.add(tagName(id));
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ ok: true, anzahl: (data.ids || []).length }));
+        }
+        if (data.typ === 'regeln_aendern') {
+          // wie der Zweig „Konten?“: PUT /rules/<id> mit den neuen Aktionen
+          for (const r of data.regeln || []) {
+            const rule = RULES.find((x) => x.id === String(r.id));
+            if (rule && Array.isArray(r.actions)) rule.actions = r.actions;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ ok: true, anzahl: (data.regeln || []).length }));
         }
         if (data.typ === 'kategorien_loeschen') {
           // wie der Zweig „Konten?“: DELETE /categories/<id>

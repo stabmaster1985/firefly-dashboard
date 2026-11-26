@@ -398,6 +398,8 @@ const EXTRA_WORDS = {
   'a-merge': 'gegenkonten konten zusammenlegen doppelte händler empfänger vereinen',
   'a-wrong': 'falsches konto verschieben empfänger gegenkonto korrigieren iban payone elv',
   'a-import': 'import konfiguration data importer json regeln',
+  'a-refs': 'alte kategorie regel firefly regeln import konfiguration data importer zusammengeführt gelöscht neu angelegt',
+  'a-empty': 'leere gegenkonten konten tags löschen ungenutzt',
   'z-open': 'kategorie zuordnen ohne kategorie händler',
   'z-auto': 'aufteilen versicherung mandatsreferenz passt bestätigen ändern',
   'z-ff': 'regeln firefly übertragen übernehmen künftig import',

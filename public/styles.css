@@ -1737,3 +1737,14 @@ details.cm-sugg:not([open]) { padding-bottom: 10px; }
 .ls-fix { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .cm-merged-box { margin-top: 18px; }
 .cm-merged-box > summary { cursor: pointer; margin: 0; }
+.refs-row { display: grid !important; grid-template-columns: auto minmax(0, 1fr) minmax(180px, 260px); gap: 6px 12px; align-items: center; }
+.refs-row.nocheck { grid-template-columns: minmax(0, 1fr) minmax(180px, 260px); }
+.refs-to { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.refs-to .input { flex: 1; min-width: 0; }
+@media (max-width: 600px) {
+  .refs-row { grid-template-columns: auto minmax(0, 1fr); }
+  .refs-row.nocheck { grid-template-columns: minmax(0, 1fr); }
+  .refs-row .refs-to { grid-column: 1 / -1; }
+}
+.cm-stand { margin-top: 2px; }
+.refs-row .subtitle, .cm-merged .subtitle { white-space: normal; overflow: visible; text-overflow: clip; }

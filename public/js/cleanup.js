@@ -15,6 +15,7 @@ import { counterpartyOf, toFireflyRules } from './rules.js';
 import { analyzeImportConfig, mergeGroups } from './cleanupcore.js';
 import { catMergeCard } from './catmerge.js';
 import { partyCheckCard } from './partycheck.js';
+import { refsCard, emptyCard } from './refscard.js';
 
 const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'firefly-dashboard' };
 const RULE_GROUP = 'Dashboard: Händler → Kategorie (Import)';
@@ -42,6 +43,8 @@ export async function cleanup(view) {
       ${card('a-merge', 'Ähnliche Gegenkonten zusammenführen', { meta: '<span id="a-merge-meta"></span>' })}
       ${card('a-wrong', 'Falsch zugeordnete Gegenkonten', { meta: '<span id="a-wrong-meta"></span>' })}
       ${card('a-catmerge', 'Kategorien zusammenführen', { meta: '<span id="a-catmerge-meta"></span>' })}
+      ${card('a-refs', 'Alte Kategorien in Regeln und Import', { meta: '<span id="a-refs-meta"></span>' })}
+      ${card('a-empty', 'Leere Gegenkonten und Tags', { meta: '<span id="a-empty-meta"></span>' })}
     </div>`;
   const $ = (id) => view.querySelector(`#${id}`);
   $('a-import').innerHTML = skeleton(4);
@@ -74,6 +77,8 @@ export async function cleanup(view) {
   });
   if (!view.isConnected) return;
   catMergeCard($('a-catmerge'), $('a-catmerge-meta'), { rulesAction, monate });
+  refsCard($('a-refs'), $('a-refs-meta'), { editAction });
+  emptyCard($('a-empty'), $('a-empty-meta'), { editAction });
   partyCheckCard($('a-wrong'), $('a-wrong-meta'), { txs, editAction, monate }).catch((err) => ($('a-wrong').innerHTML = `<div class="empty">Konnte nicht geprüft werden: ${esc(err.message)}</div>`));
   const catNames = categories.map((c) => c.name).sort((a, b) => a.localeCompare(b, 'de'));
 

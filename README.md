@@ -772,7 +772,15 @@ auf 12 Monate bis 10 Jahre ändern („Buchungen auswerten“, je Gerät gemerkt
   (zuklappbar, Filter „nur im Dashboard“ / „übertragen“) und **Leere Kategorien** – fragt Firefly je
   Kategorie, ob es überhaupt eine Buchung gibt (alle Jahre), und löscht ausgewählte leere über die
   Automation „Kategorie übernehmen“ (`typ: kategorien_loeschen`, Zweig „Konten?“ – aktuelle Vorlage
-  `n8n/firefly-buchung-bearbeiten.json` nötig).
+  `n8n/firefly-buchung-bearbeiten.json` nötig). Je Zusammenführung zeigt die Liste den **Stand in
+  Firefly** (noch Buchungen unter dem alten Namen? – dann „erneut übertragen“, auch für alle auf einmal).
+- **Alte Kategorien in Regeln und Import** (Aufräumen) – findet Firefly-Regeln, die noch eine zusammengeführte
+  oder gelöschte Kategorie setzen (und stellt sie per n8n um, `typ: regeln_aendern`), dieselben Fälle in den
+  eigenen Zuordnungen, Labor-Regeln und im Import-Plan („Im Dashboard umstellen“) und in der Import-Konfiguration
+  des Data Importers (korrigierte Datei zum Herunterladen; weitere Konten per Dateiauswahl). Sonst legt Firefly
+  die alten Kategorien beim nächsten Import neu an.
+- **Leere Gegenkonten und Tags** (Aufräumen) – Gegenkonten und Tags ohne eine einzige Buchung (alle Jahre,
+  frisch bei Firefly), ausgewählte löschen (`typ: konten_loeschen` / `tags_loeschen`).
 
 Empfohlene Reihenfolge: CSV-Abgleich (Empfänger nachtragen) → Gegenkonten zusammenführen →
 Regeln aus der Import-Konfiguration übertragen.

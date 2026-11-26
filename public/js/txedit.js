@@ -69,6 +69,17 @@ export async function deleteCategories(action, ids, info = {}) {
     : `n8n antwortet mit ${res.status || 'Fehler'}: ${msg.slice(0, 160)}`);
 }
 
+/** Weitere Aufträge im Zweig „Konten?“ (konten_loeschen, tags_loeschen, regeln_aendern …) – mit Hinweis bei alter Vorlage. */
+export async function runCleanupTask(action, typ, payload, was) {
+  const res = await runAction(action, { typ, ...payload }).catch((err) => ({ ok: false, response: err.message }));
+  if (res.ok) return res;
+  const msg = String(res.response || '');
+  const old = /Unbekannter typ|Nichts zu tun/i.test(msg) || res.status === 500;
+  throw new Error(old
+    ? `Der n8n-Workflow kann noch keine ${was} – bitte die aktuelle Vorlage n8n/firefly-buchung-bearbeiten.json in n8n importieren (bzw. die Knoten „Konten?“ und „Konten-Anfragen bauen“ übernehmen). (${res.status || 'Fehler'})`
+    : `n8n antwortet mit ${res.status || 'Fehler'}: ${msg.slice(0, 160)}`);
+}
+
 export const setTags = (action, t, tags, change = {}) =>
   runAction(action, { typ: 'tags_setzen', ...baseContext(t), tags, tag_hinzugefuegt: change.added ?? null, tag_entfernt: change.removed ?? null });
 
