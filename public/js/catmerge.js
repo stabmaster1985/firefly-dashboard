@@ -6,7 +6,7 @@
 
 import * as api from './api.js';
 import { esc, money, fmtDate, today, isoDate, storage, store } from './util.js';
-import { runAction } from './txedit.js';
+import { runAction, actionFor, deleteCategories } from './txedit.js';
 import { toFireflyRules } from './rules.js';
 import { similar } from './combo.js';
 
@@ -159,8 +159,50 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
   let showSugg = 6;
   let suggOpen = storage('ffd-cm-sugg-open', '1') !== '0'; // Vorschläge auf-/zugeklappt (je Gerät)
   let mergedOpen = storage('ffd-cm-merged-open', '1') !== '0'; // Liste „Zusammengeführt“ auf-/zugeklappt
+  // Leere Kategorien (alle Jahre, frisch bei Firefly): null | 'laden' | Fehlertext | { geprueft, leer, off: Set }
+  let empty = null;
+  let emptyOpen = false;
+  let emptyNote = '';
+  let editAction = null;
+  actionFor('categorize').then((a) => (editAction = a)).catch(() => {});
+  async function checkEmpty() {
+    empty = 'laden';
+    emptyNote = '';
+    render();
+    try {
+      const r = await fetch('/local/kategorien?leer=1', { headers: { 'X-No-Cache': '1' } });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.message || `HTTP ${r.status}`);
+      empty = { ...body, off: new Set() };
+    } catch (err) {
+      empty = err.message;
+    }
+    render();
+  }
+  function emptyHtml() {
+    const head = `<details class="cm-merged-box" data-empty-box${emptyOpen ? ' open' : ''}><summary class="sub-h">Leere Kategorien <span class="muted">(in Firefly ohne eine einzige Buchung – alle Jahre)${empty && typeof empty === 'object' ? ` · ${empty.leer.length}` : ''}</span></summary>`;
+    let body;
+    if (!empty) body = `<p class="muted small-text">Fragt Firefly je Kategorie, ob es überhaupt eine Buchung gibt – egal wie alt. Was dann hier steht, kann gefahrlos gelöscht werden.</p><button class="btn small" type="button" data-empty-check>Jetzt prüfen</button>`;
+    else if (empty === 'laden') body = '<p class="muted"><span class="spinner"></span> Frage Firefly je Kategorie … (bei vielen Kategorien etwas Geduld)</p>';
+    else if (typeof empty === 'string') body = `<p class="bad">${esc(empty)}</p><button class="btn small" type="button" data-empty-check>Erneut prüfen</button>`;
+    else {
+      const sel = empty.leer.filter((c) => !empty.off.has(c.id));
+      body = `<p class="muted small-text">${empty.geprueft} Kategorien geprüft, ${empty.leer.length} ohne jede Buchung. <button class="link-btn" type="button" data-empty-check>neu prüfen</button></p>
+        ${empty.leer.length ? `<div class="list cm-merged">${empty.leer.map((c) => `<label class="row" style="cursor:pointer;display:flex;gap:10px;align-items:center;justify-content:flex-start">
+            <input type="checkbox" data-empty-pick="${esc(c.id)}"${empty.off.has(c.id) ? '' : ' checked'}>
+            <span style="min-width:0"><span class="title">${esc(c.name)}</span>${c.zusammengefuehrtIn ? ` <span class="muted small-text">· zusammengeführt in „${esc(c.zusammengefuehrtIn)}“</span>` : ''}</span></label>`).join('')}</div>
+          <div class="z-ff-btns" style="margin-top:10px">${editAction ? `<button class="btn small" type="button" data-empty-delete${sel.length ? '' : ' disabled'}>${sel.length} ausgewählte in Firefly löschen</button>` : '<span class="muted small-text">Zum Löschen fehlt die Automation „Kategorie übernehmen“ (Vorlage n8n/firefly-buchung-bearbeiten.json).</span>'}</div>
+          <p class="muted small-text">Steht eine Kategorie noch in einer Firefly-Regel oder in der Import-Konfiguration (Data Importer), legt Firefly sie beim nächsten Treffer wieder an – dort ggf. auch ersetzen.</p>` : '<div class="empty">Keine leeren Kategorien.</div>'}`;
+    }
+    return `${head}${emptyNote ? `<div class="cm-note" role="status">${emptyNote}</div>` : ''}${body}</details>`;
+  }
   let mergedView = storage('ffd-cm-merged-view', 'alle'); // offen (nur im Dashboard) | firefly (übertragen) | alle
   el.addEventListener('toggle', (e) => {
+    if (e.target.matches?.('[data-empty-box]')) {
+      emptyOpen = e.target.open;
+      if (emptyOpen && !empty) checkEmpty();
+      return;
+    }
     if (e.target.matches?.('[data-merged-box]')) {
       mergedOpen = e.target.open;
       store('ffd-cm-merged-open', mergedOpen ? '1' : '0');
@@ -299,7 +341,8 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
         ${merged.filter((m) => !m.sentAt).length > 1 && rulesAction ? `<button class="btn small" type="button" id="cm-all" style="margin-top:10px">Alle ${merged.filter((m) => !m.sentAt).length} nach Firefly übertragen</button>` : ''}
         <p class="muted small-text">„Aufheben“ wirkt sofort im Dashboard; wurde schon nach Firefly übertragen, wird die Regel dort entfernt –
           die Buchungen behalten aber die neue Kategorie (in Firefly ggf. von Hand zurücksetzen). Leere alte Kategorien kannst du in Firefly löschen.
-          Tipp: Auch in der Import-Konfiguration (Data Importer) die alte Kategorie durch die neue ersetzen.</p></details>` : ''}`;
+          Tipp: Auch in der Import-Konfiguration (Data Importer) die alte Kategorie durch die neue ersetzen.</p></details>` : ''}
+      ${emptyHtml()}`;
   }
 
   /** Alle für Firefly vorgesehenen Zusammenführungen als Regeln schicken (die Gruppe wird abgeglichen) und anwenden. */
@@ -344,6 +387,11 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
     }
   });
   el.addEventListener('change', (e) => {
+    if (e.target.dataset.emptyPick && empty && typeof empty === 'object') {
+      if (e.target.checked) empty.off.delete(e.target.dataset.emptyPick);
+      else empty.off.add(e.target.dataset.emptyPick);
+      return render();
+    }
     if (e.target === targetInput) {
       target = targetInput.value;
       return render();
@@ -383,6 +431,26 @@ export function catMergeCard(el, meta, { rulesAction, monate = 24 }) {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.merge) return merge(b.dataset.merge, b);
+    if (b.dataset.emptyCheck !== undefined) return checkEmpty();
+    if (b.dataset.emptyDelete !== undefined && empty && typeof empty === 'object') {
+      const sel = empty.leer.filter((c) => !empty.off.has(c.id));
+      if (!sel.length || !window.confirm(`${sel.length} leere Kategorie${sel.length === 1 ? '' : 'n'} in Firefly löschen?\n\n${sel.slice(0, 15).map((c) => `• ${c.name}`).join('\n')}${sel.length > 15 ? '\n…' : ''}\n\nSie haben in Firefly keine einzige Buchung (eben geprüft).`)) return;
+      b.disabled = true;
+      b.innerHTML = '<span class="spinner"></span> Lösche …';
+      deleteCategories(editAction, sel.map((c) => c.id), { namen: sel.map((c) => c.name) })
+        .then(async () => {
+          api.forget();
+          await checkEmpty();
+          emptyNote = `<span class="good">✓ ${sel.length} Kategorie${sel.length === 1 ? '' : 'n'} in Firefly gelöscht.</span>`;
+          data = await call();
+          render();
+        })
+        .catch((err) => {
+          emptyNote = `<span class="bad">${esc(err.message)}</span>`;
+          render();
+        });
+      return undefined;
+    }
     if (b.dataset.mergedView) {
       mergedView = b.dataset.mergedView;
       store('ffd-cm-merged-view', mergedView);

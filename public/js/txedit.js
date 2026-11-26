@@ -57,6 +57,18 @@ export async function deleteBookings(action, groupIds, info = {}) {
     : `n8n antwortet mit ${res.status || 'Fehler'}: ${msg.slice(0, 160)}`);
 }
 
+/** Leere Kategorien in Firefly löschen (typ „kategorien_loeschen“, Zweig „Konten?“) – das Dashboard prüft vorher, dass sie leer sind. */
+export async function deleteCategories(action, ids, info = {}) {
+  const list = [...new Set(ids.map(String))].filter((x) => /^\d+$/.test(x));
+  const res = await runAction(action, { typ: 'kategorien_loeschen', ids: list, ...info }).catch((err) => ({ ok: false, response: err.message }));
+  if (res.ok) return res;
+  const msg = String(res.response || '');
+  const old = /Unbekannter typ|Nichts zu tun|kategorien_loeschen/i.test(msg) || res.status === 500;
+  throw new Error(old
+    ? `Der n8n-Workflow kann noch keine Kategorien löschen – bitte die aktuelle Vorlage n8n/firefly-buchung-bearbeiten.json in n8n importieren (bzw. die Knoten „Konten?“ und „Konten-Anfragen bauen“ übernehmen). (${res.status || 'Fehler'})`
+    : `n8n antwortet mit ${res.status || 'Fehler'}: ${msg.slice(0, 160)}`);
+}
+
 export const setTags = (action, t, tags, change = {}) =>
   runAction(action, { typ: 'tags_setzen', ...baseContext(t), tags, tag_hinzugefuegt: change.added ?? null, tag_entfernt: change.removed ?? null });
 

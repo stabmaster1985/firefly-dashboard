@@ -251,7 +251,9 @@ for (const j of journals) {
 }
 
 // Kategorien bekommen feste IDs in alphabetischer Reihenfolge
-const CATEGORIES = [...new Set(journals.map((j) => j.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
+// dazu zwei leere (wie nach einem Zusammenführen) – für „Leere Kategorien“ in Aufräumen
+const CATEGORIES = [...new Set([...journals.map((j) => j.category).filter(Boolean), 'Spielwaren alt', 'Zeitschriften'])].sort((a, b) => a.localeCompare(b, 'de'));
+const deletedCats = new Set();
 const categoryId = (name) => String(CATEGORIES.indexOf(name) + 1);
 const categoryName = (id) => CATEGORIES[Number(id) - 1];
 const TAGS = [...new Set(journals.flatMap((j) => j.tags))].sort((a, b) => a.localeCompare(b, 'de'));
@@ -485,7 +487,7 @@ const routes = {
     return sum ? [{ difference: fmt(sum), difference_float: sum, ...eur() }] : [];
   },
   categories: (q) =>
-    paginate(CATEGORIES, q, (name) => ({ type: 'categories', id: categoryId(name), attributes: { name, notes: null } })),
+    paginate(CATEGORIES.filter((c) => !deletedCats.has(c)), q, (name) => ({ type: 'categories', id: categoryId(name), attributes: { name, notes: null } })),
   'insight/expense/budget': (q) => {
     const [start, end] = range(q);
     return BUDGETS.map((b) => {
@@ -707,7 +709,7 @@ http
         }
         : () => ({ data: { type: 'tags', id: tagId(name), attributes: { tag: name } } });
     }
-    if (cat && categoryName(cat[1])) {
+    if (cat && categoryName(cat[1]) && !deletedCats.has(categoryName(cat[1]))) {
       const name = categoryName(cat[1]);
       handler = cat[2]
         ? (q) => {
@@ -773,6 +775,12 @@ http
           }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ ok: true, anzahl: (data.paare || data.ids || []).length }));
+        }
+        if (data.typ === 'kategorien_loeschen') {
+          // wie der Zweig „Konten?“: DELETE /categories/<id>
+          for (const id of data.ids || []) if (categoryName(id)) deletedCats.add(categoryName(id));
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ ok: true, anzahl: (data.ids || []).length }));
         }
         if (data.typ === 'buchungen_loeschen') {
           // wie der Zweig „Konten?“: DELETE /transactions/<Gruppe> – in der Demo ist Gruppe = Buchung

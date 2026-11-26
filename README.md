@@ -768,7 +768,11 @@ auf 12 Monate bis 10 Jahre ändern („Buchungen auswerten“, je Gerät gemerkt
   Automation „Firefly-Regeln anlegen“ je Kategorie eine Regel „Kategorie ist A → Kategorie B“
   (Regelgruppe „Dashboard: Kategorien zusammengeführt“) und wendet sie auf alle Buchungen an – so
   landen auch künftige Importe mit der alten Kategorie im Ziel. Aufheben entfernt die Regel wieder;
-  schon umgestellte Buchungen behalten die neue Kategorie. Leere alte Kategorien in Firefly löschen.
+  schon umgestellte Buchungen behalten die neue Kategorie. Unten in der Karte: Liste „Zusammengeführt“
+  (zuklappbar, Filter „nur im Dashboard“ / „übertragen“) und **Leere Kategorien** – fragt Firefly je
+  Kategorie, ob es überhaupt eine Buchung gibt (alle Jahre), und löscht ausgewählte leere über die
+  Automation „Kategorie übernehmen“ (`typ: kategorien_loeschen`, Zweig „Konten?“ – aktuelle Vorlage
+  `n8n/firefly-buchung-bearbeiten.json` nötig).
 
 Empfohlene Reihenfolge: CSV-Abgleich (Empfänger nachtragen) → Gegenkonten zusammenführen →
 Regeln aus der Import-Konfiguration übertragen.
