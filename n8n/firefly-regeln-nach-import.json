@@ -12,7 +12,10 @@
       "name": "Anleitung",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [-120, -440]
+      "position": [
+        -120,
+        -440
+      ]
     },
     {
       "parameters": {
@@ -22,14 +25,27 @@
       "name": "Vom Import-Workflow",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
-      "position": [0, 100]
+      "position": [
+        0,
+        100
+      ]
     },
     {
       "parameters": {
         "assignments": {
           "assignments": [
-            { "id": "r2a", "name": "firefly_url", "value": "http://192.168.0.X:7777", "type": "string" },
-            { "id": "r2b", "name": "tage", "value": 45, "type": "number" }
+            {
+              "id": "r2a",
+              "name": "firefly_url",
+              "value": "http://192.168.0.X:7777",
+              "type": "string"
+            },
+            {
+              "id": "r2b",
+              "name": "tage",
+              "value": 45,
+              "type": "number"
+            }
           ]
         },
         "options": {}
@@ -38,7 +54,10 @@
       "name": "Einstellungen",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [220, 100],
+      "position": [
+        220,
+        100
+      ],
       "executeOnce": true
     },
     {
@@ -47,16 +66,37 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
-        "headerParameters": { "parameters": [{ "name": "Accept", "value": "application/vnd.api+json" }] },
-        "options": { "response": { "response": { "responseFormat": "json" } } }
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.api+json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
       },
       "id": "r3",
       "name": "Regelgruppen holen",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [440, 100],
+      "position": [
+        440,
+        100
+      ],
       "executeOnce": true,
-      "credentials": { "httpHeaderAuth": { "id": "firefly", "name": "Firefly" } }
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "firefly",
+          "name": "Firefly"
+        }
+      }
     },
     {
       "parameters": {
@@ -66,7 +106,10 @@
       "name": "Aktive Gruppen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [660, 100]
+      "position": [
+        660,
+        100
+      ]
     },
     {
       "parameters": {
@@ -75,24 +118,95 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
-        "headerParameters": { "parameters": [{ "name": "Accept", "value": "application/vnd.api+json" }] },
-        "options": { "response": { "response": { "responseFormat": "text" } } }
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.api+json"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}"
       },
       "id": "r5",
       "name": "Regeln anwenden",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [880, 100],
-      "credentials": { "httpHeaderAuth": { "id": "firefly", "name": "Firefly" } },
-      "onError": "continueRegularOutput"
+      "position": [
+        880,
+        100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "firefly",
+          "name": "Firefly"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Firefly verlangt auch ohne Inhalt den Kopf Content-Type (sonst 415) – darum Content-Type: application/json und leerer JSON-Body {}."
     }
   ],
   "connections": {
-    "Vom Import-Workflow": { "main": [[{ "node": "Einstellungen", "type": "main", "index": 0 }]] },
-    "Einstellungen": { "main": [[{ "node": "Regelgruppen holen", "type": "main", "index": 0 }]] },
-    "Regelgruppen holen": { "main": [[{ "node": "Aktive Gruppen", "type": "main", "index": 0 }]] },
-    "Aktive Gruppen": { "main": [[{ "node": "Regeln anwenden", "type": "main", "index": 0 }]] }
+    "Vom Import-Workflow": {
+      "main": [
+        [
+          {
+            "node": "Einstellungen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Einstellungen": {
+      "main": [
+        [
+          {
+            "node": "Regelgruppen holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Regelgruppen holen": {
+      "main": [
+        [
+          {
+            "node": "Aktive Gruppen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aktive Gruppen": {
+      "main": [
+        [
+          {
+            "node": "Regeln anwenden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": { "executionOrder": "v1" },
+  "settings": {
+    "executionOrder": "v1"
+  },
   "pinData": {}
 }

@@ -557,6 +557,10 @@
             {
               "name": "Accept",
               "value": "application/vnd.api+json"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         },
@@ -566,7 +570,10 @@
               "responseFormat": "text"
             }
           }
-        }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}"
       },
       "id": "r11",
       "name": "Auf Buchungen anwenden",
@@ -581,7 +588,8 @@
           "id": "firefly",
           "name": "Firefly"
         }
-      }
+      },
+      "notes": "Firefly verlangt auch ohne Inhalt den Kopf Content-Type (sonst 415) – darum Content-Type: application/json und leerer JSON-Body {}."
     },
     {
       "parameters": {
